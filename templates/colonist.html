@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html data-theme="forest">
+  <head>
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/vite/style.css">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    >
+    <meta
+      name="theme-color"
+      content="#0f172a"
+      media="(prefers-color-scheme: dark)"
+    >
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap"
+      rel="stylesheet"
+    >
+    <script
+      type="module"
+      src="/static/js/htmax-4.0.0.min.js"
+      integrity="sha384-F2+P/m0g8+he+KLpgsCVZlZGvOx2z83bU4rmmISSNt7br4A0RTcJ7ddMrz0v45Nv"
+    ></script>
+  </head>
+
+  <body>
+    <canvas width="500" height="500" id="canvas"></canvas>
+
+    <script>
+    // Read here: https://harrisonmilbradt.com/articles/canvas-panning-and-zooming
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const viewportTransform = {
+      x: 0,
+      y: 0,
+      scale: 1,
+    };
+
+    // From here on, everything we'll write will go below 👇
+    const drawRect = (x, y, width, height, color) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, width, height);
+    };
+
+    const render = () => {
+      // New code 👇
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(
+        viewportTransform.scale,
+        0,
+        0,
+        viewportTransform.scale,
+        viewportTransform.x,
+        viewportTransform.y,
+      );
+      // New Code 👆
+
+      drawRect(0, 0, 100, 100, "red");
+      drawRect(200, 200, 100, 100, "blue");
+    };
+
+    // We need to keep track of our previous mouse position for later
+    let previousX = 0, previousY = 0;
+
+    const updatePanning = (e) => {
+      const localX = e.clientX;
+      const localY = e.clientY;
+
+      viewportTransform.x += localX - previousX;
+      viewportTransform.y += localY - previousY;
+
+      previousX = localX;
+      previousY = localY;
+    };
+
+    const updateZooming = (e) => {
+      const oldScale = viewportTransform.scale;
+      const oldX = viewportTransform.x;
+      const oldY = viewportTransform.y;
+
+      const localX = e.clientX;
+      const localY = e.clientY;
+
+      const previousScale = viewportTransform.scale;
+
+      const newScale = viewportTransform.scale += e.deltaY * -0.01;
+
+      const newX = localX - (localX - oldX) * (newScale / previousScale);
+      const newY = localY - (localY - oldY) * (newScale / previousScale);
+
+      viewportTransform.x = newX;
+      viewportTransform.y = newY;
+      viewportTransform.scale = newScale;
+    };
+
+    const onMouseMove = (e) => {
+      updatePanning(e);
+
+      render();
+
+      console.log(e);
+    };
+
+    const onMouseWheel = (e) => {
+      updateZooming(e);
+
+      render();
+
+      console.log(e);
+    };
+
+    canvas.addEventListener("wheel", onMouseWheel);
+
+    canvas.addEventListener("mousedown", (e) => {
+      previousX = e.clientX;
+      previousY = e.clientY;
+
+      canvas.addEventListener("mousemove", onMouseMove);
+    });
+
+    canvas.addEventListener("mouseup", (e) => {
+      canvas.removeEventListener("mousemove", onMouseMove);
+    });
+
+    render();
+    </script>
+  </body>
+</html>

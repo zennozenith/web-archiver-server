@@ -1,0 +1,75 @@
+[package]
+name = "myopic"
+version = "0.0.0"
+edition = "2024"
+default-run = "web"
+resolver = "3"
+
+[lib]
+name = "myopic"
+path = "src/lib.rs"
+
+[[bin]]
+name = "web"
+path = "src/main.rs"
+# required-features = ["cli"]
+
+[[bin]]
+name = "test1"
+path = "src/test1.rs"
+required-features = ["headless"]
+
+[dependencies]
+anyhow = "1.0.104"
+argon2 = "0.6.0"
+askama = "0.16.1"
+axum = { version = "0.8.9", features = ["macros", "ws"] }
+blake3 = "1.8.7"
+displaydoc = "0.2.7"
+ego-tree = "=0.11.0"
+encoding_rs = "0.8.42"
+html5ever = "=0.39.0"
+itertools = "0.15.0"
+mime_guess = "2.0.5"
+# reqwest = { version = "0.13.5", default-features = false, features = ["default-tls", "brotli", "deflate", "gzip"] }
+rust-embed = { version = "8.12.0", features = ["axum", "compression", "mime_guess"] }
+scraper = "0.27.0"
+secrecy = { version = "0.10", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.9", features = ["runtime-tokio", "tls-native-tls"] }
+strum = { version = "0.28.0", features = ["derive"] }
+tempfile = "3.27.0"
+thiserror = "2"
+tokio = { version = "1.53.1", features = ["full"] }
+tower = { version = "0.5.3", features = ["util"] }
+tower-cookies = "0.11.0"
+tower-http = { version = "0.7.1", features = ["fs", "set-status", "trace"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ureq = { version = "3.4.2", default-features = false, features = ["brotli", "cookies", "gzip", "native-tls"] }
+url = { version = "2.5.8", features = ["serde"] }
+uuid = {
+  version = "1",
+  features = [
+    "fast-rng",  # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics",  # Enable better diagnostics for compile-time UUIDs
+    "serde",
+    "v4",
+  ]
+}
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+mime = "0.3.17"
+tower = "0.5.3"
+
+[features]
+default = []
+postgres = []
+vendored = [
+  "ureq/vendored",
+]  # Compile and statically link a copy of OpenSSL
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3

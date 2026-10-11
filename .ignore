@@ -1,0 +1,6 @@
+.devenv
+frontend/bun.lock
+static/css
+static/images
+static/js
+

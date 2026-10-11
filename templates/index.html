@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html data-theme="forest" lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    >
+    <meta
+      name="theme-color"
+      content="#0f172a"
+      media="(prefers-color-scheme: dark)"
+    >
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap"
+      rel="stylesheet"
+    >
+
+    <!-- [Credit to https://favicongenerator.io] -->
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="96x96"
+      href="/static/images/favicon/favicon-96x96.png"
+    >
+    <link
+      rel="icon"
+      href="/static/images/favicon/favicon.svg"
+      type="image/svg+xml"
+      sizes="any"
+    >
+    <link rel="icon" href="/static/images/favicon/favicon.ico">
+    <link
+      rel="apple-touch-icon"
+      href="/static/images/favicon/apple-touch-icon.png"
+    >
+    <link rel="manifest" href="/static/site.webmanifest">
+    <link rel="stylesheet" href="/static/vite/style.css">
+
+    <script type="module" src="/static/vite/counter.js"></script>
+
+    <!-- TODO: Remove in release -->
+    <!-- <script
+      type="module"
+      src="/static/js/htmax-4.0.0.js"
+      integrity="sha384-wrTFbAj755gAdIPPR9n4aAVMkLWkzxjr1Zj+8D4kgr2App4h9doO6SXBH9wpivij"
+    ></script> -->
+
+    <script
+      type="module"
+      src="/static/js/htmax-4.0.0.min.js"
+      integrity="sha384-F2+P/m0g8+he+KLpgsCVZlZGvOx2z83bU4rmmISSNt7br4A0RTcJ7ddMrz0v45Nv"
+    ></script>
+
+    <title>{{ title }}</title>
+  </head>
+  <body class="min-h-screen bg-base-200 flex items-center justify-center">
+    <div x-data="counter" class="card w-96 bg-base-100 shadow-xl">
+      <div class="card-body items-center text-center">
+        <h2 class="card-title text-red-400">{{ title }}</h2>
+        <p class="text-4xl font-bold" x-text="count"></p>
+        <div class="card-actions">
+          <button class="btn btn-primary" @click="increment">+1</button>
+          <button class="btn btn-ghost" @click="reset">Reset</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
