@@ -1,33 +1,38 @@
-use askama::Template;
-use axum::{Router, response::IntoResponse, routing::get};
+use axum::{Router, extract::FromRef, routing::get};
+use sqlx::SqlitePool;
+use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use crate::error::AppError;
+use crate::config::Settings;
 
 mod assets;
+mod config;
 mod core;
+mod db;
+mod downloader;
 mod error;
+mod extractor;
+mod handlers;
+mod models;
 mod scrapper;
 
-use core::RenderHtml;
-
-#[derive(Template)]
-#[template(path = "index.html")]
-struct IndexTemplate<'a> {
-    title: &'a str,
+#[derive(Clone)]
+pub struct AppState {
+    pub db: SqlitePool,
+    // browser: BrowserManager,
 }
 
-#[derive(Template)]
-#[template(path = "vite-counter.html")]
-struct ViteCounter<'a> {
-    title: &'a str,
+impl FromRef<AppState> for SqlitePool {
+    fn from_ref(app_state: &AppState) -> SqlitePool {
+        app_state.db.clone()
+    }
 }
 
-#[derive(Template)]
-#[template(path = "colonist.html")]
-struct Colonist<'a> {
-    title: &'a str,
-}
+// impl FromRef<AppState> for Settings {
+//     fn from_ref(app_state: &AppState) -> Settings {
+//         app_state.browser.clone()
+//     }
+// }
 
 #[tokio::main]
 async fn main() {
@@ -39,95 +44,94 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let app = app();
+    let settings = Settings::load();
 
-    // let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::debug!("listening on {}", listener.local_addr().unwrap());
+    let db = db::create_pool(&settings.database)
+        .await
+        .expect("Unable to create database");
+
+    let state = AppState { db };
+
+    let app = app(state);
+
+    let listener = tokio::net::TcpListener::bind(format!(
+        "{}:{}",
+        settings.server.host.as_deref().unwrap_or("127.0.0.1"),
+        settings.server.port
+    ))
+    .await
+    .expect("Unable to create listener");
+
+    tracing::info!(
+        "listening on http://{}",
+        listener
+            .local_addr()
+            .expect("Cannot get local address from listener")
+            .to_string()
+    );
+
     let _ = axum::serve(listener, app).await;
 }
 
-fn app() -> Router {
+fn app(state: AppState) -> Router {
     Router::new()
-        .route("/", get(index))
-        .route("/counter", get(vite_counter))
-        .route("/colonist", get(colonist))
-        .route("/anyhow", get(try_thing))
-        // .route("/form1", get(show_form).post(accept_form))
+        .route("/", get(handlers::index))
+        .route("/counter", get(handlers::vite_counter))
+        .nest("/api", handlers::api())
+        .with_state(state)
         .merge(assets::serve_dir())
+        .layer(TraceLayer::new_for_http())
 }
 
-async fn index() -> Result<impl IntoResponse, AppError> {
-    IndexTemplate {
-        title: "Rust + Axum + Vite + Alpine",
-    }
-    .render_html()
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use axum::{
+//         body::Body,
+//         http::{self, Request, StatusCode},
+//     };
+//     use http_body_util::BodyExt;
+//     use tower::ServiceExt; // for `call`, `oneshot`, and `ready` // for `collect`
 
-async fn vite_counter() -> Result<impl IntoResponse, AppError> {
-    ViteCounter {
-        title: "Rust + Axum + Vite + Alpine",
-    }
-    .render_html()
-}
+//     #[tokio::test]
+//     async fn test_get() {
+//         let app = app();
 
-async fn colonist() -> Result<impl IntoResponse, AppError> {
-    Colonist { title: "Colonist" }.render_html()
-}
+//         let response = app
+//             .oneshot(Request::get("/").body(Body::empty()).unwrap())
+//             .await
+//             .unwrap();
 
-async fn try_thing() -> Result<(), AppError> {
-    Err(anyhow::anyhow!("it failed!").into())
-}
+//         assert_eq!(response.status(), StatusCode::OK);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::{
-        body::Body,
-        http::{self, Request, StatusCode},
-    };
-    use http_body_util::BodyExt;
-    use tower::ServiceExt; // for `call`, `oneshot`, and `ready` // for `collect`
+//         let body = response.into_body().collect().await.unwrap().to_bytes();
+//         let body = std::str::from_utf8(&body).unwrap();
 
-    #[tokio::test]
-    async fn test_get() {
-        let app = app();
+//         assert!(body.contains(r#"<input type="submit" value="Subscribe!">"#));
+//     }
 
-        let response = app
-            .oneshot(Request::get("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+//     #[tokio::test]
+//     async fn test_post() {
+//         let app = app();
 
-        assert_eq!(response.status(), StatusCode::OK);
+//         let response = app
+//             .oneshot(
+//                 Request::post("/")
+//                     .header(
+//                         http::header::CONTENT_TYPE,
+//                         mime::APPLICATION_WWW_FORM_URLENCODED.as_ref(),
+//                     )
+//                     .body(Body::from("name=foo&email=bar@axum"))
+//                     .unwrap(),
+//             )
+//             .await
+//             .unwrap();
 
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        let body = std::str::from_utf8(&body).unwrap();
+//         assert_eq!(response.status(), StatusCode::OK);
 
-        assert!(body.contains(r#"<input type="submit" value="Subscribe!">"#));
-    }
+//         let body = response.into_body().collect().await.unwrap().to_bytes();
+//         let body = std::str::from_utf8(&body).unwrap();
 
-    #[tokio::test]
-    async fn test_post() {
-        let app = app();
-
-        let response = app
-            .oneshot(
-                Request::post("/")
-                    .header(
-                        http::header::CONTENT_TYPE,
-                        mime::APPLICATION_WWW_FORM_URLENCODED.as_ref(),
-                    )
-                    .body(Body::from("name=foo&email=bar@axum"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        let body = std::str::from_utf8(&body).unwrap();
-
-        assert_eq!(body, "email='bar@axum'\nname='foo'\n");
-    }
-}
+//         assert_eq!(body, "email='bar@axum'\nname='foo'\n");
+//     }
+// }

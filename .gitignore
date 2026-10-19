@@ -1,6 +1,11 @@
 /temp
 /target
 /static/vite
+/examples/archives/*
+/examples/db.sqlite
+!example/archives/.gitkeep
+
+/static/vendored/**/*.br
 
 # Devenv
 .devenv*

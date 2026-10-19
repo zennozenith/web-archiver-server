@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>{% block title %}{{ title }} - My Site{% endblock %}</title>
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <div id="content">
+      <div>{{ in_base }}</div>
+      {% block content %}<p>Placeholder content</p>{% endblock %}
+    </div>
+  </body>
+</html>

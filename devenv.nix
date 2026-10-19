@@ -1,63 +1,109 @@
 {
   pkgs,
   lib,
-  config,
-  # inputs,
   ...
 }: {
   languages.rust = {
     enable = true;
     channel = "nightly";
-    # channel = "stable";
-    components = ["rustc" "cargo" "clippy" "rust-analyzer"];
+    components = [
+      "rustc"
+      "cargo"
+      "clippy"
+      "rust-analyzer"
+    ];
 
     mold.enable = true;
   };
 
-  services = {
-    postgres = {
-      enable = true;
-      initialDatabases = [{ name = "colonist"; }];
-    };
-  };
-
   packages = with pkgs; [
-    hello
     bacon
-    cargo-seek
     cargo-nextest
-    cargo-generate
     cargo-update
 
     openssl
     pkg-config
 
-    bun
-    tailwindcss_4
-    oxlint
-    oxfmt
-    web-ext
+    watchexec
+    ouch
+    ## TODO: Vite+ external installation required
   ];
+
+  tasks."vendored:compress" = {
+    exec = ''
+      for file in *; do
+          # Skip if it's a directory
+          [ -d "$file" ] && continue
+
+          case "$file" in
+              *.br)
+                  # Skip files ending with .br
+                  ;;
+              *)
+                  echo "Processing: $file"
+                  ouch compress $file "$file.br"
+                  ;;
+          esac
+      done
+    '';
+    cwd = "./static/vendored";
+  };
 
   tasks."app:test".exec = "cargo test";
 
+  tasks."init:frontend" = {
+    exec = "vp install";
+    cwd = "./frontend";
+  };
+
+  tasks."frontend:build" = {
+    exec = "vpr lint && vpr fmt && vpr build";
+    execIfModified = [
+      "frontend"
+    ];
+    cwd = "./frontend";
+  };
+
+  # tasks."frontend:tailwind" = {
+  #   exec = ''
+  #     echo $PWD
+  #     bunx @tailwindcss/cli -i ./frontend/input.css -o ./static/css/build/tailwind.css
+  #   '';
+  #   execIfModified = [
+  #     "frontend/input.css"
+  #     "templates"
+  #   ];
+  #   before = ["frontend:build"];
+  # };
+
   scripts.watcher = {
     exec = ''
-      watchexec -c -e rs \
-      "cargo clippy && cargo test && cargo run"
+      watchexec -q -c -w src/ -w templates/ -w frontend/ -r --stop-signal SIGKILL "cargo run"
     '';
     packages = [pkgs.watchexec];
   };
 
-  
+  scripts.watch-tailwind = {
+    exec = ''
+      watchexec -e html,css -w frontend/input.css -w templates/ \
+      -- devenv tasks run frontend:tailwind
+    '';
+    packages = [
+      pkgs.tailwindcss_4
+      pkgs.watchexec
+    ];
+  };
+
   env.LD_LIBRARY_PATH = lib.makeLibraryPath [
     pkgs.zlib
   ];
 
   env = {
-    # DATABASE_URL = "postgres://user:pass@localhost/colonist";
-    # Secrets are automatically populated from secretspec.toml
-    DATABASE_URL = config.secretspec.secrets.DATABASE_URL;
+    RUST_LOG = "info,myopic=debug";
+    APP_SERVER__HOST = "0.0.0.0";
+    APP_SERVER__PORT = 8888;
+    APP_DATABASE__URL = "sqlite://db/app.db";
+    APP_DATA_DIR = "./data";
   };
 
   # git-hooks.hooks = {

@@ -1,5 +1,7 @@
 @import "tailwindcss";
+
 @source "../../templates";
+
 @plugin "daisyui" {
   themes: all;
 }
@@ -39,32 +41,6 @@
 }
 
 @theme {
-  /* --font-display: "Satoshi", "sans-serif"; */
-  /* --font-family-sans: */
-  /* ui-sans-serif, */
-  /* system-ui, */
-  /* -apple-system, */
-  /* BlinkMacSystemFont, */
-  /* "Segoe UI", */
-  /* Roboto, */
-  /* "Helvetica Neue", */
-  /* Arial, */
-  /* "Noto Sans", */
-  /* sans-serif, */
-  /* "Apple Color Emoji", */
-  /* "Segoe UI Emoji", */
-  /* "Segoe UI Symbol", */
-  /* "Noto Color Emoji"; */
-  /* --font-family-mono: */
-  /* ui-monospace, */
-  /* SFMono-Regular, */
-  /* Menlo, */
-  /* Monaco, */
-  /* Consolas, */
-  /* "Liberation Mono", */
-  /* "Courier New", */
-  /* monospace; */
-
   --color-magnum-50: hsl(40, 100%, 96%);
   --color-magnum-100: hsl(42, 95%, 92%);
   --color-magnum-200: hsl(39, 93%, 83%);
@@ -82,14 +58,6 @@
   --color-default: var(--color-base-200);
 }
 
-/* html { */
-/* font-family: "IBM Plex Sans", sans-serif; */
-/* font-optical-sizing: auto; */
-/* font-weight: 400; */
-/* font-style: normal; */
-/* font-variation-settings: "wdth" 100; */
-/* } */
-
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -100,9 +68,7 @@
   --accent-bg: rgba(170, 59, 255, 0.1);
   --accent-border: rgba(170, 59, 255, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px,
-    rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
   --heading: system-ui, "Segoe UI", Roboto, sans-serif;
@@ -134,9 +100,7 @@
     --accent-bg: rgba(192, 132, 252, 0.15);
     --accent-border: rgba(192, 132, 252, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px,
-      rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
 
   #social .button-icon {
@@ -236,8 +200,7 @@ code {
     z-index: 1;
     top: 34px;
     height: 28px;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
-      scale(1.4);
+    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg) scale(1.4);
   }
 
   .vite {
@@ -245,8 +208,7 @@ code {
     top: 107px;
     height: 26px;
     width: auto;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
-      scale(0.8);
+    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg) scale(0.8);
   }
 }
 

@@ -40,5 +40,9 @@ fn serve_embedded(path: &str) -> Response {
 pub(super) fn serve_dir() -> Router {
     Router::new()
         .route("/static/vite/{*path}", get(static_handler))
+        .nest_service(
+            "/static/vendored",
+            ServeDir::new("static/vendored").precompressed_br(),
+        )
         .nest_service("/static", ServeDir::new("static"))
 }

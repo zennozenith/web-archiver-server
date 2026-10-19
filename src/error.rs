@@ -4,12 +4,19 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 
-#[derive(Debug, displaydoc::Display, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    /// Failed to render template. Error: {0}
+    #[error("Failed to render template. Error: {0}")]
     Render(#[from] askama::Error),
-    /// Something went wrong: {0}
+    #[error("an error occurred: {0}")]
+    StringError(String),
+    #[error("Something went wrong: {0}")]
     AnyHow(#[from] anyhow::Error),
+}
+impl From<&str> for AppError {
+    fn from(value: &str) -> Self {
+        AppError::StringError(value.into())
+    }
 }
 
 impl IntoResponse for AppError {
@@ -24,7 +31,9 @@ impl IntoResponse for AppError {
         let (status, msg) = match &self {
             AppError::Render(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::AnyHow(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            AppError::StringError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_owned()),
         };
+        tracing::error!(msg);
         let tmpl = Tmpl {
             msg: &msg,
             title: "Error",

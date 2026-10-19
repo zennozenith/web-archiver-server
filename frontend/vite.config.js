@@ -2,6 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { globSync } from "tinyglobby";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { lazyPlugins } from "vite-plus";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,13 +19,21 @@ if (files.length === 0) {
 
 /** @type {import('vite').UserConfig} */
 export default {
+  fmt: {},
+  lint: {
+    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    options: { typeAware: true, typeCheck: true },
+  },
   root,
-  plugins: [tailwindcss()],
+  base: "/static/vite/",
+  plugins: lazyPlugins(() => [tailwindcss()]),
   mode: "production",
   build: {
     outDir: "../static/vite",
     emptyOutDir: true,
-    rollupOptions: {
+    sourcemap: true,
+    rolldownOptions: {
       input: Object.fromEntries(
         files.map((file) => [
           path
@@ -36,10 +45,15 @@ export default {
         ]),
       ),
       output: {
+        // minify: false,
         // predictable filenames instead of hashed ones, so Askama
         // templates can reference /static/counter.js directly
         entryFileNames: "[name].js",
         assetFileNames: "[name].[ext]",
+
+        // entryFileNames: "[name].js",              // stable name, no hash
+        // chunkFileNames: "chunks/[name]-[hash].js",
+        // assetFileNames: "assets/[name][extname]",
       },
     },
   },

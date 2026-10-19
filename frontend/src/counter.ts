@@ -1,4 +1,3 @@
-import "htmx.org";
 import Alpine from "alpinejs";
 
 interface CounterState {

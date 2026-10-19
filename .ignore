@@ -1,6 +1,9 @@
-.devenv
+devenv.lock
+Cargo.lock
 frontend/bun.lock
+.devenv
 static/css
 static/images
-static/js
+static/vendored
+static/vite
 
