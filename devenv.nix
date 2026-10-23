@@ -5,7 +5,7 @@
 }: {
   languages.rust = {
     enable = true;
-    channel = "nightly";
+    channel = "stable";
     components = [
       "rustc"
       "cargo"
@@ -26,6 +26,7 @@
 
     watchexec
     ouch
+    oxfmt
     ## TODO: Vite+ external installation required
   ];
 
@@ -46,7 +47,7 @@
           esac
       done
     '';
-    cwd = "./static/vendored";
+    cwd = "./frontend/public/vendored";
   };
 
   tasks."app:test".exec = "cargo test";
@@ -77,10 +78,35 @@
   # };
 
   scripts.watcher = {
+    packages = [pkgs.watchexec];
     exec = ''
       watchexec -q -c -w src/ -w templates/ -w frontend/ -r --stop-signal SIGKILL "cargo run"
     '';
-    packages = [pkgs.watchexec];
+  };
+
+  scripts.seed-db = {
+    packages = [pkgs.gum pkgs.fish pkgs.sqlite]; # See [Packages](/packages/) for an explanation.
+    description = "Seeds database";
+    package = pkgs.fish;
+    binary = "fish";
+
+    exec = ./db/seed.fish;
+  };
+
+  scripts.vendor-download = {
+    exec = ''
+      rm -rf frontend/public/vendored
+      mkdir -p frontend/public/vendored
+      cd frontend/public/vendored
+
+      wget -O htmx-4.0.0.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx.js
+      wget -O htmx-4.0.0.min.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx.min.js
+      wget -O htmax-4.0.0.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmax.js
+      wget -O htmax-4.0.0.min.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmax.min.js
+
+      devenv tasks run vendored:compress
+    '';
+    packages = [pkgs.wget];
   };
 
   scripts.watch-tailwind = {
@@ -100,9 +126,10 @@
 
   env = {
     RUST_LOG = "info,myopic=debug";
+    OUT_DIR = "../static/vite";
     APP_SERVER__HOST = "0.0.0.0";
     APP_SERVER__PORT = 8888;
-    APP_DATABASE__URL = "sqlite://db/app.db";
+    APP_DATABASE__URL = "sqlite://db/app.sqlite3";
     APP_DATA_DIR = "./data";
   };
 

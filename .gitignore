@@ -4,9 +4,12 @@
 /examples/archives/*
 /examples/db.sqlite
 !example/archives/.gitkeep
-/db/*
+/db/*.sqlite3*
+/db/*.db
 
+/static/vite/*
 /static/vendored/**/*.br
+/frontend/public/vendored/**/*.br
 
 # Devenv
 .devenv*

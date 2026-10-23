@@ -17,6 +17,7 @@ mod extractor;
 mod handlers;
 mod models;
 mod scrapper;
+mod time;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -48,6 +49,7 @@ async fn main() {
     let state = AppState { db };
 
     let app = app(state);
+    dbg!(&settings);
 
     let listener = tokio::net::TcpListener::bind(format!(
         "{}:{}",
@@ -70,9 +72,10 @@ async fn main() {
 
 fn app(state: AppState) -> Router {
     Router::new()
-        .route("/", get(handlers::index))
-        .route("/counter", get(handlers::vite_counter))
-        .nest("/api", handlers::api())
+        .route("/", get(handlers::web::index))
+        .route("/counter", get(handlers::web::vite_counter))
+        // .route("/fragment", get(handlers::fragment::routes()))
+        .nest("/api", handlers::api::routes())
         .with_state(state)
         .merge(assets::serve_dir())
         .layer(TraceLayer::new_for_http())

@@ -116,6 +116,7 @@ impl ScreenshotFormat {
 pub struct HealthDto {
     pub status: &'static str,
     pub urls: i64,
+    pub tags: i64,
     pub versions: i64,
     pub contents: i64,
     pub pending: i64,
