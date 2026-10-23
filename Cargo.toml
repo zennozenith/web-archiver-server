@@ -1,42 +1,40 @@
 [package]
-name = "myopic"
+name = "web-archiver"
 version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.104"
-argon2 = "0.6.0"
 askama = "0.16.1"
-axum = { version = "0.8.9", features = ["macros", "multipart", "ws"] }
+axum = { version = "0.8.9", features = ["macros", "multipart"] }
+# axum-extra = { version = "0.12.6", features = ["with-rejection"] }
 base64 = "0.23.1"
 blake3 = "1.8.7"
 brotli = "9.0.0"
 bytes = "1.12.1"
-chrono = { version = "0.4.45", features = ["serde"] }
+# chrono = { version = "0.4.45", features = ["serde"] }
 config = { version = "0.15.27", default-features = false, features = ["serde_json", "toml"] }
-ego-tree = "=0.11.0"
-encoding_rs = "0.8.42"
+ego-tree = "=0.11.1"
+# encoding_rs = "0.8.42"
 futures = "0.3.34"
-html5ever = "=0.39.0"
+html5ever = "=0.40.1"
 itertools = "0.15.0"
 mime_guess = "2.0.5"
-once_cell = "1.21.4"
+# once_cell = "1.21.4"
 reqwest = { version = "0.13.5", default-features = false, features = ["brotli", "deflate", "gzip", "rustls"] }
-rust-embed = { version = "8.12.0", features = ["axum", "compression", "mime_guess"] }
-scraper = "0.27.0"
-secrecy = { version = "0.10", features = ["serde"] }
+rust-embed = { version = "8.13.0", features = ["axum", "compression", "mime_guess"] }
+scraper = "0.29.0"
+# secrecy = { version = "0.10", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "4.7.0", default-features = false }
 serde_json = "1"
-sqlx = { version = "0.9", features = ["chrono", "migrate", "runtime-tokio", "sqlite"] }
-
-strum = { version = "0.28.0", features = ["derive"] }
-tempfile = "3.27.0"
+sqlx = { version = "0.9", features = ["migrate", "runtime-tokio", "sqlite"] }  # "chrono",
+# strum = { version = "0.28.0", features = ["derive"] }
+# tempfile = "3.27.0"
 thiserror = "2"
-tokio = { version = "1.53.1", features = ["full"] }
-tokio-utils = "0.1.2"
+tokio = { version = "1.54.1", features = ["full"] }
+# tokio-utils = "0.1.2"
 tower = { version = "0.5.3", features = ["util"] }
-tower-cookies = "0.11.0"
+# tower-cookies = "0.11.0"
 tower-http = { version = "0.7.1", features = ["cors", "fs", "set-status", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
@@ -59,5 +57,6 @@ tower = "0.5.3"
 
 [features]
 default = []
+debug = ["axum/macros"]
 postgres = ["sqlx/tls-native-tls"]
 vendored = []  # Compile and statically link a copy of OpenSSL

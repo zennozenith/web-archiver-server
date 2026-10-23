@@ -10,7 +10,9 @@ mod config;
 mod core;
 mod db;
 mod downloader;
+mod dto;
 mod error;
+mod extract;
 mod extractor;
 mod handlers;
 mod models;
@@ -19,7 +21,6 @@ mod scrapper;
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
-    // browser: BrowserManager,
 }
 
 impl FromRef<AppState> for SqlitePool {
@@ -27,12 +28,6 @@ impl FromRef<AppState> for SqlitePool {
         app_state.db.clone()
     }
 }
-
-// impl FromRef<AppState> for Settings {
-//     fn from_ref(app_state: &AppState) -> Settings {
-//         app_state.browser.clone()
-//     }
-// }
 
 #[tokio::main]
 async fn main() {

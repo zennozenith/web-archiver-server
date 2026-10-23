@@ -1,0 +1,112 @@
+use crate::error::AppError;
+
+use axum::{
+    Form, Json, RequestExt,
+    extract::{
+        FromRequest, Request,
+        rejection::{FormRejection, JsonRejection},
+    },
+    http::header::CONTENT_TYPE,
+};
+use serde::Deserialize;
+
+#[derive(FromRequest)]
+#[from_request(via(axum::Json), rejection(AppError))]
+pub struct ApiJson<T>(pub T);
+
+impl<T: serde::Serialize> axum::response::IntoResponse for ApiJson<T> {
+    fn into_response(self) -> axum::response::Response {
+        axum::Json(self.0).into_response()
+    }
+}
+
+#[derive(FromRequest)]
+#[from_request(via(axum::Form), rejection(AppError))]
+pub struct ApiForm<T>(pub T);
+
+impl<T: serde::Serialize> axum::response::IntoResponse for ApiForm<T> {
+    fn into_response(self) -> axum::response::Response {
+        axum::Json(self.0).into_response()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct JsonOrForm<T>(pub T);
+pub type FormOrJson<T> = JsonOrForm<T>;
+
+impl<S, T> FromRequest<S> for JsonOrForm<T>
+where
+    S: Send + Sync,
+    Json<T>: FromRequest<S, Rejection = JsonRejection>,
+    Form<T>: FromRequest<S, Rejection = FormRejection>,
+    T: for<'de> Deserialize<'de> + 'static,
+{
+    type Rejection = AppError;
+
+    async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
+        let content_type = req
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_ascii_lowercase());
+
+        match content_type.as_deref() {
+            Some(ct) if ct.starts_with("application/json") => {
+                let Json(payload) = req.extract().await?;
+                Ok(Self(payload))
+            }
+            Some(ct) if ct.starts_with("application/x-www-form-urlencoded") => {
+                let Form(payload) = req.extract().await?;
+                Ok(Self(payload))
+            }
+            _ => Err(AppError::UnsupportedMediaType),
+        }
+    }
+}
+
+// ---------------------------
+
+use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use std::fmt;
+
+pub fn comma_separated_or_seq<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringOrVec;
+
+    impl<'de> Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a comma-separated string or an array of strings")
+        }
+
+        // form input: "a,b,c"
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            Ok(v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect())
+        }
+
+        // json input: ["a","b","c"]
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut out = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+            while let Some(item) = seq.next_element::<String>()? {
+                out.push(item);
+            }
+            Ok(out)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
+}
+
+pub fn opt_comma_separated_or_seq<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    comma_separated_or_seq(d).map(Some)
+}

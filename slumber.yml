@@ -1,0 +1,140 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/LucasPickering/slumber/refs/tags/v5.3.0/schemas/collection.json
+# ^ This enables schema validation and autocomplete in your editor
+# https://github.com/redhat-developer/yaml-language-server
+
+# For basic usage info, see:
+# https://slumber.lucaspickering.me/getting_started.html
+# For all collection options, see:
+# https://slumber.lucaspickering.me/api/request_collection/index.html
+
+name: My Collection
+
+# slumber.yml
+
+.base_request:
+  headers:
+    Accept: application/json
+
+profiles:
+  dev:
+    data:
+      host: http://localhost:8888/api
+
+requests:
+  # ── Misc / Health / Stats / Search ────────────────────────────────────────
+  health_check:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/health"
+
+  get_stats:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/stats"
+
+  search:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/search"
+    query:
+      q: "rust"
+
+  # ── Archive ───────────────────────────────────────────────────────────────
+  create_archive:
+    method: POST
+    url: "{{ host }}/archive"
+    body:
+      type: form_multipart
+      data:
+        html: "{{ file('index.html') }}"
+        screenshot-format: png
+        url: "https://example.com"
+        title: "Example Page"
+        tags: '["archived", "docs"]'
+        pending_id: "1"
+
+  # ── Pending Queue ─────────────────────────────────────────────────────────
+  list_pending:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/pending"
+    query:
+      status: queued
+      limit: 20
+
+  create_pending:
+    $ref: "#/.base_request"
+    method: POST
+    url: "{{ host }}/pending"
+    body:
+      type: json
+      data:
+        url: "https://example.com"
+        title: "Example"
+        tags: ["tech", "news"]
+
+  create_pending_form:
+    $ref: "#/.base_request"
+    method: POST
+    url: "{{ host }}/pending"
+    body:
+      type: form_urlencoded
+      data:
+        url: "https://example.com"
+        title: "Example"
+        tags: "tech,news"
+        
+
+  bulk_create_pending:
+    $ref: "#/.base_request"
+    method: POST
+    url: "{{ host }}/pending/bulk"
+    body:
+      type: json
+      data:
+        items:
+          - url: "https://example.com/1"
+            title: "Page One"
+            tags: ["docs"]
+          - url: "https://example.com/2"
+            title: "Page Two"
+
+  get_pending_by_id:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/pending/1"
+
+  patch_pending:
+    $ref: "#/.base_request"
+    method: PATCH
+    url: "{{ host }}/pending/1"
+    body:
+      type: json
+      data:
+        title: "Updated Title"
+        status: queued
+
+  delete_pending:
+    $ref: "#/.base_request"
+    method: DELETE
+    url: "{{ host }}/pending/1"
+
+  retry_pending:
+    $ref: "#/.base_request"
+    method: POST
+    url: "{{ host }}/pending/1/retry"
+
+  claim_pending:
+    $ref: "#/.base_request"
+    method: POST
+    url: "{{ host }}/pending/claim"
+
+  fail_pending:
+    $ref: "#/.base_request"
+    method: POST
+    url: "{{ host }}/pending/1/fail"
+    body:
+      type: json
+      data:
+        error: "Connection timed out"
+

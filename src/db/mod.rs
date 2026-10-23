@@ -4,6 +4,8 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
 use crate::config::DatabaseSettings;
 
+pub mod pending;
+
 pub async fn create_pool(database_settings: &DatabaseSettings) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
         .max_connections(database_settings.max_connections)

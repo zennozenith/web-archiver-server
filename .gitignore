@@ -4,6 +4,7 @@
 /examples/archives/*
 /examples/db.sqlite
 !example/archives/.gitkeep
+/db/*
 
 /static/vendored/**/*.br
 
