@@ -1,3 +1,5 @@
+// #![allow(unused)]
+
 use crate::error::AppError;
 
 use axum::{

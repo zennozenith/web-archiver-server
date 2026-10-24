@@ -1,10 +1,6 @@
-use crate::{
-    core::RenderHtml as _,
-    db, dto,
-    error::{AppError, Result},
-    models,
-    time::ago_timestamp,
-};
+use crate::{db, dto, error::Result, render::RenderHtml as _, time::ago_timestamp};
+
+use super::pending::PendingFragmentTemplate;
 
 use askama::Template;
 use axum::{extract::State, response::IntoResponse};
@@ -18,23 +14,13 @@ struct IndexTemplate<'a> {
 }
 
 #[derive(Template)]
-#[template(path = "fragments/pending-card.html")]
-struct PendingFragmentTemplate<'a> {
-    pub id: i64,
-    pub url: &'a str,
-    pub title: &'a str,
-    pub status: models::PendingStatus,
-    pub created_at: String,
-    pub tags: String,
-}
-
-#[derive(Template)]
 #[template(path = "vite-counter.html")]
 struct ViteCounter<'a> {
     title: &'a str,
 }
 
-pub async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse, AppError> {
+pub async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
+    // TODO:
     const LIMIT: u32 = 5;
 
     // OPTIMIZE: join both database calls
@@ -67,7 +53,7 @@ pub async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse, 
     IndexTemplate { pendings, health }.render_html()
 }
 
-pub async fn vite_counter() -> Result<impl IntoResponse, AppError> {
+pub async fn vite_counter() -> Result<impl IntoResponse> {
     ViteCounter {
         title: "Rust + Axum + Vite + Alpine",
     }

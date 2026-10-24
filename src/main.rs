@@ -1,23 +1,25 @@
-use axum::{Router, extract::FromRef, routing::get};
+use axum::{Router, extract::FromRef};
 use sqlx::SqlitePool;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 use crate::config::Settings;
 
+mod api;
 mod assets;
 mod config;
-mod core;
 mod db;
 mod downloader;
 mod dto;
 mod error;
 mod extract;
 mod extractor;
-mod handlers;
 mod models;
+mod render;
 mod scrapper;
 mod time;
+mod url;
+mod web;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -49,6 +51,7 @@ async fn main() {
     let state = AppState { db };
 
     let app = app(state);
+
     dbg!(&settings);
 
     let listener = tokio::net::TcpListener::bind(format!(
@@ -72,10 +75,8 @@ async fn main() {
 
 fn app(state: AppState) -> Router {
     Router::new()
-        .route("/", get(handlers::web::index))
-        .route("/counter", get(handlers::web::vite_counter))
-        // .route("/fragment", get(handlers::fragment::routes()))
-        .nest("/api", handlers::api::routes())
+        .nest("/api", api::routes())
+        .merge(web::routes())
         .with_state(state)
         .merge(assets::serve_dir())
         .layer(TraceLayer::new_for_http())

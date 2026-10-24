@@ -3,7 +3,7 @@ use axum::{
     body::Body,
     extract::Path,
     http::{StatusCode, header},
-    response::{IntoResponse, Response},
+    response::Response,
     routing::get,
 };
 use rust_embed::RustEmbed;

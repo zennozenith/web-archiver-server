@@ -25,6 +25,21 @@ use serde_json::{Value, json};
 
 pub type Result<T, E = AppError> = std::result::Result<T, E>;
 
+// pub use web::WebError;
+
+#[derive(Serialize)]
+struct ErrorBody<'a> {
+    error: ErrorInner<'a>,
+}
+
+#[derive(Serialize)]
+struct ErrorInner<'a> {
+    code: &'a str,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<Value>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     // 400
@@ -65,24 +80,15 @@ pub enum AppError {
 
     // 500
     #[error("Failed to render template. Error: {0}")]
-    Render(#[source] askama::Error),
+    Render(
+        #[source]
+        #[from]
+        askama::Error,
+    ),
     #[error("database error")]
     Database(#[source] sqlx::Error),
     #[error("internal error")]
     Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
-}
-
-#[derive(Serialize)]
-struct ErrorBody<'a> {
-    error: ErrorInner<'a>,
-}
-
-#[derive(Serialize)]
-struct ErrorInner<'a> {
-    code: &'a str,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<Value>,
 }
 
 impl AppError {
@@ -205,29 +211,57 @@ impl<T> OptionExt<T> for Option<T> {
     }
 }
 
-// impl IntoResponse for AppError {
-//     fn into_response(self) -> Response {
-//         #[derive(Template)]
-//         #[template(path = "error.html")]
-//         struct Tmpl<'a> {
-//             title: &'a str,
-//             msg: &'a str,
-//         }
+// mod web {
+//     use askama::Template;
+//     use axum::{
+//         http::StatusCode,
+//         response::{Html, IntoResponse, Response},
+//     };
 
-//         let (status, msg) = match &self {
-//             AppError::Render(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-//             AppError::AnyHow(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-//             AppError::StringError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_owned()),
-//         };
-//         tracing::error!(msg);
-//         let tmpl = Tmpl {
-//             msg: &msg,
-//             title: "Error",
-//         };
-//         if let Ok(body) = tmpl.render() {
-//             (status, Html(body)).into_response()
-//         } else {
-//             (status, "Something went wrong").into_response()
+//     use super::AppError;
+
+//     #[derive(Debug, thiserror::Error)]
+//     pub enum WebError {
+//         #[error("app error")]
+//         App(#[source] AppError),
+
+//         // 500
+//         #[error("Failed to render template. Error: {0}")]
+//         Render(#[source] askama::Error),
+//     }
+
+//     impl IntoResponse for WebError {
+//         fn into_response(self) -> Response {
+//             #[derive(Template)]
+//             #[template(path = "error.html")]
+//             struct Tmpl<'a> {
+//                 title: &'a str,
+//                 msg: &'a str,
+//             }
+
+//             let (status, msg) = match &self {
+//                 Self::Render(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+//                 Self::App(e) => {
+//                     let (status_code, message, _) = e.parts();
+//                     (status_code, message.to_string())
+//                 }
+//             };
+//             tracing::error!(msg);
+//             let tmpl = Tmpl {
+//                 msg: &msg,
+//                 title: "Error",
+//             };
+//             if let Ok(body) = tmpl.render() {
+//                 (status, Html(body)).into_response()
+//             } else {
+//                 (status, "Something went wrong").into_response()
+//             }
+//         }
+//     }
+
+//     impl From<AppError> for WebError {
+//         fn from(e: AppError) -> Self {
+//             Self::App(e)
 //         }
 //     }
 // }
