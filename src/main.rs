@@ -5,10 +5,11 @@ use sqlx::SqlitePool;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use crate::config::Settings;
+use crate::{blob_store::BlobStore, config::Settings};
 
 mod api;
 mod assets;
+mod blob_store;
 mod compress;
 mod config;
 mod db;
@@ -31,11 +32,18 @@ mod web;
 pub struct AppState {
     pub db: SqlitePool,
     pub token: Arc<str>,
+    pub store: BlobStore,
 }
 
 impl FromRef<AppState> for SqlitePool {
     fn from_ref(app_state: &AppState) -> SqlitePool {
         app_state.db.clone()
+    }
+}
+
+impl FromRef<AppState> for BlobStore {
+    fn from_ref(app_state: &AppState) -> BlobStore {
+        app_state.store.clone()
     }
 }
 
@@ -50,6 +58,9 @@ async fn main() {
         .init();
 
     let settings = Settings::load();
+    let store = BlobStore::open("data/blobs", 16 * 1024)
+        .await
+        .expect("Cannot create blob store");
 
     let db = db::create_pool(&settings.database)
         .await
@@ -58,6 +69,7 @@ async fn main() {
     let state = AppState {
         db,
         token: Arc::from("test"),
+        store,
     };
 
     let app = app(state);

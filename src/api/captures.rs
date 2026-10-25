@@ -9,6 +9,7 @@ use serde_json::Value;
 use sqlx::{AssertSqlSafe, FromRow, SqlitePool};
 
 use crate::{
+    blob_store::BlobStore,
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath},
     models::ContentRow,
@@ -162,6 +163,7 @@ pub async fn delete_capture(
 
 async fn serve_capture_blob(
     pool: &SqlitePool,
+    store: &BlobStore,
     headers: &HeaderMap,
     id: i64,
     join_col: &str, // fixed internal literal, never user input
@@ -180,17 +182,19 @@ async fn serve_capture_blob(
         .map(str::to_string)
         .or_else(|| row.mime_type.clone())
         .unwrap_or_else(|| "application/octet-stream".into());
-    serve_content(headers, row, &ct, CAPTURE_CACHE).await
+    serve_content(store, headers, row, &ct, CAPTURE_CACHE).await
 }
 
 // GET /api/captures/{id}/html
 pub async fn capture_html(
     State(pool): State<SqlitePool>,
+    State(store): State<BlobStore>,
     headers: HeaderMap,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<Response> {
     serve_capture_blob(
         &pool,
+        &store,
         &headers,
         id,
         "content_id",
@@ -203,11 +207,13 @@ pub async fn capture_html(
 // GET /api/captures/{id}/screenshot
 pub async fn capture_screenshot(
     State(pool): State<SqlitePool>,
+    State(store): State<BlobStore>,
     headers: HeaderMap,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<Response> {
     serve_capture_blob(
         &pool,
+        &store,
         &headers,
         id,
         "screenshot_content_id",

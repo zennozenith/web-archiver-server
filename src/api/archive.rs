@@ -9,6 +9,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 
 use crate::{
+    blob_store::BlobStore,
     db::{
         helpers::{add_url_tags, get_or_create_url},
         store::{insert_blob, prepare_blob},
@@ -122,6 +123,7 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
 // POST /api/archive
 pub async fn archive(
     State(pool): State<SqlitePool>,
+    State(store): State<BlobStore>,
     multipart: std::result::Result<Multipart, MultipartRejection>,
 ) -> Result<(StatusCode, ApiJson<ArchiveResponse>)> {
     let upload = parse_multipart(multipart?).await?;
@@ -163,9 +165,9 @@ pub async fn archive(
     let metadata_text = upload.metadata.as_ref().map(Value::to_string);
 
     // CPU-heavy work (hash + compress) happens before the write transaction.
-    let html_blob = prepare_blob(&pool, upload.html, "text/html").await?;
+    let html_blob = prepare_blob(&pool, &store, upload.html, "text/html").await?;
     let shot_blob = match upload.screenshot {
-        Some((bytes, fmt)) => Some(prepare_blob(&pool, bytes, fmt.mime()).await?),
+        Some((bytes, fmt)) => Some(prepare_blob(&pool, &store, bytes, fmt.mime()).await?),
         None => None,
     };
 

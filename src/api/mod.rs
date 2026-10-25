@@ -87,9 +87,7 @@ async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         // blake3::Hash equality is constant-time
-        .map_or(false, |t| {
-            blake3::hash(t.as_bytes()) == blake3::hash(state.token.as_bytes())
-        });
+        .is_some_and(|t| blake3::hash(t.as_bytes()) == blake3::hash(state.token.as_bytes()));
     if !ok {
         return Err(AppError::Unauthorized);
     }

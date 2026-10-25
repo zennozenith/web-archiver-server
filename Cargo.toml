@@ -37,7 +37,7 @@ strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
 timeago = { version = "0.6.1", optional = true }
 tokio = { version = "1.54.1", features = ["full"] }
-# tokio-utils = "0.1.2"
+tokio-util = { version = "0.7", features = ["io"] }  # streaming files; tokio needs "fs" (included in "full")
 tower = { version = "0.5.3", features = ["util"] }
 # tower-cookies = "0.11.0"
 tower-http = { version = "0.7.1", features = ["cors", "fs", "set-status", "trace"] }
@@ -64,5 +64,5 @@ tower = "0.5.3"
 default = []
 debug = ["axum/macros"]
 postgres = ["sqlx/tls-native-tls"]
-vendored = []  # Compile and statically link a copy of OpenSSL
 timeago = ["dep:timeago"]
+vendored = []  # Compile and statically link a copy of OpenSSL

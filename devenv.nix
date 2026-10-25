@@ -94,7 +94,7 @@
     package = pkgs.fish;
     binary = "fish";
 
-    exec = ./db/seed.fish;
+    exec = ./seed-db.fish;
   };
 
   scripts.vendor-download = {
@@ -133,7 +133,7 @@
     OUT_DIR = "../static/vite";
     APP_SERVER__HOST = "0.0.0.0";
     APP_SERVER__PORT = 8889;
-    APP_DATABASE__URL = "sqlite://db/app.sqlite3";
+    APP_DATABASE__URL = "sqlite://data/db/app.sqlite3";
     APP_DATA_DIR = "./data";
   };
 

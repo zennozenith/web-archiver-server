@@ -1,4 +1,12 @@
-use crate::{db, dto, error::Result, template::RenderHtml};
+use crate::{
+    db::{
+        self,
+        stats::{self, Stats},
+    },
+    dto,
+    error::Result,
+    template::RenderHtml,
+};
 
 use super::pending::PendingFragmentTemplate;
 
@@ -10,7 +18,7 @@ use sqlx::SqlitePool;
 #[template(path = "index.html")]
 struct IndexTemplate<'a> {
     pendings: Vec<PendingFragmentTemplate<'a>>,
-    health: dto::HealthDto,
+    stats: Stats,
 }
 
 #[derive(Template)]
@@ -24,11 +32,11 @@ pub async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> 
     const LIMIT: u32 = 5;
 
     // OPTIMIZE: join both database calls
-    let health = db::health::health(&pool).await?;
+    let stats = stats::stats(&pool).await?;
 
     let dto::Page { items, .. } = db::pending::list_pending(&pool, None, None, LIMIT).await?;
     let pendings = items.iter().map(PendingFragmentTemplate::from).collect();
-    IndexTemplate { pendings, health }.render_html()
+    IndexTemplate { pendings, stats }.render_html()
 }
 
 pub async fn vite_counter() -> Result<impl IntoResponse> {

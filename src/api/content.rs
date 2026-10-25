@@ -6,6 +6,7 @@ use axum::{
 use sqlx::{AssertSqlSafe, SqlitePool};
 
 use crate::{
+    blob_store::BlobStore,
     error::{AppError, OptionExt, Result},
     extract::ApiPath,
     models::ContentRow,
@@ -32,6 +33,7 @@ fn parse_hash(s: &str) -> Result<Vec<u8>> {
 // GET /api/content/{hash}
 pub async fn get_content(
     State(pool): State<SqlitePool>,
+    State(store): State<BlobStore>,
     headers: HeaderMap,
     ApiPath(hash): ApiPath<String>,
 ) -> Result<Response> {
@@ -48,7 +50,7 @@ pub async fn get_content(
         .mime_type
         .clone()
         .unwrap_or_else(|| "application/octet-stream".into());
-    serve_content(&headers, row, &ct, IMMUTABLE).await
+    serve_content(&store, &headers, row, &ct, IMMUTABLE).await
 }
 
 // HEAD /api/content/{hash}   -> 200 if known, 404 otherwise (never loads the blob)

@@ -7,9 +7,10 @@
         class="block link link-primary text-sm truncate">{{url}}</a>
     </div>
     <span class="text-xs text-base-content/50">Added {{created_at}}</span>
+    <span class="text-xs text-base-content/50 block">Status {{status}}</span>
     <span class="text-xs text-base-content/50 block"> Tags: {{ tags }}</span>
   </div>
-  <button hx-delete="/pending/{{id}}" hx-target="closest [data-pending-id]" hx-swap="outerHTML"
+  <button hx-delete="/pending/{{id}}" hx-target="#pending-{{id}}" hx-swap="outerHTML"
     hx-confirm="Remove this URL from the queue?"
     class="btn btn-xs btn-ghost border border-base-300 text-error hover:text-error-content hover:bg-error hover:border-error shrink-0">
     Remove

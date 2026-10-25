@@ -7,6 +7,7 @@ use crate::config::DatabaseSettings;
 pub mod archive;
 pub mod helpers;
 pub mod pending;
+pub mod stats;
 pub mod store;
 
 pub async fn create_pool(database_settings: &DatabaseSettings) -> Result<SqlitePool, sqlx::Error> {
