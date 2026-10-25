@@ -5,7 +5,6 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use crate::config::DatabaseSettings;
 
 pub mod archive;
-pub mod health;
 pub mod helpers;
 pub mod pending;
 pub mod store;

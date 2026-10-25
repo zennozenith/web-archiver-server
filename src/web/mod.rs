@@ -8,7 +8,7 @@ mod pending;
 
 pub use error::negotiate_errors;
 
-pub fn routes() -> Router<AppState> {
+pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index::index))
         .route("/counter", get(index::vite_counter))
@@ -21,4 +21,5 @@ pub fn routes() -> Router<AppState> {
             // get(get_pending).patch(patch_pending).delete(delete_pending),
             axum::routing::delete(pending::delete_pending),
         )
+        .with_state(state)
 }

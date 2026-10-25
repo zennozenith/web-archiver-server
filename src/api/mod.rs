@@ -52,7 +52,6 @@
 mod archive;
 mod captures;
 mod content;
-mod health;
 mod misc;
 mod pages;
 mod pending;
@@ -60,11 +59,17 @@ mod tag;
 
 use axum::{
     Router,
-    extract::DefaultBodyLimit,
+    extract::{DefaultBodyLimit, Request, State},
+    middleware::{Next, from_fn_with_state},
+    response::Response,
     routing::{delete, get, post},
 };
+use http::header::AUTHORIZATION;
 
-use crate::AppState;
+use crate::{
+    AppState,
+    error::{AppError, Result},
+};
 use archive::*;
 use captures::*;
 use content::*;
@@ -75,10 +80,24 @@ use tag::*;
 
 const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        // health
-        .route("/health", get(health::health))
+async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Result<Response> {
+    let ok = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        // blake3::Hash equality is constant-time
+        .map_or(false, |t| {
+            blake3::hash(t.as_bytes()) == blake3::hash(state.token.as_bytes())
+        });
+    if !ok {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(next.run(req).await)
+}
+
+pub fn router(state: AppState) -> Router {
+    let api = Router::new()
         // archive
         .route(
             "/archive",
@@ -127,4 +146,10 @@ pub fn routes() -> Router<AppState> {
         // misc
         .route("/api/stats", get(stats))
         .route("/api/maintenance/gc", post(gc_content))
+        .layer(from_fn_with_state(state.clone(), require_auth));
+
+    Router::new()
+        .route("/api/health", get(health))
+        .merge(api)
+        .with_state(state)
 }

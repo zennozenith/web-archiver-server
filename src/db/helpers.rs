@@ -2,7 +2,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{error::AppError, models::TagRow, tag::CleanTag, url_canon::CanonicalUrl};
 
-// TODO: Should functions be only pub to super
+// TODO: Should functions be only public to super
 
 pub async fn missing_pending_or(
     pool: &SqlitePool,

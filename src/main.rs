@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{Router, extract::FromRef};
 use sqlx::SqlitePool;
 use tower_http::trace::TraceLayer;
@@ -28,6 +30,7 @@ mod web;
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
+    pub token: Arc<str>,
 }
 
 impl FromRef<AppState> for SqlitePool {
@@ -52,7 +55,10 @@ async fn main() {
         .await
         .expect("Unable to create database");
 
-    let state = AppState { db };
+    let state = AppState {
+        db,
+        token: Arc::from("test"),
+    };
 
     let app = app(state);
 
@@ -79,9 +85,9 @@ async fn main() {
 
 fn app(state: AppState) -> Router {
     Router::new()
-        .nest("/api", api::routes())
-        .merge(web::routes())
-        .with_state(state)
+        .nest("/api", api::router(state.clone()))
+        .merge(web::router(state))
+        // .with_state(state)
         .merge(assets::serve_dir())
         .layer(axum::middleware::from_fn(web::negotiate_errors))
         .layer(TraceLayer::new_for_http())
