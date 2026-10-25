@@ -52,17 +52,19 @@
 mod archive;
 mod captures;
 mod health;
+mod pages;
 mod pending;
 
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 
 use crate::AppState;
 use archive::*;
 use captures::*;
+use pages::*;
 use pending::*;
 
 const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
@@ -91,6 +93,18 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/pending/{id}/retry", post(retry_pending))
         .route("/pending/{id}/fail", post(fail_pending))
+        // pages
+        .route("/api/pages", get(list_pages))
+        .route("/api/pages/lookup", get(lookup_page))
+        .route("/api/pages/{id}", get(get_page).delete(delete_page))
+        .route("/api/pages/{id}/captures", get(list_captures))
+        .route(
+            "/api/pages/{id}/tags",
+            post(add_page_tag).put(put_page_tags),
+        )
+        .route("/api/pages/{id}/tags/{tag_id}", delete(remove_page_tag))
+        .route("/api/pages/{id}/latest/html", get(latest_html))
+        .route("/api/pages/{id}/latest/screenshot", get(latest_screenshot))
         // captures
         .route("/captures/{id}", get(get_capture).delete(delete_capture))
         .route("/captures/{id}/html", get(capture_html))

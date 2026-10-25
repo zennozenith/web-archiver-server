@@ -1,5 +1,6 @@
 use crate::{extract::comma_separated_or_seq, models::*};
 use serde::{Deserialize, Serialize};
+use sqlx::prelude::FromRow;
 
 // ── Requests ────────────────────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ pub struct PendingDto {
     pub tags: Vec<TagRow>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, FromRow)]
 pub struct CaptureSummary {
     pub id: i64,
     pub version: i64,

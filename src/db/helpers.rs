@@ -1,6 +1,6 @@
 use sqlx::{SqliteConnection, SqlitePool};
 
-use crate::{error::AppError, tag::CleanTag, url_canon::CanonicalUrl};
+use crate::{error::AppError, models::TagRow, tag::CleanTag, url_canon::CanonicalUrl};
 
 // TODO: Should functions be only pub to super
 
@@ -20,7 +20,7 @@ pub async fn missing_pending_or(
     })
 }
 
-pub(super) async fn replace_pending_tags(
+pub async fn replace_pending_tags(
     conn: &mut SqliteConnection,
     pending_id: i64,
     names: &[CleanTag],
@@ -40,7 +40,7 @@ pub(super) async fn replace_pending_tags(
     Ok(())
 }
 
-pub(super) async fn get_or_create_tag(
+pub async fn get_or_create_tag(
     conn: &mut SqliteConnection,
     name: &CleanTag,
 ) -> Result<i64, sqlx::Error> {
@@ -87,5 +87,38 @@ pub async fn get_or_create_url(
     .bind(&canon.path)
     .bind(&canon.query)
     .fetch_one(&mut *conn)
+    .await
+}
+
+pub async fn load_tag(conn: &mut SqliteConnection, id: i64) -> Result<Option<TagRow>, sqlx::Error> {
+    sqlx::query_as("SELECT id, name, color, created_at FROM tag WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await
+}
+
+pub async fn replace_url_tags(
+    conn: &mut SqliteConnection,
+    url_id: i64,
+    names: &[CleanTag],
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM url_tag WHERE url_id = ?")
+        .bind(url_id)
+        .execute(&mut *conn)
+        .await?;
+    add_url_tags(conn, url_id, names).await
+}
+
+pub async fn page_tags(
+    conn: &mut SqliteConnection,
+    url_id: i64,
+) -> Result<Vec<TagRow>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT t.id, t.name, t.color, t.created_at
+         FROM url_tag ut JOIN tag t ON t.id = ut.tag_id
+         WHERE ut.url_id = ? ORDER BY t.name COLLATE NOCASE",
+    )
+    .bind(url_id)
+    .fetch_all(&mut *conn)
     .await
 }
