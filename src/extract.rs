@@ -5,12 +5,22 @@ use crate::error::AppError;
 use axum::{
     Form, Json, RequestExt,
     extract::{
-        FromRequest, Request,
+        FromRequest, FromRequestParts, Request,
         rejection::{FormRejection, JsonRejection},
     },
 };
 use http::header::CONTENT_TYPE;
 use serde::Deserialize;
+
+/// Query string; supports repeated keys (?tag=a&tag=b).
+#[derive(FromRequestParts)]
+#[from_request(via(axum::extract::Query), rejection(AppError))]
+pub struct ApiQuery<T>(pub T);
+
+/// Path params; bad ids return the API error shape instead of plain text.
+#[derive(FromRequestParts)]
+#[from_request(via(axum::extract::Path), rejection(AppError))]
+pub struct ApiPath<T>(pub T);
 
 #[derive(FromRequest)]
 #[from_request(via(axum::Json), rejection(AppError))]

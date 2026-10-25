@@ -17,9 +17,10 @@ mod extractor;
 mod htmx;
 mod models;
 mod scrapper;
+mod tag;
 mod template;
 mod time;
-mod url;
+mod url_canon;
 mod web;
 
 #[derive(Clone)]

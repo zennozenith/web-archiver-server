@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{
         multipart::MultipartError,
-        rejection::{FormRejection, JsonRejection},
+        rejection::{FormRejection, JsonRejection, PathRejection, QueryRejection},
     },
     response::{IntoResponse, Response},
 };
@@ -65,6 +65,7 @@ pub enum AppError {
     // 409
     #[error("url is already in the pending queue")]
     DuplicatePending { existing_id: i64 },
+
     #[error("{0}")]
     Conflict(String),
 
@@ -125,6 +126,13 @@ impl AppError {
             Database(_) | Internal(_) | Render(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal", None)
             }
+        }
+    }
+
+    pub fn invalid(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Unprocessable {
+            code,
+            message: message.into(),
         }
     }
 }
@@ -203,6 +211,18 @@ fn from_rejection(status: StatusCode, message: String) -> AppError {
             message,
         },
         _ => AppError::BadRequest(message),
+    }
+}
+
+impl From<PathRejection> for AppError {
+    fn from(r: PathRejection) -> Self {
+        AppError::BadRequest(r.body_text())
+    }
+}
+
+impl From<QueryRejection> for AppError {
+    fn from(r: QueryRejection) -> Self {
+        AppError::BadRequest(r.body_text())
     }
 }
 

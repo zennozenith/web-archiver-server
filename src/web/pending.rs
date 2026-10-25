@@ -1,10 +1,12 @@
 use crate::{
     db, dto,
-    error::Result,
+    error::{AppError, OptionExt, Result},
     htmx::{HtmxResponse, PartialSwap},
     models,
+    tag::clean_tags,
     template::FeedbackTemplate,
     time::ago_timestamp,
+    url_canon::canonicalize_url,
 };
 
 use askama::Template;
@@ -12,7 +14,6 @@ use axum::{
     Form, Json,
     extract::{Path, Query, State},
 };
-use http::StatusCode;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
@@ -68,7 +69,24 @@ pub async fn create_pending(
     State(pool): State<SqlitePool>,
     Form(req): Form<dto::CreatePending>,
 ) -> Result<HtmxResponse> {
-    let pending_dto = db::pending::create_pending(&pool, req).await?;
+    let canon = canonicalize_url(&req.url)?;
+    let tags = clean_tags(&req.tags)?;
+
+    let mut tx = pool.begin().await?;
+    let id = match db::pending::insert_pending(&mut tx, &canon, req.title.as_deref(), &tags).await?
+    {
+        db::pending::Inserted::New(id) => id,
+        db::pending::Inserted::Existing(existing_id) => {
+            return Err(AppError::DuplicatePending { existing_id });
+            // PartialSwap::tpl("#pending-feedback", &FeedbackTemplate::success("Removed"))?
+            //     .swap("innerHTML"),
+        }
+    };
+    tx.commit().await?;
+
+    let pending_dto = db::pending::load_pending(&pool, id)
+        .await?
+        .or_not_found("pending item")?;
 
     Ok(HtmxResponse::partials([
         // New card goes to the top of the list

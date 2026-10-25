@@ -6,7 +6,7 @@ use std::{path::PathBuf, str::FromStr};
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     #[serde(default = "default_data_dir")]
-    pub data_dir: PathBuf,
+    pub _data_dir: PathBuf,
     #[serde(default)]
     pub database: DatabaseSettings,
 

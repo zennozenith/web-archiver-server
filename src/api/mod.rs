@@ -52,7 +52,10 @@
 mod health;
 mod pending;
 
-use axum::{Router, extract::DefaultBodyLimit, routing::get};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use health::health;
 
 use crate::AppState;
@@ -62,12 +65,18 @@ pub fn routes() -> Router<AppState> {
         .route("/health", get(health))
         .route(
             "/pending",
-            get(pending::get_pending).post(pending::create_pending),
+            get(pending::list_pending_handler)
+                .post(pending::create_pending)
+                .delete(pending::clear_pending),
         )
+        .route("/pending/bulk", post(pending::bulk_create_pending))
+        .route("/pending/claim", post(pending::claim_pending))
         .route(
             "/pending/{id}",
-            // get(get_pending).patch(patch_pending).delete(delete_pending),
-            axum::routing::delete(pending::delete_pending),
+            get(pending::get_pending)
+                .patch(pending::patch_pending)
+                .delete(pending::delete_pending),
         )
-        .layer(DefaultBodyLimit::max(1024 * 4))
+        .route("/pending/{id}/retry", post(pending::retry_pending))
+        .route("/pending/{id}/fail", post(pending::fail_pending))
 }
