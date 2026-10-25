@@ -51,9 +51,12 @@
 
 mod archive;
 mod captures;
+mod content;
 mod health;
+mod misc;
 mod pages;
 mod pending;
+mod tag;
 
 use axum::{
     Router,
@@ -64,8 +67,11 @@ use axum::{
 use crate::AppState;
 use archive::*;
 use captures::*;
+use content::*;
+use misc::*;
 use pages::*;
 use pending::*;
+use tag::*;
 
 const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
 
@@ -109,4 +115,16 @@ pub fn routes() -> Router<AppState> {
         .route("/captures/{id}", get(get_capture).delete(delete_capture))
         .route("/captures/{id}/html", get(capture_html))
         .route("/captures/{id}/screenshot", get(capture_screenshot))
+        // content (explicit HEAD handler avoids loading the blob)
+        .route("/api/content/{hash}", get(get_content).head(head_content))
+        // tags
+        .route("/api/tags", get(list_tags).post(create_tag))
+        .route(
+            "/api/tags/{id}",
+            axum::routing::patch(patch_tag).delete(delete_tag),
+        )
+        .route("/api/tags/{id}/merge", post(merge_tag))
+        // misc
+        .route("/api/stats", get(stats))
+        .route("/api/maintenance/gc", post(gc_content))
 }

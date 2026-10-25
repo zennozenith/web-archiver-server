@@ -65,6 +65,8 @@ pub enum AppError {
     // 409
     #[error("url is already in the pending queue")]
     DuplicatePending { existing_id: i64 },
+    #[error("a tag with that name already exists")]
+    DuplicateTag { existing_id: i64 },
 
     #[error("{0}")]
     Conflict(String),
@@ -109,6 +111,11 @@ impl AppError {
             DuplicatePending { existing_id } => (
                 StatusCode::CONFLICT,
                 "duplicate_pending",
+                Some(json!({ "existing_id": existing_id })),
+            ),
+            DuplicateTag { existing_id } => (
+                StatusCode::CONFLICT,
+                "duplicate_tag",
                 Some(json!({ "existing_id": existing_id })),
             ),
             Conflict(_) => (StatusCode::CONFLICT, "conflict", None),
