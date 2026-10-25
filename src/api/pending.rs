@@ -224,7 +224,7 @@ pub async fn retry_pending(
 
     if n == 0 {
         return Err(
-            db::helper::missing_pending_or(&pool, id, "only failed items can be retried").await?,
+            db::helpers::missing_pending_or(&pool, id, "only failed items can be retried").await?,
         );
     }
     Ok(ApiJson(
@@ -259,7 +259,7 @@ pub async fn fail_pending(
     let n = db::pending::fail_pending(&pool, id, &error).await?;
 
     if n == 0 {
-        return Err(db::helper::missing_pending_or(&pool, id, "item is not in progress").await?);
+        return Err(db::helpers::missing_pending_or(&pool, id, "item is not in progress").await?);
     }
     Ok(ApiJson(
         db::pending::load_pending(&pool, id)
@@ -278,7 +278,7 @@ pub async fn delete_pending(
     let n = db::pending::delete_pending(&pool, id).await?;
     if n == 0 {
         return Err(
-            db::helper::missing_pending_or(&pool, id, "item is currently being archived").await?,
+            db::helpers::missing_pending_or(&pool, id, "item is currently being archived").await?,
         );
     }
     Ok(StatusCode::NO_CONTENT)

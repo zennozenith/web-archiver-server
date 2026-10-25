@@ -1,6 +1,8 @@
 use sqlx::{SqliteConnection, SqlitePool};
 
-use crate::{error::AppError, tag::CleanTag};
+use crate::{error::AppError, tag::CleanTag, url_canon::CanonicalUrl};
+
+// TODO: Should functions be only pub to super
 
 pub async fn missing_pending_or(
     pool: &SqlitePool,
@@ -40,7 +42,7 @@ pub(super) async fn replace_pending_tags(
 
 pub(super) async fn get_or_create_tag(
     conn: &mut SqliteConnection,
-    name: &str,
+    name: &CleanTag,
 ) -> Result<i64, sqlx::Error> {
     // DO UPDATE (no-op) so RETURNING yields the existing row, keeping its original casing.
     sqlx::query_scalar(
@@ -49,6 +51,41 @@ pub(super) async fn get_or_create_tag(
          RETURNING id",
     )
     .bind(name)
+    .fetch_one(&mut *conn)
+    .await
+}
+
+/// Union tags into a page (never removes existing ones).
+pub async fn add_url_tags(
+    conn: &mut SqliteConnection,
+    url_id: i64,
+    names: &[CleanTag],
+) -> Result<(), sqlx::Error> {
+    for name in names {
+        let tag_id = get_or_create_tag(&mut *conn, name).await?;
+        sqlx::query("INSERT OR IGNORE INTO url_tag (url_id, tag_id) VALUES (?, ?)")
+            .bind(url_id)
+            .bind(tag_id)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
+}
+
+pub async fn get_or_create_url(
+    conn: &mut SqliteConnection,
+    canon: &CanonicalUrl,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "INSERT INTO url (url, scheme, host, path, query) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(url) DO UPDATE SET url = url
+         RETURNING id",
+    )
+    .bind(&canon.url)
+    .bind(canon.scheme.as_str())
+    .bind(&canon.host)
+    .bind(&canon.path)
+    .bind(&canon.query)
     .fetch_one(&mut *conn)
     .await
 }

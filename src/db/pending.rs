@@ -2,7 +2,7 @@
 use sqlx::{AssertSqlSafe, FromRow, QueryBuilder, Sqlite, SqliteConnection, SqlitePool};
 use std::collections::HashMap;
 
-use super::helper::replace_pending_tags;
+use super::helpers::replace_pending_tags;
 
 use crate::dto::PendingDto;
 use crate::models::PendingRow;

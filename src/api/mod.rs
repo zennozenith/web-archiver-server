@@ -49,20 +49,30 @@
 //!   GET    /api/stats                    totals, dedup savings, queue depth
 //!   GET    /api/health
 
+mod archive;
 mod health;
 mod pending;
 
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{get, post},
 };
-use health::health;
 
 use crate::AppState;
 
+const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
+
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/health", get(health))
+        // health
+        .route("/health", get(health::health))
+        // archive
+        .route(
+            "/archive",
+            post(archive::archive).layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
+        )
+        // pending
         .route(
             "/pending",
             get(pending::list_pending_handler)

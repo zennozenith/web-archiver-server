@@ -4,9 +4,11 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
 use crate::config::DatabaseSettings;
 
+pub mod archive;
 pub mod health;
-pub mod helper;
+pub mod helpers;
 pub mod pending;
+pub mod store;
 
 pub async fn create_pool(database_settings: &DatabaseSettings) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()

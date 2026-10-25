@@ -9,7 +9,8 @@ use std::str::FromStr;
 pub const MAX_TAG_LEN: usize = 64;
 pub const MAX_TAGS: usize = 50;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type)]
+#[sqlx(transparent)]
 pub struct CleanTag(String);
 
 impl CleanTag {

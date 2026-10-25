@@ -3312,6 +3312,7 @@ dependencies = [
  "chrono",
  "config",
  "ego-tree",
+ "flate2",
  "futures",
  "html5ever",
  "http",

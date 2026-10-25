@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{
-        multipart::MultipartError,
+        multipart::{MultipartError, MultipartRejection},
         rejection::{FormRejection, JsonRejection, PathRejection, QueryRejection},
     },
     response::{IntoResponse, Response},
@@ -238,6 +238,15 @@ impl From<FormRejection> for AppError {
     }
 }
 
+impl From<MultipartRejection> for AppError {
+    fn from(r: MultipartRejection) -> Self {
+        match r.status() {
+            StatusCode::PAYLOAD_TOO_LARGE => AppError::PayloadTooLarge { limit: 0 },
+            _ => AppError::BadRequest(r.body_text()),
+        }
+    }
+}
+
 /// Extension to turn `Option` into `NotFound` ergonomically:
 /// `row.or_not_found("page")?`
 pub trait OptionExt<T> {
@@ -249,57 +258,6 @@ impl<T> OptionExt<T> for Option<T> {
     }
 }
 
-// mod web {
-//     use askama::Template;
-//     use axum::{
-//         http::StatusCode,
-//         response::{Html, IntoResponse, Response},
-//     };
-
-//     use super::AppError;
-
-//     #[derive(Debug, thiserror::Error)]
-//     pub enum WebError {
-//         #[error("app error")]
-//         App(#[source] AppError),
-
-//         // 500
-//         #[error("Failed to render template. Error: {0}")]
-//         Render(#[source] askama::Error),
-//     }
-
-//     impl IntoResponse for WebError {
-//         fn into_response(self) -> Response {
-//             #[derive(Template)]
-//             #[template(path = "error.html")]
-//             struct Tmpl<'a> {
-//                 title: &'a str,
-//                 msg: &'a str,
-//             }
-
-//             let (status, msg) = match &self {
-//                 Self::Render(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-//                 Self::App(e) => {
-//                     let (status_code, message, _) = e.parts();
-//                     (status_code, message.to_string())
-//                 }
-//             };
-//             tracing::error!(msg);
-//             let tmpl = Tmpl {
-//                 msg: &msg,
-//                 title: "Error",
-//             };
-//             if let Ok(body) = tmpl.render() {
-//                 (status, Html(body)).into_response()
-//             } else {
-//                 (status, "Something went wrong").into_response()
-//             }
-//         }
-//     }
-
-//     impl From<AppError> for WebError {
-//         fn from(e: AppError) -> Self {
-//             Self::App(e)
-//         }
-//     }
-// }
+pub fn join_err(e: tokio::task::JoinError) -> AppError {
+    AppError::Internal(Box::new(e))
+}

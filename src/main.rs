@@ -7,6 +7,7 @@ use crate::config::Settings;
 
 mod api;
 mod assets;
+mod compress;
 mod config;
 mod db;
 mod downloader;
