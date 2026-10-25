@@ -18,6 +18,7 @@ mod extractor;
 mod htmx;
 mod models;
 mod scrapper;
+mod serve;
 mod tag;
 mod template;
 mod time;

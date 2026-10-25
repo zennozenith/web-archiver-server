@@ -50,6 +50,7 @@
 //!   GET    /api/health
 
 mod archive;
+mod captures;
 mod health;
 mod pending;
 
@@ -60,6 +61,9 @@ use axum::{
 };
 
 use crate::AppState;
+use archive::*;
+use captures::*;
+use pending::*;
 
 const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
 
@@ -70,23 +74,25 @@ pub fn routes() -> Router<AppState> {
         // archive
         .route(
             "/archive",
-            post(archive::archive).layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
+            post(archive).layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
         )
         // pending
         .route(
             "/pending",
-            get(pending::list_pending_handler)
-                .post(pending::create_pending)
-                .delete(pending::clear_pending),
+            get(list_pending_handler)
+                .post(create_pending)
+                .delete(clear_pending),
         )
-        .route("/pending/bulk", post(pending::bulk_create_pending))
-        .route("/pending/claim", post(pending::claim_pending))
+        .route("/pending/bulk", post(bulk_create_pending))
+        .route("/pending/claim", post(claim_pending))
         .route(
             "/pending/{id}",
-            get(pending::get_pending)
-                .patch(pending::patch_pending)
-                .delete(pending::delete_pending),
+            get(get_pending).patch(patch_pending).delete(delete_pending),
         )
-        .route("/pending/{id}/retry", post(pending::retry_pending))
-        .route("/pending/{id}/fail", post(pending::fail_pending))
+        .route("/pending/{id}/retry", post(retry_pending))
+        .route("/pending/{id}/fail", post(fail_pending))
+        // captures
+        .route("/captures/{id}", get(get_capture).delete(delete_capture))
+        .route("/captures/{id}/html", get(capture_html))
+        .route("/captures/{id}/screenshot", get(capture_screenshot))
 }
