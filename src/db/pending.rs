@@ -85,7 +85,7 @@ pub async fn list_pending(
     if let Some(s) = status {
         qb.push(" AND status = ").push_bind(s);
     }
-    qb.push(" ORDER BY id LIMIT ").push_bind(limit + 1); // fetch one extra to detect "has more"
+    qb.push(" ORDER BY id DESC LIMIT ").push_bind(limit + 1); // fetch one extra to detect "has more"
 
     let mut rows: Vec<PendingRow> = qb.build_query_as().fetch_all(pool).await?;
     let has_more = rows.len() as i64 > limit;
@@ -144,5 +144,14 @@ pub async fn create_pending(pool: &SqlitePool, data: dto::CreatePending) -> Resu
 
     tx.commit().await?;
 
-    load_pending(&pool, pending_id).await // joins tags
+    load_pending(pool, pending_id).await // joins tags
+}
+
+pub async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM pending WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
 }

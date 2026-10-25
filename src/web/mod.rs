@@ -2,8 +2,11 @@ use crate::AppState;
 
 use axum::{Router, routing::get};
 
+mod error;
 mod index;
 mod pending;
+
+pub use error::negotiate_errors;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -12,5 +15,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/pending",
             get(pending::get_pending).post(pending::create_pending),
+        )
+        .route(
+            "/pending/{id}",
+            // get(get_pending).patch(patch_pending).delete(delete_pending),
+            axum::routing::delete(pending::delete_pending),
         )
 }

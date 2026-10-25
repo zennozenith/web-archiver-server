@@ -3314,6 +3314,7 @@ dependencies = [
  "ego-tree",
  "futures",
  "html5ever",
+ "http",
  "http-body-util",
  "itertools",
  "mime",

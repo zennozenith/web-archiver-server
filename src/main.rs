@@ -14,9 +14,10 @@ mod dto;
 mod error;
 mod extract;
 mod extractor;
+mod htmx;
 mod models;
-mod render;
 mod scrapper;
+mod template;
 mod time;
 mod url;
 mod web;
@@ -79,6 +80,7 @@ fn app(state: AppState) -> Router {
         .merge(web::routes())
         .with_state(state)
         .merge(assets::serve_dir())
+        .layer(axum::middleware::from_fn(web::negotiate_errors))
         .layer(TraceLayer::new_for_http())
 }
 

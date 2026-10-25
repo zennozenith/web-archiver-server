@@ -1,15 +1,15 @@
 use axum::{
     Json,
-    extract::{Query, State},
-    http::StatusCode,
+    extract::{Path, Query, State},
 };
+use http::StatusCode;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
     db,
     dto::{CreatePending, Page, PendingDto},
-    error::AppError,
+    error::{AppError, Result},
     extract::{ApiJson, JsonOrForm},
     models::PendingStatus,
 };
@@ -45,4 +45,17 @@ pub async fn get_pending(
     Ok(Json(
         db::pending::list_pending(&pool, status, after_id, limit).await?,
     ))
+}
+
+pub async fn delete_pending(
+    State(pool): State<SqlitePool>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode> {
+    let deleted = db::pending::delete_pending(&pool, id).await?;
+
+    if !deleted {
+        return Err(AppError::NotFound("pending item"));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }

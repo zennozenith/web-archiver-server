@@ -77,6 +77,10 @@
   #   before = ["frontend:build"];
   # };
 
+  scripts."run" = {
+    exec = "devenv tasks run frontend:build && cargo run";
+  };
+
   scripts.watcher = {
     packages = [pkgs.watchexec];
     exec = ''
@@ -128,7 +132,7 @@
     RUST_LOG = "info,myopic=debug";
     OUT_DIR = "../static/vite";
     APP_SERVER__HOST = "0.0.0.0";
-    APP_SERVER__PORT = 8888;
+    APP_SERVER__PORT = 8889;
     APP_DATABASE__URL = "sqlite://db/app.sqlite3";
     APP_DATA_DIR = "./data";
   };

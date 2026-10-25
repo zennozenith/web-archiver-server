@@ -29,7 +29,7 @@ const outDir = process.env.OUT_DIR || `dist`;
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: ["public/vendored"],
+    ignorePatterns: ["public/vendored", "src/templates/**/*.html"],
   },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
@@ -45,6 +45,7 @@ export default defineConfig({
     outDir,
     emptyOutDir: true,
     // sourcemap: true,
+    manifest: true,
     rolldownOptions: {
       input: Object.fromEntries(files),
 

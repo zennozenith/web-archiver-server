@@ -1,15 +1,26 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <title>{% block title %}{{ title }} - My Site{% endblock %}</title>
-    {% block head %}{% endblock %}
-  </head>
-  <body>
-    <div id="content">
-      <div>{{ in_base }}</div>
-      {% block content %}
-      <p>Placeholder content</p>
-      {% endblock %}
-    </div>
-  </body>
+
+<html lang="en" data-theme="minimaltide">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗄️</text></svg>" />
+  <link rel="stylesheet" href="../index.css" />
+
+  <!-- htmx (vendored) -->
+  <script src="/static/vite/vendored/htmx-4.0.0.min.js" defer></script>
+
+  <title>{% block title %}{{ title }} - Web Archiver{% endblock %}</title>
+
+  {% block head %}{% endblock %}
+</head>
+
+<body class="min-h-screen bg-base-200">
+  {% block content %}
+  <p>Placeholder content</p>
+  {% endblock %}
+</body>
+
 </html>

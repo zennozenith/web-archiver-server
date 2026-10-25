@@ -1,11 +1,5 @@
-use axum::{
-    Router,
-    body::Body,
-    extract::Path,
-    http::{StatusCode, header},
-    response::Response,
-    routing::get,
-};
+use axum::{Router, body::Body, extract::Path, response::Response, routing::get};
+use http::{StatusCode, header};
 use rust_embed::RustEmbed;
 use tower_http::services::ServeDir;
 

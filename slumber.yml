@@ -18,7 +18,7 @@ name: My Collection
 profiles:
   dev:
     data:
-      host: http://localhost:8888/api
+      host: http://localhost:8889/api
 
 requests:
   # ── Misc / Health / Stats / Search ────────────────────────────────────────

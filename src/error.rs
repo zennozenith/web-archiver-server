@@ -4,9 +4,9 @@ use axum::{
         multipart::MultipartError,
         rejection::{FormRejection, JsonRejection},
     },
-    http::StatusCode,
     response::{IntoResponse, Response},
 };
+use http::StatusCode;
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -25,7 +25,13 @@ use serde_json::{Value, json};
 
 pub type Result<T, E = AppError> = std::result::Result<T, E>;
 
-// pub use web::WebError;
+#[derive(Clone)]
+pub struct ErrorInfo {
+    pub status: StatusCode,
+    pub code: &'static str,
+    pub message: String,
+    pub details: Option<Value>,
+}
 
 #[derive(Serialize)]
 struct ErrorBody<'a> {
@@ -135,17 +141,29 @@ impl IntoResponse for AppError {
             self.to_string()
         };
 
-        (
+        let info = ErrorInfo {
+            status,
+            code,
+            message,
+            details,
+        };
+
+        // Default representation: JSON
+        let mut res = (
             status,
             Json(ErrorBody {
                 error: ErrorInner {
-                    code,
-                    message,
-                    details,
+                    code: info.code,
+                    message: info.message.clone(),
+                    details: info.details.clone(),
                 },
             }),
         )
-            .into_response()
+            .into_response();
+
+        // Let the negotiation middleware re-render it if the client wants HTML.
+        res.extensions_mut().insert(info);
+        res
     }
 }
 

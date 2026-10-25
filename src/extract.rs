@@ -8,8 +8,8 @@ use axum::{
         FromRequest, Request,
         rejection::{FormRejection, JsonRejection},
     },
-    http::header::CONTENT_TYPE,
 };
+use http::header::CONTENT_TYPE;
 use serde::Deserialize;
 
 #[derive(FromRequest)]

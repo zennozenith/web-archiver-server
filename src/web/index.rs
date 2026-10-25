@@ -1,4 +1,4 @@
-use crate::{db, dto, error::Result, render::RenderHtml as _, time::ago_timestamp};
+use crate::{db, dto, error::Result, template::RenderHtml};
 
 use super::pending::PendingFragmentTemplate;
 
@@ -27,29 +27,7 @@ pub async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> 
     let health = db::health::health(&pool).await?;
 
     let dto::Page { items, .. } = db::pending::list_pending(&pool, None, None, LIMIT).await?;
-    let pendings = items
-        .iter()
-        .map(
-            |dto::PendingDto {
-                 id,
-                 url,
-                 title,
-                 status,
-                 created_at,
-                 tags,
-                 ..
-             }| {
-                PendingFragmentTemplate {
-                    id: *id,
-                    url,
-                    title: title.as_ref().map(|v| v.as_str()).unwrap_or(url),
-                    status: *status,
-                    created_at: ago_timestamp(*created_at),
-                    tags: Vec::from_iter(tags.iter().map(|v| v.name.clone())).join(", "),
-                }
-            },
-        )
-        .collect();
+    let pendings = items.iter().map(PendingFragmentTemplate::from).collect();
     IndexTemplate { pendings, health }.render_html()
 }
 

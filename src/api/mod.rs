@@ -64,5 +64,10 @@ pub fn routes() -> Router<AppState> {
             "/pending",
             get(pending::get_pending).post(pending::create_pending),
         )
+        .route(
+            "/pending/{id}",
+            // get(get_pending).patch(patch_pending).delete(delete_pending),
+            axum::routing::delete(pending::delete_pending),
+        )
         .layer(DefaultBodyLimit::max(1024 * 4))
 }
