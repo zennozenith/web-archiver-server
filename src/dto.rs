@@ -114,6 +114,7 @@ impl ScreenshotFormat {
 // ── Responses ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArchiveResponse {
     pub capture_id: i64,
     pub page_id: i64,
@@ -122,18 +123,21 @@ pub struct ArchiveResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Dedup {
     pub html: bool,
     pub screenshot: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Page<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PendingDto {
     pub id: i64,
     pub url: String,
@@ -146,6 +150,7 @@ pub struct PendingDto {
 }
 
 #[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptureSummary {
     pub id: i64,
     pub version: i64,

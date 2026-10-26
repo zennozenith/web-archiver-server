@@ -16,6 +16,7 @@ struct Totals {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Stats {
     pub pages: i64,
     pub captures: i64,

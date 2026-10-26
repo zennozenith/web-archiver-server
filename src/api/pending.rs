@@ -81,6 +81,7 @@ pub struct BulkCreate {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BulkItemResult {
     url: String,
     status: &'static str, // created | duplicate | invalid
@@ -91,6 +92,7 @@ pub struct BulkItemResult {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BulkResponse {
     created: usize,
     duplicates: usize,

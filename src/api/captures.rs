@@ -43,6 +43,7 @@ struct CaptureDetailRow {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Blob {
     hash: String,
     size_original: i64,
@@ -51,6 +52,7 @@ pub struct Blob {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptureDetail {
     id: i64,
     page_id: i64,

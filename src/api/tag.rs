@@ -29,6 +29,7 @@ pub fn validate_color(color: Option<&str>) -> Result<Option<String>> {
 }
 
 #[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct TagWithCount {
     pub id: i64,
     pub name: String,

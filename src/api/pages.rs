@@ -50,6 +50,7 @@ struct PageRow {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PageDto {
     id: i64,
     url: String,
@@ -61,6 +62,7 @@ pub struct PageDto {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PageDetail {
     #[serde(flatten)]
     page: PageDto,
