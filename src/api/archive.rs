@@ -58,20 +58,9 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
     let mut fmt: Option<ScreenshotFormat> = None;
 
     while let Some(field) = mp.next_field().await? {
-        let name = field.name().unwrap_or("").to_string();
-        match name.as_str() {
+        let name = field.name().unwrap_or("");
+        match name {
             "html" => up.html = field.bytes().await?.to_vec(),
-            "screenshot" => shot = Some(field.bytes().await?.to_vec()),
-            "screenshot-format" => fmt = Some(parse_format(&field.text().await?)?),
-            "metadata" => {
-                let t = field.text().await?;
-                up.metadata = Some(serde_json::from_str(&t).map_err(|e| {
-                    unprocessable(
-                        "invalid_metadata",
-                        format!("metadata is not valid JSON: {e}"),
-                    )
-                })?);
-            }
             "url" => up.url = non_empty(field.text().await?),
             "title" => up.title = non_empty(field.text().await?),
             "tags" => {
@@ -80,11 +69,22 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
                     unprocessable("invalid_tags", "tags must be a JSON array of strings")
                 })?;
             }
+            "screenshot" => shot = Some(field.bytes().await?.to_vec()),
+            "screenshot-format" => fmt = Some(parse_format(&field.text().await?)?),
             "pending_id" => {
                 up.pending_id =
                     Some(field.text().await?.trim().parse().map_err(|_| {
                         AppError::BadRequest("pending_id must be an integer".into())
                     })?);
+            }
+            "metadata" => {
+                let t = field.text().await?;
+                up.metadata = Some(serde_json::from_str(&t).map_err(|e| {
+                    unprocessable(
+                        "invalid_metadata",
+                        format!("metadata is not valid JSON: {e}"),
+                    )
+                })?);
             }
             _ => {} // ignore unknown fields
         }

@@ -48,7 +48,7 @@ where
 
 #[derive(Debug, Deserialize)]
 pub struct ReplaceTags {
-    pub tags: Vec<String>,
+    pub tags: Vec<CreateTag>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,7 +60,7 @@ pub struct MergeTag {
 pub struct PageQuery {
     #[serde(default)]
     pub tag: Vec<String>, // needs axum-extra's Query for repeated keys
-    #[serde(default)]
+    #[serde(default, rename = "match")]
     pub match_mode: MatchMode,
     pub host: Option<String>,
     pub q: Option<String>,

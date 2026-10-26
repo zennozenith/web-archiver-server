@@ -9,7 +9,7 @@ mod error;
 mod index;
 mod pending;
 
-pub use error::negotiate_errors;
+use error::negotiate_errors;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -20,5 +20,6 @@ pub fn router(state: AppState) -> Router {
             get(pending::get_pending).post(pending::create_pending),
         )
         .route("/pending/{id}", delete(pending::delete_pending))
+        .layer(axum::middleware::from_fn(negotiate_errors))
         .with_state(state)
 }

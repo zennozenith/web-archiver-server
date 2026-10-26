@@ -116,6 +116,7 @@ where
     deserializer.deserialize_any(StringOrVec)
 }
 
+#[allow(unused)]
 pub fn opt_comma_separated_or_seq<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
 where
     D: Deserializer<'de>,

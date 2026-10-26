@@ -4,7 +4,7 @@ use axum::{
     middleware::Next,
     response::{Html, IntoResponse, Response},
 };
-use http::{HeaderMap, StatusCode, header};
+use http::{HeaderMap, StatusCode, Uri, header};
 
 use crate::error;
 
@@ -29,8 +29,10 @@ struct ErrorFragment<'a> {
     message: &'a str,
 }
 
-fn wants(headers: &HeaderMap) -> Wants {
-    if headers.contains_key("hx-request") && !headers.contains_key("hx-boosted") {
+fn wants(uri: &Uri, headers: &HeaderMap) -> Wants {
+    if uri.path().starts_with("/api") {
+        Wants::Json
+    } else if headers.contains_key("hx-request") && !headers.contains_key("hx-boosted") {
         Wants::Fragment
     } else if prefers_html(headers) {
         Wants::Page
@@ -74,7 +76,7 @@ fn prefers_html(headers: &HeaderMap) -> bool {
 }
 
 pub async fn negotiate_errors(req: Request, next: Next) -> Response {
-    let wants = wants(req.headers());
+    let wants = wants(req.uri(), req.headers());
     let mut res = next.run(req).await;
 
     if matches!(wants, Wants::Json) {

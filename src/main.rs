@@ -101,7 +101,6 @@ fn app(state: AppState) -> Router {
         .merge(web::router(state))
         // .with_state(state)
         .merge(assets::serve_dir())
-        .layer(axum::middleware::from_fn(web::negotiate_errors))
         .layer(TraceLayer::new_for_http())
 }
 

@@ -44,7 +44,7 @@ struct PageRow {
     id: i64,
     url: String,
     host: String,
-    last_captured_at: i64,
+    last_captured_at: i64, // 0 if no capture exists
     capture_count: i64,
     title: Option<String>,
 }
@@ -66,7 +66,7 @@ pub struct PageDto {
 pub struct PageDetail {
     #[serde(flatten)]
     page: PageDto,
-    latest_capture: Option<CaptureSummary>,
+    latest_capture: CaptureSummary,
 }
 
 #[derive(FromRow)]
@@ -126,7 +126,7 @@ async fn page_detail(pool: &SqlitePool, id: i64) -> Result<PageDetail> {
         "SELECT * FROM ({CAPTURE_SUMMARY_SQL}) ORDER BY version DESC LIMIT 1"
     )))
     .bind(id)
-    .fetch_optional(pool)
+    .fetch_one(pool)
     .await?;
     Ok(PageDetail {
         page,
@@ -145,7 +145,6 @@ async fn ensure_page(pool: &SqlitePool, id: i64) -> Result<()> {
 
 // ── GET /api/pages ──────────────────────────────────────────────────────────
 // Sorted by most recently archived. In PageQuery, rename the field for the documented param:
-//     #[serde(rename = "match", default)] pub match_mode: MatchMode,
 
 pub async fn list_pages(
     State(pool): State<SqlitePool>,
@@ -335,7 +334,14 @@ pub async fn put_page_tags(
     ApiPath(id): ApiPath<i64>,
     ApiJson(req): ApiJson<ReplaceTags>,
 ) -> Result<ApiJson<Vec<TagRow>>> {
-    let names = clean_tags(&req.tags)?;
+    // TODO: also process color
+    let names = clean_tags(
+        req.tags
+            .into_iter()
+            .map(|v| v.name)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )?;
     ensure_page(&pool, id).await?;
 
     let mut tx = pool.begin().await?;
