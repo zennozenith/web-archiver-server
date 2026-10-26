@@ -117,34 +117,31 @@ pub fn router(state: AppState) -> Router {
         .route("/pending/{id}/retry", post(retry_pending))
         .route("/pending/{id}/fail", post(fail_pending))
         // pages
-        .route("/api/pages", get(list_pages))
-        .route("/api/pages/lookup", get(lookup_page))
-        .route("/api/pages/{id}", get(get_page).delete(delete_page))
-        .route("/api/pages/{id}/captures", get(list_captures))
-        .route(
-            "/api/pages/{id}/tags",
-            post(add_page_tag).put(put_page_tags),
-        )
-        .route("/api/pages/{id}/tags/{tag_id}", delete(remove_page_tag))
-        .route("/api/pages/{id}/latest/html", get(latest_html))
-        .route("/api/pages/{id}/latest/screenshot", get(latest_screenshot))
+        .route("/pages", get(list_pages))
+        .route("/pages/lookup", get(lookup_page))
+        .route("/pages/{id}", get(get_page).delete(delete_page))
+        .route("/pages/{id}/captures", get(list_captures))
+        .route("/pages/{id}/tags", post(add_page_tag).put(put_page_tags))
+        .route("/pages/{id}/tags/{tag_id}", delete(remove_page_tag))
+        .route("/pages/{id}/latest/html", get(latest_html))
+        .route("/pages/{id}/latest/screenshot", get(latest_screenshot))
         // captures
         .route("/captures/{id}", get(get_capture).delete(delete_capture))
         .route("/captures/{id}/html", get(capture_html))
         .route("/captures/{id}/screenshot", get(capture_screenshot))
         // content (explicit HEAD handler avoids loading the blob)
-        .route("/api/content/{hash}", get(get_content).head(head_content))
+        .route("/content/{hash}", get(get_content).head(head_content))
         // tags
-        .route("/api/tags", get(list_tags).post(create_tag))
+        .route("/tags", get(list_tags).post(create_tag))
         .route(
-            "/api/tags/{id}",
+            "/tags/{id}",
             axum::routing::patch(patch_tag).delete(delete_tag),
         )
-        .route("/api/tags/{id}/merge", post(merge_tag))
+        .route("/tags/{id}/merge", post(merge_tag))
         // misc
-        .route("/api/stats", get(stats))
-        .route("/api/maintenance/gc", post(gc_content))
-        .layer(from_fn_with_state(state.clone(), require_auth));
+        .route("/stats", get(stats))
+        .route("/maintenance/gc", post(gc_content));
+    // .layer(from_fn_with_state(state.clone(), require_auth));
 
     Router::new()
         .route("/api/health", get(health))
