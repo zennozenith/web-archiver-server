@@ -60,6 +60,7 @@ pub struct CaptureRow {
     pub id: i64,
     pub url_id: i64,
     pub content_id: Option<i64>,
+    pub original_content_id: Option<i64>,
     pub screenshot_content_id: Option<i64>,
     pub captured_at: i64,
     pub status_code: Option<i64>,

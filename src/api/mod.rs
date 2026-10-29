@@ -5,7 +5,7 @@
 //!                                        (default true; fetch and store the document's
 //!                                        stylesheets/scripts/images/... as content blobs)
 //!                                        → 201 { capture_id, page_id, version,
-//!                                                deduplicated: {html, screenshot},
+//!                                                deduplicated: {html, originalHtml, screenshot},
 //!                                                assets: {saved, deduplicated, failed, skipped} }
 //!
 //! ── Pending queue ───────────────────────────────────────────────────────────
@@ -32,11 +32,14 @@
 //! ── Captures (a single version) ─────────────────────────────────────────────
 //!   GET    /api/captures/:id             metadata, headers, sizes, title, version number
 //!   DELETE /api/captures/:id
-//!   GET    /api/captures/:id/html        archived document (see serving notes)
+//!   GET    /api/captures/:id/html        archived document with resource URLs rewritten
+//!                                        to /api/content/:hash
+//!   GET    /api/captures/:id/html/original  exact bytes uploaded to /api/archive
 //!   GET    /api/captures/:id/screenshot  image with the stored format's Content-Type
 //!   GET    /api/captures/:id/assets      sub-resources saved with this capture
 //!   GET    /api/captures/:id/assets/:content_id
 //!   GET    /api/pages/:id/latest/html    302 → latest capture's html
+//!   GET    /api/pages/:id/latest/html/original  302 → latest capture's original html
 //!   GET    /api/pages/:id/latest/screenshot
 //!   GET    /api/pages/:id/latest/assets
 //!
@@ -133,10 +136,15 @@ pub fn router(state: AppState) -> Router {
         .route("/pages/{id}/tags", post(add_page_tag).put(put_page_tags))
         .route("/pages/{id}/tags/{tag_id}", delete(remove_page_tag))
         .route("/pages/{id}/latest/html", get(latest_html))
+        .route(
+            "/pages/{id}/latest/html/original",
+            get(latest_original_html),
+        )
         .route("/pages/{id}/latest/screenshot", get(latest_screenshot))
         // captures
         .route("/captures/{id}", get(get_capture).delete(delete_capture))
         .route("/captures/{id}/html", get(capture_html))
+        .route("/captures/{id}/html/original", get(capture_original_html))
         .route("/captures/{id}/screenshot", get(capture_screenshot))
         .route("/captures/{id}/assets", get(capture_assets))
         .route("/captures/{id}/assets/{content_id}", get(capture_asset))

@@ -128,7 +128,10 @@ pub struct ArchiveResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Dedup {
+    /// The served (rewritten) HTML blob already existed.
     pub html: bool,
+    /// The exact uploaded HTML blob already existed.
+    pub original_html: bool,
     pub screenshot: Option<bool>,
 }
 

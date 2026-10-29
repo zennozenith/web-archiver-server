@@ -13,7 +13,7 @@ use crate::{
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath},
     models::ContentRow,
-    serve::{COLS, serve_content},
+    serve::{COLS, CSP, CSP_ARCHIVED_HTML, serve_content_with_csp},
 };
 
 const CAPTURE_CACHE: &str = "private, max-age=86400";
@@ -37,6 +37,9 @@ struct CaptureDetailRow {
     html_hash: Option<String>,
     html_size: Option<i64>,
     html_stored: Option<i64>,
+    original_html_hash: Option<String>,
+    original_html_size: Option<i64>,
+    original_html_stored: Option<i64>,
     screenshot_hash: Option<String>,
     screenshot_size: Option<i64>,
     screenshot_mime: Option<String>,
@@ -70,6 +73,7 @@ pub struct CaptureDetail {
     response_headers: Option<Value>,
     metadata: Option<Value>,
     html: Option<Blob>,
+    original_html: Option<Blob>,
     screenshot: Option<Blob>,
     asset_count: i64,
 }
@@ -93,6 +97,8 @@ pub async fn get_capture(
                 ru.url AS redirect_url,
                 NULLIF(lower(hex(h.hash)), '') AS html_hash,
                 h.size_original AS html_size, h.size_stored AS html_stored,
+                NULLIF(lower(hex(oh.hash)), '') AS original_html_hash,
+                oh.size_original AS original_html_size, oh.size_stored AS original_html_stored,
                 NULLIF(lower(hex(s.hash)), '') AS screenshot_hash,
                 s.size_original AS screenshot_size, s.mime_type AS screenshot_mime,
                 (SELECT COUNT(*) FROM capture_asset ca WHERE ca.capture_id = c.id) AS asset_count
@@ -100,6 +106,7 @@ pub async fn get_capture(
          JOIN url u ON u.id = c.url_id
          LEFT JOIN url ru ON ru.id = c.redirect_url_id
          LEFT JOIN content h ON h.id = c.content_id
+         LEFT JOIN content oh ON oh.id = c.original_content_id
          LEFT JOIN content s ON s.id = c.screenshot_content_id
          WHERE c.id = ?",
     )
@@ -112,6 +119,12 @@ pub async fn get_capture(
         hash,
         size_original: r.html_size.unwrap_or(0),
         size_stored: r.html_stored,
+        mime_type: Some("text/html".into()),
+    });
+    let original_html = r.original_html_hash.map(|hash| Blob {
+        hash,
+        size_original: r.original_html_size.unwrap_or(0),
+        size_stored: r.original_html_stored,
         mime_type: Some("text/html".into()),
     });
     let screenshot = r.screenshot_hash.map(|hash| Blob {
@@ -137,6 +150,7 @@ pub async fn get_capture(
         response_headers: json(r.response_headers),
         metadata: json(r.metadata),
         html,
+        original_html,
         screenshot,
         asset_count: r.asset_count,
     }))
@@ -168,6 +182,7 @@ async fn serve_capture_blob(
     join_col: &str, // fixed internal literal, never user input
     what: &'static str,
     force_type: Option<&str>,
+    csp: &'static str,
 ) -> Result<Response> {
     let row: ContentRow = sqlx::query_as(AssertSqlSafe(format!(
         "SELECT {COLS} FROM capture c JOIN content ct ON ct.id = c.{join_col} WHERE c.id = ?"
@@ -181,10 +196,10 @@ async fn serve_capture_blob(
         .map(str::to_string)
         .or_else(|| row.mime_type.clone())
         .unwrap_or_else(|| "application/octet-stream".into());
-    serve_content(store, headers, row, &ct, CAPTURE_CACHE).await
+    serve_content_with_csp(store, headers, row, &ct, CAPTURE_CACHE, csp).await
 }
 
-// GET /api/captures/{id}/html
+// GET /api/captures/{id}/html   (rewritten: resource URLs point at /api/content)
 pub async fn capture_html(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
@@ -199,6 +214,27 @@ pub async fn capture_html(
         "content_id",
         "archived html",
         Some("text/html; charset=utf-8"),
+        CSP_ARCHIVED_HTML,
+    )
+    .await
+}
+
+// GET /api/captures/{id}/html/original   (exact bytes uploaded to /api/archive)
+pub async fn capture_original_html(
+    State(pool): State<SqlitePool>,
+    State(store): State<BlobStore>,
+    headers: HeaderMap,
+    ApiPath(id): ApiPath<i64>,
+) -> Result<Response> {
+    serve_capture_blob(
+        &pool,
+        &store,
+        &headers,
+        id,
+        "original_content_id",
+        "original html",
+        Some("text/html; charset=utf-8"),
+        CSP_ARCHIVED_HTML,
     )
     .await
 }
@@ -218,6 +254,7 @@ pub async fn capture_screenshot(
         "screenshot_content_id",
         "screenshot",
         None,
+        CSP,
     )
     .await
 }
@@ -247,6 +284,21 @@ pub async fn latest_html(
     ApiPath(id): ApiPath<i64>,
 ) -> Result<Response> {
     latest_redirect(&pool, id, "content_id", "html", "archived html").await
+}
+
+// GET /api/pages/{id}/latest/html/original
+pub async fn latest_original_html(
+    State(pool): State<SqlitePool>,
+    ApiPath(id): ApiPath<i64>,
+) -> Result<Response> {
+    latest_redirect(
+        &pool,
+        id,
+        "original_content_id",
+        "html/original",
+        "original html",
+    )
+    .await
 }
 
 // GET /api/pages/{id}/latest/screenshot

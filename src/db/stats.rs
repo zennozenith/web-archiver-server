@@ -48,6 +48,8 @@ pub async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
            COALESCE((SELECT SUM(size_stored)   FROM content), 0) AS stored_bytes,
            COALESCE((SELECT SUM(size_original) FROM content), 0) AS unique_original_bytes,
            COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.content_id), 0)
+         + COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.original_content_id
+                     WHERE c.original_content_id IS NOT c.content_id), 0)
          + COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.screenshot_content_id), 0)
          + COALESCE((SELECT SUM(ct.size_original) FROM capture_asset ca JOIN content ct ON ct.id = ca.content_id), 0)
            AS logical_bytes",

@@ -16,7 +16,15 @@ use crate::{compress, db::helpers::to_hex};
 
 /// Archived content is untrusted: no scripts, no framing tricks, no sniffing.
 /// Loosen img-src/style-src if you want archived pages to load remote resources.
-const CSP: &str = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+pub const CSP: &str = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+
+/// Archived HTML is served from our own origin so it can load the rewritten
+/// `/api/content/...` resources. Scripts stay disabled by `sandbox` (no
+/// `allow-scripts`) and by an explicit `script-src 'none'`.
+pub const CSP_ARCHIVED_HTML: &str = "sandbox; default-src 'none'; \
+    script-src 'none'; connect-src 'none'; \
+    img-src 'self' data:; style-src 'self' 'unsafe-inline'; \
+    font-src 'self' data:; media-src 'self'; frame-src 'self'";
 
 pub const COLS: &str = "ct.id, ct.hash, ct.mime_type, ct.size_original, ct.size_stored, \
                         ct.compression_id, ct.data, ct.storage_ref, ct.ref_count, ct.created_at";
@@ -65,6 +73,17 @@ pub async fn serve_content(
     content_type: &str,
     cache_control: &'static str,
 ) -> Result<Response> {
+    serve_content_with_csp(store, req, row, content_type, cache_control, CSP).await
+}
+
+pub async fn serve_content_with_csp(
+    store: &BlobStore,
+    req: &HeaderMap,
+    row: ContentRow,
+    content_type: &str,
+    cache_control: &'static str,
+    csp: &'static str,
+) -> Result<Response> {
     let ContentRow {
         hash,
         size_stored,
@@ -106,7 +125,7 @@ pub async fn serve_content(
             .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
     );
     h.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    h.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
+    h.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(csp));
     if let Some(e) = encoding {
         h.insert(CONTENT_ENCODING, HeaderValue::from_static(e));
     }

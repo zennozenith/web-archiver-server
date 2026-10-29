@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     extract::{
         State,
@@ -12,7 +14,7 @@ use sqlx::SqlitePool;
 use crate::{
     blob_store::BlobStore,
     db::{
-        helpers::{add_url_tags, get_or_create_url},
+        helpers::{add_url_tags, get_or_create_url, to_hex},
         store::{insert_blob, prepare_blob},
     },
     downloader,
@@ -79,6 +81,8 @@ struct PreparedAsset {
     kind: &'static str,
     status_code: Option<i64>,
     content_id: i64,
+    /// Hex blake3 of the bytes, used to build rewritten `/api/content/{hash}` URLs.
+    hash: String,
 }
 
 /// Parse, fetch and store the document's sub-resources.
@@ -164,6 +168,7 @@ async fn collect_assets(
             kind: resource.kind.as_str(),
             status_code: Some(fetched.status as i64),
             content_id,
+            hash: to_hex(&blob.hash),
         });
     }
 
@@ -287,15 +292,31 @@ pub async fn archive(
     let metadata_text = upload.metadata.as_ref().map(Value::to_string);
 
     // Split out sub-resource URLs before the HTML bytes are moved into the blob.
+    let page_url = url::Url::parse(&canon.url).map_err(|e| AppError::Internal(Box::new(e)))?;
     let (assets, asset_summary) = if upload.save_assets.unwrap_or(true) {
-        let page_url = url::Url::parse(&canon.url).map_err(|e| AppError::Internal(Box::new(e)))?;
         collect_assets(&pool, &store, &client, &page_url, &upload.html).await?
     } else {
         (Vec::new(), AssetSummary::default())
     };
 
+    // Point every captured resource at its immutable content URL, then build the
+    // document clients are served. The upload itself is kept byte-for-byte.
+    let replacements: HashMap<String, String> = assets
+        .iter()
+        .map(|asset| (asset.url.clone(), format!("/api/content/{}", asset.hash)))
+        .collect();
+    let rewritten = if replacements.is_empty() {
+        None
+    } else {
+        html::rewrite_resources(&upload.html, &page_url, &replacements)
+    };
+
     // CPU-heavy work (hash + compress) happens before the write transaction.
-    let html_blob = prepare_blob(&pool, &store, upload.html, "text/html").await?;
+    let original_blob = prepare_blob(&pool, &store, upload.html, "text/html").await?;
+    let served_blob = match rewritten {
+        Some(bytes) => Some(prepare_blob(&pool, &store, bytes, "text/html").await?),
+        None => None,
+    };
     let shot_blob = match upload.screenshot {
         Some((bytes, fmt)) => Some(prepare_blob(&pool, &store, bytes, fmt.mime()).await?),
         None => None,
@@ -304,20 +325,25 @@ pub async fn archive(
     let mut tx = pool.begin().await?;
 
     let url_id = get_or_create_url(&mut tx, &canon).await?;
-    let html_id = insert_blob(&mut tx, &html_blob).await?;
+    let original_id = insert_blob(&mut tx, &original_blob).await?;
+    let html_id = match &served_blob {
+        Some(b) => insert_blob(&mut tx, b).await?,
+        None => original_id,
+    };
     let shot_id = match &shot_blob {
         Some(b) => Some(insert_blob(&mut tx, b).await?),
         None => None,
     };
 
     let capture_id: i64 = sqlx::query_scalar(
-        "INSERT INTO capture (url_id, content_id, screenshot_content_id, captured_at,
-                              content_type, metadata, title)
-         VALUES (?, ?, ?, unixepoch(), 'text/html', ?, ?)
+        "INSERT INTO capture (url_id, content_id, original_content_id, screenshot_content_id,
+                              captured_at, content_type, metadata, title)
+         VALUES (?, ?, ?, ?, unixepoch(), 'text/html', ?, ?)
          RETURNING id",
     )
     .bind(url_id)
     .bind(html_id)
+    .bind(original_id)
     .bind(shot_id)
     .bind(&metadata_text)
     .bind(&title)
@@ -372,7 +398,10 @@ pub async fn archive(
             page_id: url_id,
             version,
             deduplicated: Dedup {
-                html: html_blob.existed,
+                html: served_blob
+                    .as_ref()
+                    .map_or(original_blob.existed, |b| b.existed),
+                original_html: original_blob.existed,
                 screenshot: shot_blob.as_ref().map(|b| b.existed),
             },
             assets: asset_summary,

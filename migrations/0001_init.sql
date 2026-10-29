@@ -41,7 +41,8 @@ CREATE INDEX idx_url_host ON url(host);
 CREATE TABLE capture (
     id              INTEGER PRIMARY KEY,
     url_id          INTEGER NOT NULL REFERENCES url(id),
-    content_id      INTEGER REFERENCES content(id),   -- NULL for redirects / empty / errors
+    content_id      INTEGER REFERENCES content(id),   -- rewritten HTML served to clients (NULL for redirects / empty / errors)
+    original_content_id INTEGER REFERENCES content(id), -- exact bytes uploaded to POST /api/archive
     captured_at     INTEGER NOT NULL,                 -- unix epoch
     title           TEXT NOT NULL,                    -- Title can change between versions, so store it per capture  
     status_code     INTEGER,
@@ -127,6 +128,13 @@ BEGIN
     UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.content_id;
 END;
 
+CREATE TRIGGER capture_original_content_ref_inc_insert
+AFTER INSERT ON capture
+WHEN NEW.original_content_id IS NOT NULL
+BEGIN
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.original_content_id;
+END;
+
 CREATE TRIGGER capture_screenshot_ref_inc_insert
 AFTER INSERT ON capture
 WHEN NEW.screenshot_content_id IS NOT NULL
@@ -135,10 +143,12 @@ BEGIN
 END;
 
 CREATE TRIGGER capture_content_ref_update
-AFTER UPDATE OF content_id, screenshot_content_id ON capture
+AFTER UPDATE OF content_id, original_content_id, screenshot_content_id ON capture
 BEGIN
     UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.content_id;
     UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.content_id;
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.original_content_id;
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.original_content_id;
     UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.screenshot_content_id;
     UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.screenshot_content_id;
 END;
@@ -147,6 +157,7 @@ CREATE TRIGGER capture_content_ref_dec_delete
 AFTER DELETE ON capture
 BEGIN
     UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.content_id;
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.original_content_id;
     UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.screenshot_content_id;
 END;
 
