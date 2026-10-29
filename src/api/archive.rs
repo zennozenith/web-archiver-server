@@ -464,15 +464,13 @@ pub async fn archive(
 
     // Point every captured resource at its immutable content URL, then build the
     // document clients are served. The upload itself is kept byte-for-byte.
+    // Even without captured assets the HTML is rewritten so relative `<a href>`
+    // links can be resolved against the original page URL.
     let replacements: HashMap<String, String> = assets
         .iter()
         .map(|asset| (asset.url.clone(), format!("/api/content/{}", asset.hash)))
         .collect();
-    let rewritten = if replacements.is_empty() {
-        None
-    } else {
-        html::rewrite_resources(&upload.html, &page_url, &replacements)
-    };
+    let rewritten = html::rewrite_resources(&upload.html, &page_url, &replacements);
 
     // CPU-heavy work (hash + compress) happens before the write transaction.
     let original_blob = prepare_blob(&pool, &store, upload.html, "text/html").await?;

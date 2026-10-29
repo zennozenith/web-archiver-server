@@ -339,7 +339,34 @@ fn rewrite_srcset(raw: &str, base: &Url, replacements: &HashMap<String, String>)
         .join(", ")
 }
 
-/// Rewrite resource URLs to their archived equivalents.
+/// Resolve a page link (`<a href>`, `<area href>`) against the document base.
+///
+/// Unlike resources, links are not served from the archive: their target is
+/// another page, so relative hrefs are made absolute to the *original* site.
+/// Fragment-only and non-navigational schemes are left untouched.
+fn absolute_link(base: &Url, raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.starts_with('#') {
+        return None;
+    }
+
+    let lower = raw.to_ascii_lowercase();
+    if lower.starts_with("javascript:")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+        || lower.starts_with("data:")
+        || lower.starts_with("blob:")
+        || lower.starts_with("about:")
+    {
+        return None;
+    }
+
+    let url = Url::options().base_url(Some(base)).parse(raw).ok()?;
+    matches!(url.scheme(), "http" | "https").then(|| url.to_string())
+}
+
+/// Rewrite resource URLs to their archived equivalents, and make page links
+/// point at the original site.
 ///
 /// `replacements` maps absolute, fragmentless resource URLs to the URL that
 /// serves the captured bytes (usually `/api/content/<blake3>`). Returns `None`
@@ -361,7 +388,23 @@ pub fn rewrite_resources(
         }
     });
 
-    if edits.is_empty() {
+    // Anchors keep pointing at the live web so navigation still works from the
+    // archive. Relative hrefs must be resolved now, while the original page URL
+    // is still known.
+    let mut links = Vec::new();
+    for element in document.select(&sel("a[href], area[href]")) {
+        let Some(href) = element.attr("href") else {
+            continue;
+        };
+        let Some(absolute) = absolute_link(&base, href) else {
+            continue;
+        };
+        if absolute != href {
+            links.push((element.id(), absolute));
+        }
+    }
+
+    if edits.is_empty() && links.is_empty() {
         return None;
     }
 
@@ -387,6 +430,22 @@ pub fn rewrite_resources(
             rewrite_url(&raw, &base, replacements).unwrap_or(raw)
         };
         *value = rewritten.into();
+    }
+
+    for (node_id, href) in links {
+        let Some(mut node) = document.tree.get_mut(node_id) else {
+            continue;
+        };
+        let Node::Element(element) = node.value() else {
+            continue;
+        };
+        if let Some((_, value)) = element
+            .attrs
+            .iter_mut()
+            .find(|(name, _)| name.local.as_str() == "href")
+        {
+            *value = href.into();
+        }
     }
 
     Some(document.html().into_bytes())
@@ -513,6 +572,41 @@ mod tests {
         assert!(out.contains(r#"href="/api/content/sprite#icon""#));
         assert!(!out.contains("site.css"));
         assert!(!out.contains("hero.png"));
+    }
+
+    #[test]
+    fn absolutizes_navigation_links_to_the_original_site() {
+        let html = br##"<!doctype html>
+            <html><body>
+              <a href="/about">About</a>
+              <a href="docs/guide.html">Guide</a>
+              <a href="https://other.example/x">External</a>
+              <a href="#section">Section</a>
+              <a href="mailto:hi@example.com">Mail</a>
+              <area href="map.html">
+            </body></html>"##;
+
+        // No resources are rewritten; the links alone must still produce a blob.
+        let base = Url::parse("https://example.com/docs/page.html").unwrap();
+        let out = rewrite_resources(html, &base, &HashMap::new()).unwrap();
+        let out = String::from_utf8(out).unwrap();
+
+        assert!(out.contains(r#"href="https://example.com/about""#));
+        assert!(out.contains(r#"href="https://example.com/docs/docs/guide.html""#));
+        assert!(out.contains(r#"href="https://other.example/x""#));
+        assert!(out.contains(r##"href="#section""##));
+        assert!(out.contains(r#"href="mailto:hi@example.com""#));
+        assert!(out.contains(r#"href="https://example.com/docs/map.html""#));
+    }
+
+    #[test]
+    fn navigation_links_respect_base_href() {
+        let html = br#"<base href="https://cdn.example.com/static/">
+            <a href="guide.html">Guide</a>"#;
+        let page = Url::parse("https://example.com/docs/page.html").unwrap();
+        let out = rewrite_resources(html, &page, &HashMap::new()).unwrap();
+        let out = String::from_utf8(out).unwrap();
+        assert!(out.contains(r#"href="https://cdn.example.com/static/guide.html""#));
     }
 
     #[test]
