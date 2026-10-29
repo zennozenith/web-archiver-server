@@ -66,6 +66,41 @@ async fn decompress_blocking(data: Vec<u8>, comp: Compression) -> Result<Vec<u8>
         .map_err(join_err)?
 }
 
+async fn compress_blocking(data: Vec<u8>, comp: Compression) -> Result<Vec<u8>> {
+    tokio::task::spawn_blocking(move || compress::compress(&data, comp))
+        .await
+        .map_err(join_err)?
+}
+
+/// How the stored bytes become the response body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BodyPlan {
+    /// The stored representation is exactly what the client accepts.
+    Stored,
+    /// Decode the stored representation; send the bytes as identity.
+    Decode,
+    /// Decode the stored representation and re-encode it with this algorithm.
+    Transcode(Compression),
+}
+
+/// Pick the response representation and how to build it.
+fn body_plan(comp: Compression, accept: &str) -> (Option<&'static str>, BodyPlan) {
+    let stored_encoding = comp.content_encoding();
+    let stored_accepted = stored_encoding.is_some_and(|e| accepts(accept, e));
+
+    if comp == Compression::None {
+        (None, BodyPlan::Stored)
+    } else if stored_accepted {
+        (stored_encoding, BodyPlan::Stored)
+    } else if accepts(accept, "gzip") {
+        // Browsers deliberately omit `br` over plain HTTP, while gzip is
+        // accepted everywhere.
+        (Some("gzip"), BodyPlan::Transcode(Compression::Gzip))
+    } else {
+        (None, BodyPlan::Decode)
+    }
+}
+
 pub async fn serve_content(
     store: &BlobStore,
     req: &HeaderMap,
@@ -98,9 +133,9 @@ pub async fn serve_content_with_csp(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    // Send stored bytes untouched if the client understands them.
-    let encoding: Option<&'static str> = comp.content_encoding().filter(|e| accepts(accept, e));
-    let passthrough = comp == Compression::None || encoding.is_some();
+    // Prefer the representation we already have. If the client cannot take it,
+    // transcode to gzip when possible instead of sending the bytes uncompressed.
+    let (encoding, plan) = body_plan(comp, accept);
 
     // Strong ETag per representation (identity vs br vs gzip differ byte-wise).
     let etag = match encoding {
@@ -135,21 +170,30 @@ pub async fn serve_content_with_csp(
     }
 
     let body = match (data, storage_ref) {
-        (Some(data), _) => Body::from(if passthrough {
-            data
-        } else {
-            decompress_blocking(data, comp).await?
+        (Some(data), _) => Body::from(match plan {
+            BodyPlan::Stored => data,
+            BodyPlan::Decode => decompress_blocking(data, comp).await?,
+            BodyPlan::Transcode(target) => {
+                let decoded = decompress_blocking(data, comp).await?;
+                compress_blocking(decoded, target).await?
+            }
         }),
         // On disk and sendable as-is: stream it, never hold the whole file in memory.
-        (None, Some(r)) if passthrough => {
+        (None, Some(r)) if matches!(plan, BodyPlan::Stored) => {
             let file = store.open_file(&r).await?;
             h.insert(CONTENT_LENGTH, HeaderValue::from(size_stored as u64));
             Body::from_stream(ReaderStream::new(file))
         }
-        // On disk but the client can't take the stored encoding: read + decompress.
+        // On disk but the client can't take the stored encoding: read, decode,
+        // and (if requested) re-encode.
         (None, Some(r)) => {
             let raw = store.read(&r).await?;
-            Body::from(decompress_blocking(raw, comp).await?)
+            let decoded = decompress_blocking(raw, comp).await?;
+            Body::from(match plan {
+                BodyPlan::Decode => decoded,
+                BodyPlan::Transcode(target) => compress_blocking(decoded, target).await?,
+                BodyPlan::Stored => unreachable!(),
+            })
         }
         (None, None) => {
             return Err(AppError::Internal(
@@ -159,4 +203,48 @@ pub async fn serve_content_with_csp(
     };
 
     Ok((StatusCode::OK, h, body).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepted_stored_encoding_passes_through() {
+        let (encoding, plan) = body_plan(Compression::Brotli, "gzip, deflate, br");
+        assert_eq!(encoding, Some("br"));
+        assert_eq!(plan, BodyPlan::Stored);
+
+        let (encoding, plan) = body_plan(Compression::Gzip, "gzip, deflate");
+        assert_eq!(encoding, Some("gzip"));
+        assert_eq!(plan, BodyPlan::Stored);
+    }
+
+    #[test]
+    fn brotli_is_transcoded_to_gzip_for_http_clients() {
+        let (encoding, plan) = body_plan(Compression::Brotli, "gzip, deflate");
+        assert_eq!(encoding, Some("gzip"));
+        assert_eq!(plan, BodyPlan::Transcode(Compression::Gzip));
+    }
+
+    #[test]
+    fn missing_encodings_fall_back_to_identity() {
+        let (encoding, plan) = body_plan(Compression::Brotli, "");
+        assert_eq!(encoding, None);
+        assert_eq!(plan, BodyPlan::Decode);
+    }
+
+    #[test]
+    fn uncompressed_content_is_always_identity() {
+        let (encoding, plan) = body_plan(Compression::None, "gzip, br");
+        assert_eq!(encoding, None);
+        assert_eq!(plan, BodyPlan::Stored);
+    }
+
+    #[test]
+    fn q_zero_disables_an_encoding() {
+        let (encoding, plan) = body_plan(Compression::Brotli, "br;q=0, gzip");
+        assert_eq!(encoding, Some("gzip"));
+        assert_eq!(plan, BodyPlan::Transcode(Compression::Gzip));
+    }
 }
