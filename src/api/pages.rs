@@ -266,20 +266,12 @@ pub async fn delete_page(
         .await?
         .or_not_found("page")?;
 
-    sqlx::query(
-        "DELETE FROM capture_resource
-         WHERE page_capture_id     IN (SELECT id FROM capture WHERE url_id = ?)
-            OR resource_capture_id IN (SELECT id FROM capture WHERE url_id = ?)",
-    )
-    .bind(id)
-    .bind(id)
-    .execute(&mut *tx)
-    .await?;
-    // other pages' captures that redirected to this URL keep existing, minus the link
+    // Other pages' captures that redirected to this URL keep existing, minus the link.
     sqlx::query("UPDATE capture SET redirect_url_id = NULL WHERE redirect_url_id = ?")
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    // capture_asset rows cascade from capture; the ref_count triggers fire too.
     sqlx::query("DELETE FROM capture WHERE url_id = ?")
         .bind(id)
         .execute(&mut *tx)

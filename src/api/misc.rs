@@ -27,6 +27,9 @@ pub async fn stats(State(pool): State<SqlitePool>) -> Result<ApiJson<Stats>> {
 // 2. deletes the files those rows pointed at
 // 3. removes abandoned temp files from crashed writes
 //
+// ref_count is maintained by triggers on capture/capture_asset, so it covers the
+// document, screenshot and every saved sub-resource.
+//
 // DB first, files second: a crash in between leaves an orphan file, never a row pointing at nothing.
 pub async fn gc_content(
     State(pool): State<SqlitePool>,
@@ -35,9 +38,7 @@ pub async fn gc_content(
     let refs: Vec<Option<String>> = sqlx::query_scalar(
         "DELETE FROM content
          WHERE created_at < unixepoch() - 3600
-           AND id NOT IN (SELECT content_id FROM capture WHERE content_id IS NOT NULL
-                          UNION
-                          SELECT screenshot_content_id FROM capture WHERE screenshot_content_id IS NOT NULL)
+           AND ref_count <= 0
          RETURNING storage_ref",
     )
     .fetch_all(&pool)

@@ -8,6 +8,7 @@ struct Totals {
     pages: i64,
     captures: i64,
     content_items: i64,
+    assets: i64,
     tags: i64,
     pendings: i64,
     stored_bytes: i64,
@@ -21,6 +22,7 @@ pub struct Stats {
     pub pages: i64,
     pub captures: i64,
     pub content_items: i64,
+    pub assets: i64,
     pub tags: i64,
     pub pendings: i64,
     /// bytes actually on disk (compressed, deduplicated)
@@ -40,12 +42,14 @@ pub async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
            (SELECT COUNT(*) FROM url)     AS pages,
            (SELECT COUNT(*) FROM capture) AS captures,
            (SELECT COUNT(*) FROM content) AS content_items,
+           (SELECT COUNT(*) FROM capture_asset) AS assets,
            (SELECT COUNT(*) FROM tag) AS tags,
            (SELECT COUNT(*) FROM pending) AS pendings,
            COALESCE((SELECT SUM(size_stored)   FROM content), 0) AS stored_bytes,
            COALESCE((SELECT SUM(size_original) FROM content), 0) AS unique_original_bytes,
            COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.content_id), 0)
          + COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.screenshot_content_id), 0)
+         + COALESCE((SELECT SUM(ct.size_original) FROM capture_asset ca JOIN content ct ON ct.id = ca.content_id), 0)
            AS logical_bytes",
     )
     .fetch_one(pool)
@@ -65,6 +69,7 @@ pub async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
         pages: t.pages,
         captures: t.captures,
         content_items: t.content_items,
+        assets: t.assets,
         tags: t.tags,
         pendings: t.pendings,
         stored_bytes: t.stored_bytes,

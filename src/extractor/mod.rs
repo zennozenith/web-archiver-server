@@ -1,5 +1,4 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use std::fs;
 
 pub mod html;
 

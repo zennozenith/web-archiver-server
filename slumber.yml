@@ -52,6 +52,28 @@ requests:
         title: "Example Page"
         tags: '["archived", "docs"]'
         pending_id: "1"
+        save-assets: "true"
+
+  # ── Captures / saved sub-resources ────────────────────────────────────────
+  get_capture:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/captures/1"
+
+  list_capture_assets:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/captures/1/assets"
+
+  get_capture_asset:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/captures/1/assets/1"
+
+  list_latest_page_assets:
+    $ref: "#/.base_request"
+    method: GET
+    url: "{{ host }}/pages/1/latest/assets"
 
   # ── Pending Queue ─────────────────────────────────────────────────────────
   list_pending:

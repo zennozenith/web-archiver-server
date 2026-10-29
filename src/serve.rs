@@ -19,7 +19,7 @@ use crate::{compress, db::helpers::to_hex};
 const CSP: &str = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
 
 pub const COLS: &str = "ct.id, ct.hash, ct.mime_type, ct.size_original, ct.size_stored, \
-                        ct.compression_id, ct.data, ct.storage_ref, ct.created_at";
+                        ct.compression_id, ct.data, ct.storage_ref, ct.ref_count, ct.created_at";
 
 fn accepts(header: &str, coding: &str) -> bool {
     header.split(',').any(|part| {

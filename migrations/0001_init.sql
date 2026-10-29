@@ -17,9 +17,14 @@ CREATE TABLE content (
     compression_id  INTEGER NOT NULL DEFAULT 0 REFERENCES compression(id),
     data            BLOB,                      -- NULL if stored externally
     storage_ref     TEXT,                      -- e.g. S3/R2 key for large files
+    -- Number of capture rows and capture_asset rows pointing at this blob.
+    -- Maintained by the triggers at the bottom of this file. Used by the GC:
+    -- ref_count = 0 means the blob is unreferenced and may be deleted.
+    ref_count       INTEGER NOT NULL DEFAULT 0,
     created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
     CHECK (data IS NOT NULL OR storage_ref IS NOT NULL)
 );
+CREATE INDEX idx_content_ref_count ON content(ref_count);
 
 -- Normalized URLs
 CREATE TABLE url (
@@ -62,12 +67,18 @@ CREATE TABLE crawl (
     finished_at INTEGER
 );
 
--- Optional: which sub-resources (css, js, images) a page capture used
-CREATE TABLE capture_resource (
-    page_capture_id     INTEGER NOT NULL REFERENCES capture(id) ON DELETE CASCADE,
-    resource_capture_id INTEGER NOT NULL REFERENCES capture(id),
-    PRIMARY KEY (page_capture_id, resource_capture_id)
+-- Sub-resources (stylesheets, scripts, images, fonts, media, frames, ...)
+-- referenced by an archived document. One row per (capture, URL) so the
+-- original URL is preserved; content_id points at the deduplicated blob.
+CREATE TABLE capture_asset (
+    capture_id  INTEGER NOT NULL REFERENCES capture(id) ON DELETE CASCADE,
+    content_id  INTEGER NOT NULL REFERENCES content(id),
+    url         TEXT NOT NULL,                 -- absolute URL as referenced by the document
+    kind        TEXT NOT NULL,                 -- stylesheet | script | image | font | media | frame | manifest | icon | other
+    status_code INTEGER,                       -- HTTP status of the fetch, if any
+    PRIMARY KEY (capture_id, url)
 );
+CREATE INDEX idx_capture_asset_content ON capture_asset(content_id);
 
 -- Tags: global, shared across all pages and versions
 CREATE TABLE tag (
@@ -105,3 +116,55 @@ CREATE TABLE pending_tag (
     PRIMARY KEY (pending_id, tag_id)
 );
 
+-- ── content.ref_count maintenance ───────────────────────────────────────────
+-- Kept in SQL rather than in every Rust call site, so deleting a page/capture
+-- through any path keeps the counts correct.
+
+CREATE TRIGGER capture_content_ref_inc_insert
+AFTER INSERT ON capture
+WHEN NEW.content_id IS NOT NULL
+BEGIN
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.content_id;
+END;
+
+CREATE TRIGGER capture_screenshot_ref_inc_insert
+AFTER INSERT ON capture
+WHEN NEW.screenshot_content_id IS NOT NULL
+BEGIN
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.screenshot_content_id;
+END;
+
+CREATE TRIGGER capture_content_ref_update
+AFTER UPDATE OF content_id, screenshot_content_id ON capture
+BEGIN
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.content_id;
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.content_id;
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.screenshot_content_id;
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.screenshot_content_id;
+END;
+
+CREATE TRIGGER capture_content_ref_dec_delete
+AFTER DELETE ON capture
+BEGIN
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.content_id;
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.screenshot_content_id;
+END;
+
+CREATE TRIGGER capture_asset_ref_inc_insert
+AFTER INSERT ON capture_asset
+BEGIN
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.content_id;
+END;
+
+CREATE TRIGGER capture_asset_ref_update
+AFTER UPDATE OF content_id ON capture_asset
+BEGIN
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.content_id;
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.content_id;
+END;
+
+CREATE TRIGGER capture_asset_ref_dec_delete
+AFTER DELETE ON capture_asset
+BEGIN
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.content_id;
+END;

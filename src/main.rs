@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{Router, extract::FromRef};
 use sqlx::SqlitePool;
@@ -33,6 +34,8 @@ pub struct AppState {
     pub db: SqlitePool,
     pub token: Arc<str>,
     pub store: BlobStore,
+    /// Shared client for fetching archived sub-resources.
+    pub http: reqwest::Client,
 }
 
 impl FromRef<AppState> for SqlitePool {
@@ -44,6 +47,12 @@ impl FromRef<AppState> for SqlitePool {
 impl FromRef<AppState> for BlobStore {
     fn from_ref(app_state: &AppState) -> BlobStore {
         app_state.store.clone()
+    }
+}
+
+impl FromRef<AppState> for reqwest::Client {
+    fn from_ref(app_state: &AppState) -> reqwest::Client {
+        app_state.http.clone()
     }
 }
 
@@ -66,10 +75,22 @@ async fn main() {
         .await
         .expect("Unable to create database");
 
+    let http = reqwest::Client::builder()
+        .user_agent(concat!(
+            "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0 ",
+            "web-archiver/",
+            env!("CARGO_PKG_VERSION")
+        ))
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .expect("Unable to create HTTP client");
+
     let state = AppState {
         db,
         token: Arc::from("test"),
         store,
+        http,
     };
 
     let app = app(state);

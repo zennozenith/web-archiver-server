@@ -86,6 +86,8 @@ pub struct ArchiveUpload {
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub pending_id: Option<i64>,
+    /// `save-assets=false` skips fetching sub-resources. Defaults to true.
+    pub save_assets: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -120,6 +122,7 @@ pub struct ArchiveResponse {
     pub page_id: i64,
     pub version: i64,
     pub deduplicated: Dedup,
+    pub assets: AssetSummary,
 }
 
 #[derive(Debug, Serialize)]
@@ -127,6 +130,19 @@ pub struct ArchiveResponse {
 pub struct Dedup {
     pub html: bool,
     pub screenshot: Option<bool>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetSummary {
+    /// Asset rows written for this capture.
+    pub saved: usize,
+    /// Saved assets whose bytes already existed in `content`.
+    pub deduplicated: usize,
+    /// Fetch or storage failures (the archive still succeeds).
+    pub failed: usize,
+    /// Resources that were deliberately not fetched (empty, over the cap, ...).
+    pub skipped: usize,
 }
 
 #[derive(Debug, Serialize)]

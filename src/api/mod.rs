@@ -1,8 +1,12 @@
 //! ── Archive (create a new version) ──────────────────────────────────────────
 //!   POST   /api/archive                  multipart/form-data: html, screenshot, screenshot-format
 //!                                        ("png"|"jpeg"), metadata (JSON), + optional url, title,
-//!                                        tags (JSON array of names), pending_id
-//!                                        → 201 { capture_id, page_id, version, deduplicated: {html, screenshot} }
+//!                                        tags (JSON array of names), pending_id, save-assets
+//!                                        (default true; fetch and store the document's
+//!                                        stylesheets/scripts/images/... as content blobs)
+//!                                        → 201 { capture_id, page_id, version,
+//!                                                deduplicated: {html, screenshot},
+//!                                                assets: {saved, deduplicated, failed, skipped} }
 //!
 //! ── Pending queue ───────────────────────────────────────────────────────────
 //!   GET    /api/pending                  ?status=queued|in_progress|failed &limit &cursor
@@ -30,8 +34,11 @@
 //!   DELETE /api/captures/:id
 //!   GET    /api/captures/:id/html        archived document (see serving notes)
 //!   GET    /api/captures/:id/screenshot  image with the stored format's Content-Type
+//!   GET    /api/captures/:id/assets      sub-resources saved with this capture
+//!   GET    /api/captures/:id/assets/:content_id
 //!   GET    /api/pages/:id/latest/html    302 → latest capture's html
 //!   GET    /api/pages/:id/latest/screenshot
+//!   GET    /api/pages/:id/latest/assets
 //!
 //! ── Content (raw deduplicated blobs) ────────────────────────────────────────
 //!   GET    /api/content/:hash            hex blake3; immutable
@@ -50,6 +57,7 @@
 //!   GET    /api/health
 
 mod archive;
+mod assets;
 mod captures;
 mod content;
 mod misc;
@@ -60,7 +68,7 @@ mod tag;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request, State},
-    middleware::{Next, from_fn_with_state},
+    middleware::Next,
     response::Response,
     routing::{delete, get, post},
 };
@@ -71,6 +79,7 @@ use crate::{
     error::{AppError, Result},
 };
 use archive::*;
+use assets::*;
 use captures::*;
 use content::*;
 use misc::*;
@@ -129,6 +138,9 @@ pub fn router(state: AppState) -> Router {
         .route("/captures/{id}", get(get_capture).delete(delete_capture))
         .route("/captures/{id}/html", get(capture_html))
         .route("/captures/{id}/screenshot", get(capture_screenshot))
+        .route("/captures/{id}/assets", get(capture_assets))
+        .route("/captures/{id}/assets/{content_id}", get(capture_asset))
+        .route("/pages/{id}/latest/assets", get(latest_assets))
         // content (explicit HEAD handler avoids loading the blob)
         .route("/content/{hash}", get(get_content).head(head_content))
         // tags

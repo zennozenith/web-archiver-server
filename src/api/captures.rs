@@ -40,6 +40,7 @@ struct CaptureDetailRow {
     screenshot_hash: Option<String>,
     screenshot_size: Option<i64>,
     screenshot_mime: Option<String>,
+    asset_count: i64,
 }
 
 #[derive(Serialize)]
@@ -70,6 +71,7 @@ pub struct CaptureDetail {
     metadata: Option<Value>,
     html: Option<Blob>,
     screenshot: Option<Blob>,
+    asset_count: i64,
 }
 
 fn json(s: Option<String>) -> Option<Value> {
@@ -92,7 +94,8 @@ pub async fn get_capture(
                 NULLIF(lower(hex(h.hash)), '') AS html_hash,
                 h.size_original AS html_size, h.size_stored AS html_stored,
                 NULLIF(lower(hex(s.hash)), '') AS screenshot_hash,
-                s.size_original AS screenshot_size, s.mime_type AS screenshot_mime
+                s.size_original AS screenshot_size, s.mime_type AS screenshot_mime,
+                (SELECT COUNT(*) FROM capture_asset ca WHERE ca.capture_id = c.id) AS asset_count
          FROM capture c
          JOIN url u ON u.id = c.url_id
          LEFT JOIN url ru ON ru.id = c.redirect_url_id
@@ -135,6 +138,7 @@ pub async fn get_capture(
         metadata: json(r.metadata),
         html,
         screenshot,
+        asset_count: r.asset_count,
     }))
 }
 
@@ -144,13 +148,6 @@ pub async fn delete_capture(
     ApiPath(id): ApiPath<i64>,
 ) -> Result<StatusCode> {
     let mut tx = pool.begin().await?;
-    sqlx::query(
-        "DELETE FROM capture_resource WHERE page_capture_id = ? OR resource_capture_id = ?",
-    )
-    .bind(id)
-    .bind(id)
-    .execute(&mut *tx)
-    .await?;
     let n = sqlx::query("DELETE FROM capture WHERE id = ?")
         .bind(id)
         .execute(&mut *tx)

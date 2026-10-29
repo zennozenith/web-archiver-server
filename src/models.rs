@@ -41,6 +41,7 @@ pub struct ContentRow {
     pub compression_id: Compression,
     pub data: Option<Vec<u8>>,
     pub storage_ref: Option<String>,
+    pub ref_count: i64,
     pub created_at: i64,
 }
 
