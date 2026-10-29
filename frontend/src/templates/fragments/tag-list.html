@@ -1,0 +1,6 @@
+{% if tags.is_empty() %}
+<p class="text-sm text-base-content/50 py-2">No tags yet.</p>
+{% endif %}
+{% for tag in tags %}
+{% include "fragments/tag-row.html" %}
+{% endfor %}

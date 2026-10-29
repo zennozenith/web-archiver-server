@@ -6,6 +6,7 @@ use crate::config::DatabaseSettings;
 
 pub mod archive;
 pub mod helpers;
+pub mod pages;
 pub mod pending;
 pub mod stats;
 pub mod store;

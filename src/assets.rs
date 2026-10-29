@@ -1,7 +1,32 @@
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
 use axum::{Router, body::Body, extract::Path, response::Response, routing::get};
 use http::{StatusCode, header};
 use rust_embed::RustEmbed;
+use serde::Deserialize;
 use tower_http::services::ServeDir;
+
+#[derive(Deserialize)]
+struct ManifestEntry {
+    file: String,
+}
+
+/// Vite's manifest is written by `build.rs` before Rust compiles, so embedding
+/// it is safe and lets templates reference content-addressed files.
+fn manifest() -> &'static HashMap<String, ManifestEntry> {
+    static MANIFEST: OnceLock<HashMap<String, ManifestEntry>> = OnceLock::new();
+    MANIFEST.get_or_init(|| {
+        serde_json::from_str(include_str!("../static/vite/.vite/manifest.json")).unwrap_or_default()
+    })
+}
+
+/// Resolve a Vite entry (e.g. `src/app.ts`) to its built `/static/vite/...` URL.
+pub fn vite_asset(entry: &str) -> Option<String> {
+    manifest()
+        .get(entry)
+        .map(|item| format!("/static/vite/{}", item.file))
+}
 
 trait ServeEmbed: RustEmbed {
     fn serve_embedded(path: &str) -> Response {

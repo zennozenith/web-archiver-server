@@ -184,3 +184,8 @@ h2,
 .font-serif {
   font-family: var(--serif);
 }
+
+/* Alpine: hide elements until the component is initialized. */
+[x-cloak] {
+  display: none !important;
+}

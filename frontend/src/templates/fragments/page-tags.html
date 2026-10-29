@@ -1,0 +1,17 @@
+<div id="page-tags-{{ page_id }}" class="flex flex-wrap gap-1.5 items-center">
+  {% for tag in tags %}
+  <span class="badge badge-outline badge-sm rounded-full gap-1">
+    {{ tag.name }}
+    <button hx-delete="/pages/{{ page_id }}/tags/{{ tag.id }}" hx-swap="none"
+      hx-confirm="Remove this tag?" title="Remove tag"
+      class="cursor-pointer text-base-content/40 hover:text-error">×</button>
+  </span>
+  {% endfor %}
+
+  <form hx-post="/pages/{{ page_id }}/tags" hx-swap="none"
+    hx-on:htmx:after:request="this.reset()" class="flex items-center gap-1">
+    <input type="text" name="name" required class="input input-xs w-32" placeholder="add tag…"
+      aria-label="Add tag" />
+    <button class="btn btn-xs btn-ghost border border-base-300" type="submit">+</button>
+  </form>
+</div>

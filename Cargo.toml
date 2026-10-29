@@ -2,6 +2,8 @@
 name = "web-archiver"
 version = "0.0.0"
 edition = "2024"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 askama = "0.16.1"
