@@ -1,5 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
+pub mod css;
 pub mod html;
 
 pub fn data_uri_to_bytes(uri: &str) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {

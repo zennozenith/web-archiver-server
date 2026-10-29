@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::future::Future;
+use std::pin::Pin;
 
 use axum::{
     extract::{
@@ -21,17 +23,19 @@ use crate::{
     dto::{ArchiveResponse, ArchiveUpload, AssetSummary, Dedup, ScreenshotFormat},
     error::{AppError, Result},
     extract::ApiJson,
-    extractor::html,
+    extractor::{css, html},
     tag::clean_tags,
     url_canon::canonicalize_url,
 };
 
-/// Upper bound on sub-resources fetched per archive request.
+/// Upper bound on sub-resources fetched per archive request (CSS resources included).
 const MAX_ASSETS: usize = 100;
 /// Concurrent fetches. Kept modest so one archive cannot saturate the network.
 const ASSET_CONCURRENCY: usize = 8;
 /// Total fetched bytes per archive, on top of the per-resource limit.
 const MAX_ASSET_TOTAL_BYTES: usize = 128 * 1024 * 1024;
+/// `@import` chains deeper than this are left unrewritten.
+const MAX_CSS_DEPTH: u8 = 4;
 
 fn unprocessable(code: &'static str, message: impl Into<String>) -> AppError {
     AppError::Unprocessable {
@@ -85,6 +89,195 @@ struct PreparedAsset {
     hash: String,
 }
 
+/// Classify by what the server actually returned, falling back to the URL
+/// extension and then to the hint from the referring HTML/CSS.
+fn refine_kind(suggested: html::AssetKind, content_type: &str, url: &url::Url) -> html::AssetKind {
+    let ct = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+
+    if ct == "text/css" {
+        html::AssetKind::Stylesheet
+    } else if ct.starts_with("font/") || ct.contains("font") {
+        html::AssetKind::Font
+    } else if ct.starts_with("image/") {
+        html::AssetKind::Image
+    } else if ct.starts_with("audio/") || ct.starts_with("video/") {
+        html::AssetKind::Media
+    } else {
+        kind_from_extension(url).unwrap_or(suggested)
+    }
+}
+
+fn kind_from_extension(url: &url::Url) -> Option<html::AssetKind> {
+    let path = url.path().to_ascii_lowercase();
+    let ext = path.rsplit('.').next()?;
+    Some(match ext {
+        "css" => html::AssetKind::Stylesheet,
+        "woff" | "woff2" | "ttf" | "otf" | "eot" => html::AssetKind::Font,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "avif" | "ico" | "bmp" => {
+            html::AssetKind::Image
+        }
+        "mp4" | "webm" | "ogg" | "mp3" | "wav" | "m4a" | "m4v" | "mov" => html::AssetKind::Media,
+        "js" | "mjs" => html::AssetKind::Script,
+        _ => return None,
+    })
+}
+
+/// State shared by the top-level fetch loop and the CSS recursion.
+struct AssetCollector<'a> {
+    pool: &'a SqlitePool,
+    store: &'a BlobStore,
+    client: &'a reqwest::Client,
+    summary: AssetSummary,
+    total_bytes: usize,
+    seen: HashSet<String>,
+    saved: Vec<PreparedAsset>,
+}
+
+impl AssetCollector<'_> {
+    /// Store one fetched resource, rewriting stylesheets first.
+    ///
+    /// Boxed because stylesheets recurse back into this method for their own
+    /// resources (`@import`, fonts, images) and async functions cannot be
+    /// recursive otherwise.
+    fn store<'b>(
+        &'b mut self,
+        fetched: downloader::FetchedResource,
+        url: url::Url,
+        kind: html::AssetKind,
+        depth: u8,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'b>> {
+        Box::pin(async move {
+            let key = url.to_string();
+            // A nested reference may point at a resource the HTML already listed.
+            if self.saved.iter().any(|asset| asset.url == key) {
+                return Ok(());
+            }
+            if self.saved.len() >= MAX_ASSETS {
+                self.summary.skipped += 1;
+                return Ok(());
+            }
+            if self.total_bytes + fetched.bytes.len() > MAX_ASSET_TOTAL_BYTES {
+                tracing::debug!(url = %key, "asset budget exhausted");
+                self.summary.skipped += 1;
+                return Ok(());
+            }
+            self.total_bytes += fetched.bytes.len();
+
+            let downloader::FetchedResource {
+                final_url,
+                status,
+                content_type,
+                bytes,
+            } = fetched;
+            let kind = refine_kind(kind, &content_type, &url);
+            tracing::trace!(
+                url = %key,
+                final_url = %final_url,
+                bytes = bytes.len(),
+                kind = kind.as_str(),
+                "asset fetched"
+            );
+
+            let mut bytes = bytes;
+            if kind == html::AssetKind::Stylesheet && depth < MAX_CSS_DEPTH {
+                if let Some(rewritten) = self.rewrite_css(&bytes, &final_url, depth).await? {
+                    bytes = rewritten.into_bytes();
+                }
+            }
+
+            let blob = match prepare_blob(self.pool, self.store, bytes, &content_type).await {
+                Ok(blob) => blob,
+                Err(e) => {
+                    tracing::warn!(url = %key, error = ?e, "asset storage failed");
+                    self.summary.failed += 1;
+                    return Ok(());
+                }
+            };
+
+            let content_id = {
+                let mut conn = self.pool.acquire().await?;
+                insert_blob(&mut conn, &blob).await?
+            };
+
+            self.summary.saved += 1;
+            if blob.existed {
+                self.summary.deduplicated += 1;
+            }
+            self.saved.push(PreparedAsset {
+                url: key,
+                kind: kind.as_str(),
+                status_code: Some(status as i64),
+                content_id,
+                hash: to_hex(&blob.hash),
+            });
+            Ok(())
+        })
+    }
+
+    /// Fetch and store whatever a stylesheet references, then rewrite its URLs.
+    async fn rewrite_css(
+        &mut self,
+        bytes: &[u8],
+        base: &url::Url,
+        depth: u8,
+    ) -> Result<Option<String>> {
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            return Ok(None);
+        };
+        let found = css::extract_resources(text, base);
+        if found.is_empty() {
+            return Ok(None);
+        }
+
+        let mut replacements = HashMap::new();
+        for resource in found {
+            let key = resource.url.to_string();
+
+            if !self.seen.insert(key.clone()) {
+                if let Some(asset) = self.saved.iter().find(|asset| asset.url == key) {
+                    replacements.insert(key, format!("/api/content/{}", asset.hash));
+                }
+                continue;
+            }
+
+            if self.saved.len() >= MAX_ASSETS {
+                self.summary.skipped += 1;
+                continue;
+            }
+
+            match downloader::fetch(
+                self.client,
+                resource.url.clone(),
+                downloader::MAX_ASSET_BYTES,
+            )
+            .await
+            {
+                Ok(fetched) => {
+                    self.store(fetched, resource.url, resource.kind, depth + 1)
+                        .await?;
+                    if let Some(asset) = self.saved.iter().find(|asset| asset.url == key) {
+                        replacements.insert(key, format!("/api/content/{}", asset.hash));
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(url = %key, error = %e, "css resource fetch failed");
+                    self.summary.failed += 1;
+                }
+            }
+        }
+
+        if replacements.is_empty() {
+            return Ok(None);
+        }
+        Ok(css::rewrite_resources(text, base, &replacements))
+    }
+}
+
 /// Parse, fetch and store the document's sub-resources.
 ///
 /// Content rows are inserted before the capture transaction on purpose: network
@@ -102,12 +295,18 @@ async fn collect_assets(
     let found_count = found.len();
     let resources: Vec<_> = found.into_iter().take(MAX_ASSETS).collect();
 
-    let mut summary = AssetSummary {
-        skipped: found_count - resources.len(),
-        ..AssetSummary::default()
+    let mut collector = AssetCollector {
+        pool,
+        store,
+        client,
+        summary: AssetSummary {
+            skipped: found_count - resources.len(),
+            ..AssetSummary::default()
+        },
+        total_bytes: 0,
+        seen: HashSet::new(),
+        saved: Vec::with_capacity(resources.len()),
     };
-    let mut saved = Vec::with_capacity(resources.len());
-    let mut total_bytes = 0usize;
 
     let mut fetches = stream::iter(resources)
         .map(|resource| {
@@ -122,57 +321,21 @@ async fn collect_assets(
         .buffer_unordered(ASSET_CONCURRENCY);
 
     while let Some((resource, fetched)) = fetches.next().await {
-        let fetched = match fetched {
-            Ok(fetched) => fetched,
+        match fetched {
+            Ok(fetched) => {
+                collector.seen.insert(resource.url.to_string());
+                collector
+                    .store(fetched, resource.url, resource.kind, 0)
+                    .await?;
+            }
             Err(e) => {
                 tracing::debug!(url = %resource.url, error = %e, "asset fetch failed");
-                summary.failed += 1;
-                continue;
+                collector.summary.failed += 1;
             }
-        };
-
-        if total_bytes + fetched.bytes.len() > MAX_ASSET_TOTAL_BYTES {
-            tracing::debug!(url = %resource.url, "asset budget exhausted");
-            summary.skipped += 1;
-            continue;
         }
-        total_bytes += fetched.bytes.len();
-        tracing::trace!(
-            url = %resource.url,
-            final_url = %fetched.final_url,
-            bytes = fetched.bytes.len(),
-            kind = resource.kind.as_str(),
-            "asset fetched"
-        );
-
-        let blob = match prepare_blob(pool, store, fetched.bytes, &fetched.content_type).await {
-            Ok(blob) => blob,
-            Err(e) => {
-                tracing::warn!(url = %resource.url, error = ?e, "asset storage failed");
-                summary.failed += 1;
-                continue;
-            }
-        };
-
-        let content_id = {
-            let mut conn = pool.acquire().await?;
-            insert_blob(&mut conn, &blob).await?
-        };
-
-        summary.saved += 1;
-        if blob.existed {
-            summary.deduplicated += 1;
-        }
-        saved.push(PreparedAsset {
-            url: resource.url.to_string(),
-            kind: resource.kind.as_str(),
-            status_code: Some(fetched.status as i64),
-            content_id,
-            hash: to_hex(&blob.hash),
-        });
     }
 
-    Ok((saved, summary))
+    Ok((collector.saved, collector.summary))
 }
 
 async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {

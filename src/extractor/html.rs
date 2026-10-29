@@ -54,7 +54,7 @@ fn sel(css: &str) -> Selector {
 ///
 /// Fragments are dropped: `sprite.svg#icon` and `sprite.svg#other` are the same
 /// bytes and would otherwise create two content rows / asset entries.
-fn resolve(base: &Url, raw: &str) -> Option<Url> {
+pub(super) fn resolve(base: &Url, raw: &str) -> Option<Url> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;

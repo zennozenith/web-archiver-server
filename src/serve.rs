@@ -125,6 +125,10 @@ pub async fn serve_content_with_csp(
             .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
     );
     h.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    // Archived pages are often embedded or read from another origin (extension
+    // UI, local tooling). Blobs are immutable and unauthenticated, so any origin
+    // may read them; fonts in particular need this to load cross-origin.
+    h.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
     h.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(csp));
     if let Some(e) = encoding {
         h.insert(CONTENT_ENCODING, HeaderValue::from_static(e));

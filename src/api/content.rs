@@ -72,6 +72,7 @@ pub async fn head_content(
         HeaderValue::from_str(&etag_for(&hash)).map_err(|e| AppError::Internal(Box::new(e)))?,
     );
     h.insert(CONTENT_LENGTH, HeaderValue::from(size as u64));
+    h.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
     if let Some(m) = mime.and_then(|m| HeaderValue::from_str(&m).ok()) {
         h.insert(CONTENT_TYPE, m);
     }
