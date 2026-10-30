@@ -30,7 +30,7 @@ mod time;
 mod url_canon;
 mod web;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     pub db: SqlitePool,
     pub token: Arc<str>,
@@ -40,19 +40,19 @@ pub struct AppState {
 }
 
 impl FromRef<AppState> for SqlitePool {
-    fn from_ref(app_state: &AppState) -> SqlitePool {
+    fn from_ref(app_state: &AppState) -> Self {
         app_state.db.clone()
     }
 }
 
 impl FromRef<AppState> for BlobStore {
-    fn from_ref(app_state: &AppState) -> BlobStore {
+    fn from_ref(app_state: &AppState) -> Self {
         app_state.store.clone()
     }
 }
 
 impl FromRef<AppState> for reqwest::Client {
-    fn from_ref(app_state: &AppState) -> reqwest::Client {
+    fn from_ref(app_state: &AppState) -> Self {
         app_state.http.clone()
     }
 }
@@ -96,7 +96,7 @@ async fn main() {
 
     let app = app(state);
 
-    dbg!(&settings);
+    tracing::debug!("{:#?}", &settings);
 
     let listener = tokio::net::TcpListener::bind(format!(
         "{}:{}",
@@ -114,14 +114,13 @@ async fn main() {
             .to_string()
     );
 
-    let _ = axum::serve(listener, app).await;
+    let _err = axum::serve(listener, app).await;
 }
 
 fn app(state: AppState) -> Router {
     Router::new()
         .nest("/api", api::router(state.clone()))
         .merge(web::router(state))
-        // .with_state(state)
         .merge(assets::serve_dir())
         .layer(TraceLayer::new_for_http())
 }

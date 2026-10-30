@@ -18,7 +18,7 @@ struct Totals {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Stats {
+pub(crate) struct Stats {
     pub pages: i64,
     pub captures: i64,
     pub content_items: i64,
@@ -36,7 +36,7 @@ pub struct Stats {
 }
 
 // GET /api/stats
-pub async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
+pub(crate) async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
     let t: Totals = sqlx::query_as(
         "SELECT
            (SELECT COUNT(*) FROM url)     AS pages,
@@ -59,7 +59,7 @@ pub async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
 
     let mut queue: BTreeMap<String, i64> = ["queued", "in_progress", "failed"]
         .into_iter()
-        .map(|s| (s.to_string(), 0))
+        .map(|s| (s.to_owned(), 0))
         .collect();
     let rows: Vec<(String, i64)> =
         sqlx::query_as("SELECT status, COUNT(*) FROM pending GROUP BY status")
@@ -77,7 +77,7 @@ pub async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
         stored_bytes: t.stored_bytes,
         unique_original_bytes: t.unique_original_bytes,
         logical_bytes: t.logical_bytes,
-        saved_bytes: t.logical_bytes - t.stored_bytes,
+        saved_bytes: t.logical_bytes.saturating_sub(t.stored_bytes),
         queue,
     })
 }

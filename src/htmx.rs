@@ -1,3 +1,8 @@
+#![expect(
+    dead_code,
+    reason = "htmx request/response helpers cover the full protocol; not every variant is used yet"
+)]
+
 use std::convert::Infallible;
 
 use askama::Template;
@@ -12,7 +17,7 @@ use crate::error::AppError;
 // ───────────────────────── Request side ─────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RequestType {
+pub(crate) enum RequestType {
     /// Target is `body`, or `hx-select` is used: send a whole page.
     Full,
     /// Target is any other element: send a fragment.
@@ -21,8 +26,12 @@ pub enum RequestType {
 
 /// Parsed htmx 4 request headers. Always extracts successfully, so it is
 /// safe to use on routes that serve both normal browser and htmx requests.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "mirrors the boolean htmx request headers"
+)]
 #[derive(Debug, Clone, Default)]
-pub struct HtmxRequest {
+pub(crate) struct HtmxRequest {
     pub is_htmx: bool,
     pub boosted: bool,
     pub history_restore: bool,
@@ -41,7 +50,7 @@ fn hdr_true(h: &HeaderMap, name: &str) -> bool {
 }
 
 impl HtmxRequest {
-    pub fn from_headers(h: &HeaderMap) -> Self {
+    pub(crate) fn from_headers(h: &HeaderMap) -> Self {
         Self {
             is_htmx: hdr_true(h, "hx-request"),
             boosted: hdr_true(h, "hx-boosted"),
@@ -59,13 +68,13 @@ impl HtmxRequest {
 
     /// True only when a fragment should be returned. A history restore needs
     /// the full page even though `HX-Request` is set.
-    pub fn wants_partial(&self) -> bool {
+    pub(crate) fn wants_partial(&self) -> bool {
         self.is_htmx && !self.history_restore && self.request_type == Some(RequestType::Partial)
     }
 
     /// Pick the right response variant. Closures are lazy, so only the
     /// needed template is rendered.
-    pub fn render(
+    pub(crate) fn render(
         &self,
         full: impl FnOnce() -> String,
         partial: impl FnOnce() -> String,
@@ -78,7 +87,7 @@ impl HtmxRequest {
     }
 
     /// Choose full page or fragment. Only the chosen template is built and rendered.
-    pub fn render_tpl<F: Template, P: Template>(
+    pub(crate) fn render_tpl<F: Template, P: Template>(
         &self,
         full: impl FnOnce() -> F,
         partial: impl FnOnce() -> P,
@@ -94,8 +103,11 @@ impl HtmxRequest {
 impl<S: Send + Sync> FromRequestParts<S> for HtmxRequest {
     type Rejection = Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        Ok(Self::from_headers(&parts.headers))
+    fn from_request_parts(
+        parts: &mut Parts,
+        _: &S,
+    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(Ok(Self::from_headers(&parts.headers)))
     }
 }
 
@@ -103,21 +115,21 @@ impl<S: Send + Sync> FromRequestParts<S> for HtmxRequest {
 
 /// A single `<hx-partial>` element: content swapped into its own target.
 #[derive(Debug, Clone)]
-pub struct PartialSwap {
+pub(crate) struct PartialSwap {
     pub target: String,       // CSS selector, e.g. "#cart-count"
     pub swap: Option<String>, // e.g. "innerHTML", "outerHTML", "beforeend"
     pub html: String,
 }
 
 impl PartialSwap {
-    pub fn new(target: impl Into<String>, html: impl Into<String>) -> Self {
+    pub(crate) fn new(target: impl Into<String>, html: impl Into<String>) -> Self {
         Self {
             target: target.into(),
             swap: None,
             html: html.into(),
         }
     }
-    pub fn swap(mut self, s: impl Into<String>) -> Self {
+    pub(crate) fn swap(mut self, s: impl Into<String>) -> Self {
         self.swap = Some(s.into());
         self
     }
@@ -126,8 +138,7 @@ impl PartialSwap {
         let swap = self
             .swap
             .as_deref()
-            .map(|s| format!(r#" hx-swap="{}""#, escape_attr(s)))
-            .unwrap_or_default();
+            .map_or_else(String::new, |s| format!(r#" hx-swap="{}""#, escape_attr(s)));
         format!(
             r#"<hx-partial hx-target="{}"{}>{}</hx-partial>"#,
             escape_attr(&self.target),
@@ -136,7 +147,7 @@ impl PartialSwap {
         )
     }
 
-    pub fn tpl<T: Template>(target: impl Into<String>, t: &T) -> Result<Self, AppError> {
+    pub(crate) fn tpl<T: Template>(target: impl Into<String>, t: &T) -> Result<Self, AppError> {
         Ok(Self::new(target, t.render()?))
     }
 }
@@ -149,7 +160,7 @@ fn escape_attr(s: &str) -> String {
 
 /// Optional htmx response headers, attachable to any variant.
 #[derive(Debug, Clone, Default)]
-pub struct HxHeaders {
+pub(crate) struct HxHeaders {
     pub retarget: Option<String>,
     pub reswap: Option<String>,
     pub reselect: Option<String>,
@@ -161,30 +172,30 @@ pub struct HxHeaders {
 }
 
 impl HxHeaders {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
-    pub fn retarget(mut self, v: impl Into<String>) -> Self {
+    pub(crate) fn retarget(mut self, v: impl Into<String>) -> Self {
         self.retarget = Some(v.into());
         self
     }
-    pub fn reswap(mut self, v: impl Into<String>) -> Self {
+    pub(crate) fn reswap(mut self, v: impl Into<String>) -> Self {
         self.reswap = Some(v.into());
         self
     }
-    pub fn reselect(mut self, v: impl Into<String>) -> Self {
+    pub(crate) fn reselect(mut self, v: impl Into<String>) -> Self {
         self.reselect = Some(v.into());
         self
     }
-    pub fn trigger(mut self, v: impl Into<String>) -> Self {
+    pub(crate) fn trigger(mut self, v: impl Into<String>) -> Self {
         self.trigger = Some(v.into());
         self
     }
-    pub fn push_url(mut self, v: impl Into<String>) -> Self {
+    pub(crate) fn push_url(mut self, v: impl Into<String>) -> Self {
         self.push_url = Some(v.into());
         self
     }
-    pub fn replace_url(mut self, v: impl Into<String>) -> Self {
+    pub(crate) fn replace_url(mut self, v: impl Into<String>) -> Self {
         self.replace_url = Some(v.into());
         self
     }
@@ -215,7 +226,7 @@ fn set(h: &mut HeaderMap, name: &'static str, value: &str) {
 }
 
 #[derive(Debug, Clone)]
-pub enum HtmxResponse {
+pub(crate) enum HtmxResponse {
     /// Whole document (normal navigation, boosted nav, history restore, `hx-select`).
     Full(String),
     /// One fragment for the request's target.
@@ -236,16 +247,16 @@ pub enum HtmxResponse {
 }
 
 impl HtmxResponse {
-    pub fn full(html: impl Into<String>) -> Self {
+    pub(crate) fn full(html: impl Into<String>) -> Self {
         Self::Full(html.into())
     }
-    pub fn partial(html: impl Into<String>) -> Self {
+    pub(crate) fn partial(html: impl Into<String>) -> Self {
         Self::Partial(html.into())
     }
-    pub fn partials(p: impl IntoIterator<Item = PartialSwap>) -> Self {
+    pub(crate) fn partials(p: impl IntoIterator<Item = PartialSwap>) -> Self {
         Self::Partials(p.into_iter().collect())
     }
-    pub fn error(status: StatusCode, html: impl Into<String>) -> Self {
+    pub(crate) fn error(status: StatusCode, html: impl Into<String>) -> Self {
         Self::Error {
             status,
             html: html.into(),
@@ -255,22 +266,22 @@ impl HtmxResponse {
     // ───────────────────────── Askama helpers ─────────────────────────
 
     /// Attach extra htmx headers to this response.
-    pub fn with(self, headers: HxHeaders) -> impl IntoResponse {
+    pub(crate) fn with(self, headers: HxHeaders) -> impl IntoResponse {
         let mut res = self.into_response();
         headers.apply(res.headers_mut());
         res
     }
 
-    pub fn full_tpl<T: Template>(t: &T) -> Result<Self, AppError> {
+    pub(crate) fn full_tpl<T: Template>(t: &T) -> Result<Self, AppError> {
         Ok(Self::Full(t.render()?))
     }
 
-    pub fn partial_tpl<T: Template>(t: &T) -> Result<Self, AppError> {
+    pub(crate) fn partial_tpl<T: Template>(t: &T) -> Result<Self, AppError> {
         Ok(Self::Partial(t.render()?))
     }
 
     /// Non-2xx fragment, e.g. 422 validation errors.
-    pub fn error_tpl<T: Template>(status: StatusCode, t: &T) -> Result<Self, AppError> {
+    pub(crate) fn error_tpl<T: Template>(status: StatusCode, t: &T) -> Result<Self, AppError> {
         Ok(Self::Error {
             status,
             html: t.render()?,

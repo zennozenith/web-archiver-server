@@ -13,13 +13,13 @@ use crate::url_canon::CanonicalUrl;
 const PENDING_COLS: &str = "id, url, title, status, attempts, last_error, created_at";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Inserted {
+pub(crate) enum Inserted {
     New(i64),
     Existing(i64),
 }
 
 /// Shared by create + bulk. Tags are only attached when the row is new.
-pub async fn insert_pending(
+pub(crate) async fn insert_pending(
     conn: &mut SqliteConnection,
     url: &CanonicalUrl,
     title: Option<&str>,
@@ -50,8 +50,12 @@ pub async fn insert_pending(
     Ok(Inserted::New(id))
 }
 
-/// Call once at startup: anything left in_progress belongs to a dead worker.
-pub async fn reset_in_progress(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+/// Call once at startup: anything left `in_progress` belongs to a dead worker.
+#[expect(
+    dead_code,
+    reason = "startup recovery hook for deployments with external workers"
+)]
+pub(crate) async fn reset_in_progress(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
     Ok(
         sqlx::query("UPDATE pending SET status = 'queued' WHERE status = 'in_progress'")
             .execute(pool)
@@ -61,7 +65,7 @@ pub async fn reset_in_progress(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
 }
 
 /// TODO: docs
-pub async fn pending_status(
+pub(crate) async fn pending_status(
     tx: &mut SqliteConnection,
     id: i64,
 ) -> Result<Option<PendingStatus>, sqlx::Error> {
@@ -72,7 +76,7 @@ pub async fn pending_status(
 }
 
 /// TODO: docs
-pub async fn update_pending(
+pub(crate) async fn update_pending(
     tx: &mut SqliteConnection,
     id: i64,
     title: Option<&str>,
@@ -101,13 +105,13 @@ pub async fn update_pending(
     }
     if let Some(tags) = tags {
         replace_pending_tags(&mut *tx, id, tags).await?;
-    };
+    }
 
     Ok(())
 }
 
 /// TODO: docs
-pub async fn claim_pending(pool: &SqlitePool) -> Result<Option<i64>, sqlx::Error> {
+pub(crate) async fn claim_pending(pool: &SqlitePool) -> Result<Option<i64>, sqlx::Error> {
     let id: Option<i64> = sqlx::query_scalar(
         "UPDATE pending SET status = 'in_progress'
          WHERE id = (SELECT id FROM pending WHERE status = 'queued'
@@ -121,7 +125,7 @@ pub async fn claim_pending(pool: &SqlitePool) -> Result<Option<i64>, sqlx::Error
 }
 
 /// TODO: docs
-pub async fn retry_pending(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Error> {
+pub(crate) async fn retry_pending(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Error> {
     let n = sqlx::query(
         "UPDATE pending SET status = 'queued', last_error = NULL WHERE id = ? AND status = 'failed'",
     )
@@ -134,7 +138,11 @@ pub async fn retry_pending(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Erro
 }
 
 /// TODO: docs
-pub async fn fail_pending(pool: &SqlitePool, id: i64, error: &str) -> Result<u64, sqlx::Error> {
+pub(crate) async fn fail_pending(
+    pool: &SqlitePool,
+    id: i64,
+    error: &str,
+) -> Result<u64, sqlx::Error> {
     let n = sqlx::query(
         "UPDATE pending SET status = 'failed', attempts = attempts + 1, last_error = ?
          WHERE id = ? AND status = 'in_progress'",
@@ -149,7 +157,7 @@ pub async fn fail_pending(pool: &SqlitePool, id: i64, error: &str) -> Result<u64
 }
 
 /// TODO: docs
-pub async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Error> {
+pub(crate) async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Error> {
     let n = sqlx::query("DELETE FROM pending WHERE id = ? AND status != 'in_progress'")
         .bind(id)
         .execute(pool)
@@ -166,7 +174,10 @@ struct PendingTagRow {
     tag: models::TagRow, // id, name, color, created_at
 }
 
-pub async fn load_pending(pool: &SqlitePool, id: i64) -> Result<Option<PendingDto>, sqlx::Error> {
+pub(crate) async fn load_pending(
+    pool: &SqlitePool,
+    id: i64,
+) -> Result<Option<PendingDto>, sqlx::Error> {
     // Aduit
     if let Some(row) = sqlx::query_as(AssertSqlSafe(format!(
         "SELECT {PENDING_COLS} FROM pending WHERE id = ?"
@@ -184,7 +195,7 @@ pub async fn load_pending(pool: &SqlitePool, id: i64) -> Result<Option<PendingDt
 }
 
 /// Attach tags to many pending rows with a single extra query.
-pub async fn hydrate_pending(
+pub(crate) async fn hydrate_pending(
     pool: &SqlitePool,
     rows: Vec<PendingRow>,
 ) -> Result<Vec<PendingDto>, sqlx::Error> {
@@ -228,13 +239,13 @@ pub async fn hydrate_pending(
 
 // TODO: order by ascending/descending
 /// For GET /api/pending (keyset pagination on id, new first)
-pub async fn list_pending(
+pub(crate) async fn list_pending(
     pool: &SqlitePool,
     status: Option<crate::models::PendingStatus>,
     after_id: Option<i64>,
     limit: u32,
 ) -> Result<crate::dto::Page<PendingDto>, sqlx::Error> {
-    let limit = limit.clamp(1, 200) as i64;
+    let limit = i64::from(limit.clamp(1, 200));
 
     let mut qb: QueryBuilder<Sqlite> =
         QueryBuilder::new(format!("SELECT {PENDING_COLS} FROM pending WHERE id > "));
@@ -242,11 +253,12 @@ pub async fn list_pending(
     if let Some(s) = status {
         qb.push(" AND status = ").push_bind(s);
     }
-    qb.push(" ORDER BY id DESC LIMIT ").push_bind(limit + 1); // fetch one extra to detect "has more"
+    qb.push(" ORDER BY id DESC LIMIT ")
+        .push_bind(limit.saturating_add(1)); // fetch one extra to detect "has more"
 
     let mut rows: Vec<PendingRow> = qb.build_query_as().fetch_all(pool).await?;
-    let has_more = rows.len() as i64 > limit;
-    rows.truncate(limit as usize);
+    let has_more = i64::try_from(rows.len()).map_or(true, |len| len > limit);
+    rows.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
     let next_cursor = has_more
         .then(|| rows.last().map(|r| r.id.to_string()))
         .flatten();

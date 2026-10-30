@@ -4,6 +4,10 @@ version = "0.0.0"
 edition = "2024"
 readme = "README.md"
 license = "MIT"
+description = "A self-hosted web archive server that saves and replays rendered pages and their sub-resources"
+repository = "https://github.com/zennozenith/web-archiver-server"
+keywords = ["archive", "web", "axum", "sqlite", "self-hosted"]
+categories = ["web-programming::http-server", "database"]
 
 [dependencies]
 askama = "0.16.1"
@@ -57,3 +61,68 @@ debug = ["axum/macros"]
 postgres = ["sqlx/tls-native-tls"]
 timeago = ["dep:timeago"]
 vendored = []  # Compile and statically link a copy of OpenSSL
+
+[lints.clippy]
+# Whole groups (priority -1 so individual overrides below win)
+all = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+
+allow_attributes = "deny"  # forces #[expect] instead of #[allow]
+allow_attributes_without_reason = "deny"
+arithmetic_side_effects = "deny"
+as_conversions = "deny"
+cast_possible_truncation = "deny"
+clone_on_ref_ptr = "deny"
+dbg_macro = "deny"
+default_union_representation = "deny"
+empty_enum_variants_with_brackets = "deny"
+exit = "deny"
+# expect_used = "deny"
+float_cmp = "deny"
+fn_to_numeric_cast_any = "deny"
+get_unwrap = "deny"
+indexing_slicing = "deny"
+let_underscore_must_use = "deny"
+lossy_float_literal = "deny"
+mem_forget = "deny"
+missing_assert_message = "deny"
+multiple_inherent_impl = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+rc_buffer = "deny"
+same_name_method = "deny"
+shadow_unrelated = "deny"
+str_to_string = "deny"
+string_slice = "deny"
+todo = "deny"
+try_err = "deny"
+undocumented_unsafe_blocks = "deny"
+unimplemented = "deny"
+unneeded_field_pattern = "deny"
+unreachable = "deny"
+# Hand-picked restriction lints (never enable the whole group)
+unwrap_used = "deny"
+verbose_file_reads = "deny"
+wildcard_enum_match_arm = "deny"
+
+missing_errors_doc = "allow"  # remove for public libraries
+missing_panics_doc = "allow"
+# Sensible opt-outs for noisy lints
+module_name_repetitions = "allow"
+multiple_crate_versions = "allow"  # usually out of your control
+must_use_candidate = "allow"
+# Binary crate: `pub(crate)` in a private module is intentional, and the
+# `unreachable_pub` lint above already keeps these items crate-internal.
+redundant_pub_crate = "allow"
+
+[lints.rust]
+missing_debug_implementations = "deny"
+rust_2018_idioms = { level = "deny", priority = -1 }
+unreachable_pub = "deny"
+unsafe_code = "forbid"
+unused_must_use = "deny"
+# missing_docs = "deny"   # enable for libraries

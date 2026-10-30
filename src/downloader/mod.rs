@@ -12,10 +12,10 @@ use reqwest::header::CONTENT_TYPE;
 use url::Url;
 
 /// Hard ceiling per resource, independent of the request body limit.
-pub const MAX_ASSET_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_ASSET_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
-pub enum FetchError {
+pub(crate) enum FetchError {
     #[error("request failed: {0}")]
     Request(#[from] reqwest::Error),
     #[error("http status {0}")]
@@ -27,7 +27,7 @@ pub enum FetchError {
 }
 
 #[derive(Debug)]
-pub struct FetchedResource {
+pub(crate) struct FetchedResource {
     /// URL after redirects (what the bytes actually came from).
     pub final_url: Url,
     pub status: u16,
@@ -36,7 +36,7 @@ pub struct FetchedResource {
 }
 
 /// Fetch one resource. Non-2xx responses are errors and are not stored.
-pub async fn fetch(
+pub(crate) async fn fetch(
     client: &reqwest::Client,
     url: Url,
     max_bytes: usize,
@@ -49,7 +49,7 @@ pub async fn fetch(
 
     if response
         .content_length()
-        .is_some_and(|len| len > max_bytes as u64)
+        .is_some_and(|len| len > u64::try_from(max_bytes).unwrap_or(u64::MAX))
     {
         return Err(FetchError::TooLarge(max_bytes));
     }
@@ -60,7 +60,7 @@ pub async fn fetch(
         .and_then(|v| v.to_str().ok())
         .filter(|v| !v.trim().is_empty())
         .unwrap_or("application/octet-stream")
-        .to_string();
+        .to_owned();
 
     let final_url = response.url().clone();
 
@@ -70,7 +70,7 @@ pub async fn fetch(
     let mut bytes = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
-        if bytes.len() + chunk.len() > max_bytes {
+        if bytes.len().saturating_add(chunk.len()) > max_bytes {
             return Err(FetchError::TooLarge(max_bytes));
         }
         bytes.extend_from_slice(&chunk);

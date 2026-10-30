@@ -1,4 +1,7 @@
-// #![allow(unused)]
+#![expect(
+    dead_code,
+    reason = "alternative extractors and deserializers are kept for future routes"
+)]
 
 use crate::error::AppError;
 
@@ -15,16 +18,16 @@ use serde::Deserialize;
 /// Query string; supports repeated keys (?tag=a&tag=b).
 #[derive(FromRequestParts)]
 #[from_request(via(axum::extract::Query), rejection(AppError))]
-pub struct ApiQuery<T>(pub T);
+pub(crate) struct ApiQuery<T>(pub T);
 
 /// Path params; bad ids return the API error shape instead of plain text.
 #[derive(FromRequestParts)]
 #[from_request(via(axum::extract::Path), rejection(AppError))]
-pub struct ApiPath<T>(pub T);
+pub(crate) struct ApiPath<T>(pub T);
 
 #[derive(FromRequest)]
 #[from_request(via(axum::Json), rejection(AppError))]
-pub struct ApiJson<T>(pub T);
+pub(crate) struct ApiJson<T>(pub T);
 
 impl<T: serde::Serialize> axum::response::IntoResponse for ApiJson<T> {
     fn into_response(self) -> axum::response::Response {
@@ -34,7 +37,7 @@ impl<T: serde::Serialize> axum::response::IntoResponse for ApiJson<T> {
 
 #[derive(FromRequest)]
 #[from_request(via(axum::Form), rejection(AppError))]
-pub struct ApiForm<T>(pub T);
+pub(crate) struct ApiForm<T>(pub T);
 
 impl<T: serde::Serialize> axum::response::IntoResponse for ApiForm<T> {
     fn into_response(self) -> axum::response::Response {
@@ -43,8 +46,8 @@ impl<T: serde::Serialize> axum::response::IntoResponse for ApiForm<T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct JsonOrForm<T>(pub T);
-pub type FormOrJson<T> = JsonOrForm<T>;
+pub(crate) struct JsonOrForm<T>(pub T);
+pub(crate) type FormOrJson<T> = JsonOrForm<T>;
 
 impl<S, T> FromRequest<S> for JsonOrForm<T>
 where
@@ -60,7 +63,7 @@ where
             .headers()
             .get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_ascii_lowercase());
+            .map(str::to_ascii_lowercase);
 
         match content_type.as_deref() {
             Some(ct) if ct.starts_with("application/json") => {
@@ -81,7 +84,7 @@ where
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use std::fmt;
 
-pub fn comma_separated_or_seq<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+pub(crate) fn comma_separated_or_seq<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -90,7 +93,7 @@ where
     impl<'de> Visitor<'de> for StringOrVec {
         type Value = Vec<String>;
 
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.write_str("a comma-separated string or an array of strings")
         }
 
@@ -116,8 +119,7 @@ where
     deserializer.deserialize_any(StringOrVec)
 }
 
-#[allow(unused)]
-pub fn opt_comma_separated_or_seq<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
+pub(crate) fn opt_comma_separated_or_seq<'de, D>(d: D) -> Result<Option<Vec<String>>, D::Error>
 where
     D: Deserializer<'de>,
 {

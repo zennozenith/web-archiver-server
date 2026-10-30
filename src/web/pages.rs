@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct PageTag {
+pub(super) struct PageTag {
     pub id: i64,
     pub name: String,
 }
@@ -30,7 +30,7 @@ impl From<&TagRow> for PageTag {
     }
 }
 
-pub struct CaptureView {
+pub(super) struct CaptureView {
     pub id: i64,
     pub version: i64,
     pub title: String,
@@ -42,7 +42,7 @@ pub struct CaptureView {
 
 #[derive(Template)]
 #[template(path = "fragments/page-card.html")]
-pub struct PageCardTemplate {
+pub(super) struct PageCardTemplate {
     pub id: i64,
     pub url: String,
     pub host: String,
@@ -57,13 +57,13 @@ pub struct PageCardTemplate {
 
 #[derive(Template)]
 #[template(path = "fragments/page-tags.html")]
-pub struct PageTagsTemplate {
+pub(super) struct PageTagsTemplate {
     pub page_id: i64,
     pub tags: Vec<PageTag>,
 }
 
 impl PageTagsTemplate {
-    pub async fn load(pool: &SqlitePool, page_id: i64) -> Result<Self> {
+    pub(super) async fn load(pool: &SqlitePool, page_id: i64) -> Result<Self> {
         let tags = db::pages::page_tags(pool, page_id).await?;
         Ok(Self {
             page_id,
@@ -73,11 +73,11 @@ impl PageTagsTemplate {
 }
 
 #[derive(Deserialize)]
-pub struct TagForm {
+pub(super) struct TagForm {
     pub name: String,
 }
 
-pub async fn add_page_tag(
+pub(super) async fn add_page_tag(
     State(pool): State<SqlitePool>,
     Path(id): Path<i64>,
     Form(form): Form<TagForm>,
@@ -104,7 +104,7 @@ pub async fn add_page_tag(
     .swap("outerHTML")]))
 }
 
-pub async fn remove_page_tag(
+pub(super) async fn remove_page_tag(
     State(pool): State<SqlitePool>,
     Path((id, tag_id)): Path<(i64, i64)>,
 ) -> Result<HtmxResponse> {
@@ -122,7 +122,7 @@ pub async fn remove_page_tag(
     .swap("outerHTML")]))
 }
 
-pub async fn delete_page(
+pub(super) async fn delete_page(
     State(pool): State<SqlitePool>,
     Path(id): Path<i64>,
 ) -> Result<HtmxResponse> {

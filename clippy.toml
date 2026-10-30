@@ -1,0 +1,24 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = true
+
+cognitive-complexity-threshold = 10
+too-many-arguments-threshold = 5
+too-many-lines-threshold = 60
+type-complexity-threshold = 150
+excessive-nesting-threshold = 4
+max-fn-params-bools = 1
+max-struct-bools = 2
+trivial-copy-size-limit = 16
+avoid-breaking-exported-api = false
+# msrv = "1.80"
+
+disallowed-macros = [
+  { path = "std::println", reason = "use tracing/log" },
+]
+disallowed-methods = [
+  { path = "std::thread::sleep", reason = "use async sleep" },
+]

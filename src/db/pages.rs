@@ -17,7 +17,7 @@ const PAGE_SELECT: &str = "SELECT u.id, u.url, u.host,
     FROM url u";
 
 #[derive(Debug, FromRow)]
-pub struct PageRow {
+pub(crate) struct PageRow {
     pub id: i64,
     pub url: String,
     pub host: String,
@@ -27,7 +27,7 @@ pub struct PageRow {
 }
 
 #[derive(Debug, FromRow)]
-pub struct CaptureRow {
+pub(crate) struct CaptureRow {
     pub id: i64,
     pub url_id: i64,
     pub captured_at: i64,
@@ -38,7 +38,7 @@ pub struct CaptureRow {
 }
 
 #[derive(Debug, FromRow)]
-pub struct TagCount {
+pub(crate) struct TagCount {
     pub id: i64,
     pub name: String,
     pub pages: i64,
@@ -53,8 +53,8 @@ struct UrlTagRow {
 }
 
 /// Newest captures first. The FULL list is loaded so the UI can show versions.
-pub async fn list_pages(pool: &SqlitePool, limit: u32) -> Result<Vec<PageRow>, sqlx::Error> {
-    let limit = limit.clamp(1, 200) as i64;
+pub(crate) async fn list_pages(pool: &SqlitePool, limit: u32) -> Result<Vec<PageRow>, sqlx::Error> {
+    let limit = i64::from(limit.clamp(1, 200));
     sqlx::query_as(AssertSqlSafe(format!(
         "SELECT * FROM ({PAGE_SELECT}) ORDER BY last_captured_at DESC, id DESC LIMIT ?"
     )))
@@ -64,7 +64,7 @@ pub async fn list_pages(pool: &SqlitePool, limit: u32) -> Result<Vec<PageRow>, s
 }
 
 /// Tags for many pages in one query, grouped by page id.
-pub async fn tags_for_pages(
+pub(crate) async fn tags_for_pages(
     pool: &SqlitePool,
     ids: &[i64],
 ) -> Result<HashMap<i64, Vec<TagRow>>, sqlx::Error> {
@@ -92,7 +92,7 @@ pub async fn tags_for_pages(
 }
 
 /// Captures for many pages in one query, newest first per page.
-pub async fn captures_for_pages(
+pub(crate) async fn captures_for_pages(
     pool: &SqlitePool,
     ids: &[i64],
 ) -> Result<HashMap<i64, Vec<CaptureRow>>, sqlx::Error> {
@@ -120,7 +120,7 @@ pub async fn captures_for_pages(
     Ok(by_page)
 }
 
-pub async fn list_tag_counts(pool: &SqlitePool) -> Result<Vec<TagCount>, sqlx::Error> {
+pub(crate) async fn list_tag_counts(pool: &SqlitePool) -> Result<Vec<TagCount>, sqlx::Error> {
     sqlx::query_as(
         "SELECT t.id, t.name,
                 (SELECT COUNT(*) FROM url_tag ut WHERE ut.tag_id = t.id)     AS pages,
@@ -132,7 +132,7 @@ pub async fn list_tag_counts(pool: &SqlitePool) -> Result<Vec<TagCount>, sqlx::E
     .await
 }
 
-pub async fn page_tags(pool: &SqlitePool, page_id: i64) -> Result<Vec<TagRow>, sqlx::Error> {
+pub(crate) async fn page_tags(pool: &SqlitePool, page_id: i64) -> Result<Vec<TagRow>, sqlx::Error> {
     sqlx::query_as(
         "SELECT t.id, t.name, t.color, t.created_at
          FROM url_tag ut JOIN tag t ON t.id = ut.tag_id
@@ -143,7 +143,7 @@ pub async fn page_tags(pool: &SqlitePool, page_id: i64) -> Result<Vec<TagRow>, s
     .await
 }
 
-pub async fn page_exists(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+pub(crate) async fn page_exists(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
     sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM url WHERE id = ?)")
         .bind(id)
         .fetch_one(pool)
@@ -151,7 +151,7 @@ pub async fn page_exists(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error
 }
 
 /// Remove a page, its captures and tag links. Orphaned blobs are left for GC.
-pub async fn delete_page(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+pub(crate) async fn delete_page(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
     let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM url WHERE id = ?")
@@ -181,7 +181,7 @@ pub async fn delete_page(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error
 }
 
 /// Insert a tag. Returns `None` when the name already exists.
-pub async fn create_tag(
+pub(crate) async fn create_tag(
     pool: &SqlitePool,
     name: &str,
     color: Option<&str>,
@@ -197,7 +197,7 @@ pub async fn create_tag(
     .await
 }
 
-pub async fn rename_tag(
+pub(crate) async fn rename_tag(
     pool: &SqlitePool,
     id: i64,
     name: &str,
@@ -209,7 +209,7 @@ pub async fn rename_tag(
         .await
 }
 
-pub async fn tag_name_exists(
+pub(crate) async fn tag_name_exists(
     pool: &SqlitePool,
     name: &str,
     except_id: Option<i64>,
@@ -221,7 +221,7 @@ pub async fn tag_name_exists(
         .await
 }
 
-pub async fn delete_tag(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
+pub(crate) async fn delete_tag(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
     let n = sqlx::query("DELETE FROM tag WHERE id = ?")
         .bind(id)
         .execute(pool)

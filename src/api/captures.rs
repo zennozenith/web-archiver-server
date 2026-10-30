@@ -48,7 +48,7 @@ struct CaptureDetailRow {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Blob {
+pub(super) struct Blob {
     hash: String,
     size_original: i64,
     size_stored: Option<i64>,
@@ -57,7 +57,7 @@ pub struct Blob {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CaptureDetail {
+pub(super) struct CaptureDetail {
     id: i64,
     page_id: i64,
     url: String,
@@ -83,7 +83,11 @@ fn json(s: Option<String>) -> Option<Value> {
 }
 
 // GET /api/captures/{id}
-pub async fn get_capture(
+#[expect(
+    clippy::too_many_lines,
+    reason = "maps one detailed capture row into its API representation"
+)]
+pub(super) async fn get_capture(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<ApiJson<CaptureDetail>> {
@@ -157,7 +161,7 @@ pub async fn get_capture(
 }
 
 // DELETE /api/captures/{id}   (content rows are collected by the GC endpoint)
-pub async fn delete_capture(
+pub(super) async fn delete_capture(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<StatusCode> {
@@ -174,6 +178,10 @@ pub async fn delete_capture(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "keeps each blob route's policy explicit at the call site"
+)]
 async fn serve_capture_blob(
     pool: &SqlitePool,
     store: &BlobStore,
@@ -193,14 +201,14 @@ async fn serve_capture_blob(
     .or_not_found(what)?;
 
     let ct = force_type
-        .map(str::to_string)
+        .map(str::to_owned)
         .or_else(|| row.mime_type.clone())
         .unwrap_or_else(|| "application/octet-stream".into());
     serve_content_with_csp(store, headers, row, &ct, CAPTURE_CACHE, csp).await
 }
 
 // GET /api/captures/{id}/html   (rewritten: resource URLs point at /api/content)
-pub async fn capture_html(
+pub(super) async fn capture_html(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
     headers: HeaderMap,
@@ -220,7 +228,7 @@ pub async fn capture_html(
 }
 
 // GET /api/captures/{id}/html/original   (exact bytes uploaded to /api/archive)
-pub async fn capture_original_html(
+pub(super) async fn capture_original_html(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
     headers: HeaderMap,
@@ -240,7 +248,7 @@ pub async fn capture_original_html(
 }
 
 // GET /api/captures/{id}/screenshot
-pub async fn capture_screenshot(
+pub(super) async fn capture_screenshot(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
     headers: HeaderMap,
@@ -279,7 +287,7 @@ async fn latest_redirect(
 }
 
 // GET /api/pages/{id}/latest/html
-pub async fn latest_html(
+pub(super) async fn latest_html(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<Response> {
@@ -287,7 +295,7 @@ pub async fn latest_html(
 }
 
 // GET /api/pages/{id}/latest/html/original
-pub async fn latest_original_html(
+pub(super) async fn latest_original_html(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<Response> {
@@ -302,7 +310,7 @@ pub async fn latest_original_html(
 }
 
 // GET /api/pages/{id}/latest/screenshot
-pub async fn latest_screenshot(
+pub(super) async fn latest_screenshot(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<Response> {

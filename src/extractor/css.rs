@@ -5,6 +5,15 @@
 //! Comments and strings are skipped so `url(` inside them is not mistaken for a
 //! reference.
 
+#![expect(
+    clippy::arithmetic_side_effects,
+    clippy::excessive_nesting,
+    clippy::indexing_slicing,
+    clippy::string_slice,
+    clippy::too_many_lines,
+    reason = "byte-level CSS scanner with explicit bounds checks before every index"
+)]
+
 use std::collections::{HashMap, HashSet};
 
 use url::Url;
@@ -18,18 +27,18 @@ struct RawRef<'a> {
     kind: AssetKind,
 }
 
-fn is_ws(b: u8) -> bool {
+const fn is_ws(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\r' | b'\n' | 0x0c)
 }
 
-fn skip_ws(bytes: &[u8], mut i: usize) -> usize {
+const fn skip_ws(bytes: &[u8], mut i: usize) -> usize {
     while i < bytes.len() && is_ws(bytes[i]) {
         i += 1;
     }
     i
 }
 
-fn find_comment_end(bytes: &[u8], mut i: usize) -> usize {
+const fn find_comment_end(bytes: &[u8], mut i: usize) -> usize {
     while i + 1 < bytes.len() {
         if bytes[i] == b'*' && bytes[i + 1] == b'/' {
             return i + 2;
@@ -39,7 +48,7 @@ fn find_comment_end(bytes: &[u8], mut i: usize) -> usize {
     bytes.len()
 }
 
-fn find_string_end(bytes: &[u8], mut i: usize, quote: u8) -> usize {
+const fn find_string_end(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     while i < bytes.len() {
         match bytes[i] {
             b'\\' => i += 2,
@@ -56,7 +65,7 @@ fn starts_with_ci(haystack: &str, needle: &str) -> bool {
         .is_some_and(|s| s.eq_ignore_ascii_case(needle))
 }
 
-fn at_boundary(bytes: &[u8], i: usize) -> bool {
+const fn at_boundary(bytes: &[u8], i: usize) -> bool {
     i == 0 || !matches!(bytes[i - 1], b'-' | b'_') && !bytes[i - 1].is_ascii_alphanumeric()
 }
 
@@ -66,7 +75,7 @@ fn next_char(css: &str, i: usize) -> usize {
 
 /// Parse the value of `url(...)`. `open` points just after the opening paren.
 /// Returns `(value_start, value_end, index_after_closing_paren)`.
-fn parse_url_token(css: &str, open: usize) -> Option<(usize, usize, usize)> {
+const fn parse_url_token(css: &str, open: usize) -> Option<(usize, usize, usize)> {
     let bytes = css.as_bytes();
     let mut i = skip_ws(bytes, open);
 
@@ -171,23 +180,22 @@ fn scan(css: &str) -> Vec<RawRef<'_>> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CssResource {
+pub(crate) struct CssResource {
     pub url: Url,
     pub kind: AssetKind,
 }
 
 /// Every fetchable resource the stylesheet references, in document order.
-pub fn extract_resources(css: &str, base: &Url) -> Vec<CssResource> {
+pub(crate) fn extract_resources(css: &str, base: &Url) -> Vec<CssResource> {
     let mut seen = HashSet::new();
     scan(css)
         .into_iter()
         .filter_map(|raw| {
             let url = resolve(base, raw.url)?;
-            seen.insert(url.as_str().to_string())
-                .then_some(CssResource {
-                    url,
-                    kind: raw.kind,
-                })
+            seen.insert(url.as_str().to_owned()).then_some(CssResource {
+                url,
+                kind: raw.kind,
+            })
         })
         .collect()
 }
@@ -196,7 +204,7 @@ pub fn extract_resources(css: &str, base: &Url) -> Vec<CssResource> {
 ///
 /// `replacements` maps absolute, fragmentless resource URLs to the URL that
 /// serves the captured bytes. Returns `None` when nothing matched.
-pub fn rewrite_resources(
+pub(crate) fn rewrite_resources(
     css: &str,
     base: &Url,
     replacements: &HashMap<String, String>,
@@ -215,11 +223,11 @@ pub fn rewrite_resources(
             .base_url(Some(base))
             .parse(raw.url.trim())
             .ok()
-            .and_then(|url| url.fragment().map(str::to_string));
-        let value = match fragment {
-            Some(fragment) => format!("{replacement}#{fragment}"),
-            None => replacement.clone(),
-        };
+            .and_then(|url| url.fragment().map(str::to_owned));
+        let value = fragment.map_or_else(
+            || replacement.clone(),
+            |fragment| format!("{replacement}#{fragment}"),
+        );
         edits.push((raw.start, raw.end, value));
     }
 
@@ -291,16 +299,16 @@ mod tests {
 
         let replacements = HashMap::from([
             (
-                "https://example.com/assets/theme.css".to_string(),
-                "/api/content/theme".to_string(),
+                "https://example.com/assets/theme.css".to_owned(),
+                "/api/content/theme".to_owned(),
             ),
             (
-                "https://example.com/fonts/outfit.woff2".to_string(),
-                "/api/content/font".to_string(),
+                "https://example.com/fonts/outfit.woff2".to_owned(),
+                "/api/content/font".to_owned(),
             ),
             (
-                "https://example.com/sprite.svg".to_string(),
-                "/api/content/sprite".to_string(),
+                "https://example.com/sprite.svg".to_owned(),
+                "/api/content/sprite".to_owned(),
             ),
         ]);
 

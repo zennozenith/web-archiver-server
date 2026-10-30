@@ -1,4 +1,11 @@
-// build.rs
+#![allow(
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::restriction,
+    clippy::cargo
+)]
+
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
@@ -6,7 +13,8 @@ use std::{
 };
 
 fn main() {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("shuld have cargo manifest"));
     let root = manifest_dir.join("static/vite/src/templates");
 
     println!("cargo:rerun-if-changed=build.rs");

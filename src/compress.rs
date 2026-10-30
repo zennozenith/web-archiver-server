@@ -7,7 +7,7 @@ const MIN_COMPRESS_SIZE: usize = 256;
 /// Guards against decompression bombs when serving.
 const MAX_DECOMPRESSED: u64 = 512 * 1024 * 1024;
 
-pub fn is_compressible(mime: &str) -> bool {
+pub(crate) fn is_compressible(mime: &str) -> bool {
     let m = mime
         .split(';')
         .next()
@@ -31,7 +31,7 @@ fn io_err(e: std::io::Error) -> AppError {
     AppError::Internal(Box::new(e))
 }
 
-pub fn compress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
+pub(crate) fn compress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
     match alg {
         Compression::None => Ok(data.to_vec()),
         Compression::Gzip => {
@@ -52,7 +52,7 @@ pub fn compress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
     }
 }
 
-pub fn decompress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
+pub(crate) fn decompress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
     let reader: Box<dyn Read + '_> = match alg {
         Compression::None => return Ok(data.to_vec()),
         Compression::Gzip => Box::new(flate2::read::GzDecoder::new(data)),
@@ -68,12 +68,13 @@ pub fn decompress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
 
 /// Policy: brotli for text-like types, otherwise store raw. Falls back to raw
 /// when compression doesn't save at least ~5%.
-pub fn compress_for_storage(mime: &str, data: Vec<u8>) -> Result<(Vec<u8>, Compression)> {
+pub(crate) fn compress_for_storage(mime: &str, data: Vec<u8>) -> Result<(Vec<u8>, Compression)> {
     if data.len() < MIN_COMPRESS_SIZE || !is_compressible(mime) {
         return Ok((data, Compression::None));
     }
     let out = compress(&data, Compression::Brotli)?;
-    if out.len() < data.len() - data.len() / 20 {
+    let threshold = data.len().saturating_sub(data.len().saturating_div(20));
+    if out.len() < threshold {
         Ok((out, Compression::Brotli))
     } else {
         Ok((data, Compression::None))

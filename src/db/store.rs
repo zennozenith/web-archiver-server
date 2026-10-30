@@ -8,19 +8,19 @@ use crate::compress;
 use crate::error::{AppError, Result, join_err};
 use crate::models::Compression;
 
-pub enum Location {
+pub(crate) enum Location {
     Inline(Vec<u8>),
-    /// relative path, see BlobStore
+    /// relative path, see `BlobStore`
     File(String),
 }
 
-pub struct NewPayload {
+pub(crate) struct NewPayload {
     pub location: Location,
     pub compression: Compression,
     pub size_stored: i64,
 }
 
-pub struct PreparedBlob {
+pub(crate) struct PreparedBlob {
     pub hash: Vec<u8>,
     pub mime: String,
     pub size_original: i64,
@@ -29,14 +29,14 @@ pub struct PreparedBlob {
     pub existed: bool,
 }
 
-pub async fn prepare_blob(
+pub(crate) async fn prepare_blob(
     pool: &SqlitePool,
     store: &BlobStore,
     bytes: Vec<u8>,
     mime: &str,
 ) -> Result<PreparedBlob> {
-    let mime = mime.to_string();
-    let size_original = bytes.len() as i64;
+    let mime = mime.to_owned();
+    let size_original = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
 
     let (hash, bytes) = tokio::task::spawn_blocking(move || {
         let h = blake3::hash(&bytes).as_bytes().to_vec();
@@ -59,7 +59,7 @@ pub async fn prepare_blob(
                 .await
                 .map_err(join_err)??;
 
-        let size_stored = stored.len() as i64;
+        let size_stored = i64::try_from(stored.len()).unwrap_or(i64::MAX);
         let location = if stored.len() > store.inline_threshold() {
             // Written BEFORE the DB row exists. If the transaction later fails we are left with
             // an unreferenced file, which is harmless and reusable by the next attempt.
@@ -84,7 +84,7 @@ pub async fn prepare_blob(
 }
 
 /// Returns the content id. Safe under races (ON CONFLICT DO NOTHING).
-pub async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -> Result<i64> {
+pub(crate) async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -> Result<i64> {
     if let Some(p) = &b.payload {
         let (data, storage_ref) = match &p.location {
             Location::Inline(d) => (Some(d.as_slice()), None),

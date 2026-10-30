@@ -11,13 +11,13 @@ use crate::{
 };
 
 // GET /api/health  (unauthenticated)
-pub async fn health(State(pool): State<SqlitePool>) -> Result<ApiJson<serde_json::Value>> {
+pub(super) async fn health(State(pool): State<SqlitePool>) -> Result<ApiJson<serde_json::Value>> {
     sqlx::query("SELECT 1").execute(&pool).await?;
     Ok(ApiJson(serde_json::json!({ "status": "ok" })))
 }
 
 // GET /api/stats
-pub async fn stats(State(pool): State<SqlitePool>) -> Result<ApiJson<Stats>> {
+pub(super) async fn stats(State(pool): State<SqlitePool>) -> Result<ApiJson<Stats>> {
     let stat = stats::stats(&pool).await?;
     Ok(ApiJson(stat))
 }
@@ -31,7 +31,7 @@ pub async fn stats(State(pool): State<SqlitePool>) -> Result<ApiJson<Stats>> {
 // document, screenshot and every saved sub-resource.
 //
 // DB first, files second: a crash in between leaves an orphan file, never a row pointing at nothing.
-pub async fn gc_content(
+pub(super) async fn gc_content(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
 ) -> Result<ApiJson<serde_json::Value>> {
@@ -45,7 +45,7 @@ pub async fn gc_content(
     .await?;
 
     let rows_deleted = refs.len();
-    let mut files_deleted = 0;
+    let mut files_deleted: usize = 0;
     for r in refs.into_iter().flatten() {
         // Skip if the same hash was re-archived (new row, same path) while we were deleting.
         let reused: bool =
@@ -55,7 +55,7 @@ pub async fn gc_content(
                 .await?;
         if !reused {
             store.remove(&r).await?;
-            files_deleted += 1;
+            files_deleted = files_deleted.saturating_add(1);
         }
     }
     let tmp_removed = store.clean_tmp(Duration::from_secs(3600)).await;

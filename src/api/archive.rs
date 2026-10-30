@@ -45,17 +45,13 @@ fn unprocessable(code: &'static str, message: impl Into<String>) -> AppError {
     }
 }
 
-fn non_empty(s: String) -> Option<String> {
+fn non_empty(s: &str) -> Option<String> {
     let t = s.trim();
-    (!t.is_empty()).then(|| t.to_string())
+    (!t.is_empty()).then(|| t.to_owned())
 }
 
 fn meta_str(meta: Option<&Value>, key: &str) -> Option<String> {
-    meta?
-        .get(key)?
-        .as_str()
-        .map(str::to_string)
-        .and_then(non_empty)
+    meta?.get(key)?.as_str().and_then(non_empty)
 }
 
 fn parse_format(s: &str) -> Result<ScreenshotFormat> {
@@ -128,6 +124,8 @@ fn kind_from_extension(url: &url::Url) -> Option<html::AssetKind> {
     })
 }
 
+type StoreFuture<'b> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'b>>;
+
 /// State shared by the top-level fetch loop and the CSS recursion.
 struct AssetCollector<'a> {
     pool: &'a SqlitePool,
@@ -145,13 +143,17 @@ impl AssetCollector<'_> {
     /// Boxed because stylesheets recurse back into this method for their own
     /// resources (`@import`, fonts, images) and async functions cannot be
     /// recursive otherwise.
-    fn store<'b>(
-        &'b mut self,
+    #[expect(
+        clippy::too_many_lines,
+        reason = "storing an asset involves budget checks, rewriting, and persistence"
+    )]
+    fn store(
+        &mut self,
         fetched: downloader::FetchedResource,
         url: url::Url,
         kind: html::AssetKind,
         depth: u8,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'b>> {
+    ) -> StoreFuture<'_> {
         Box::pin(async move {
             let key = url.to_string();
             // A nested reference may point at a resource the HTML already listed.
@@ -159,15 +161,15 @@ impl AssetCollector<'_> {
                 return Ok(());
             }
             if self.saved.len() >= MAX_ASSETS {
-                self.summary.skipped += 1;
+                self.summary.skipped = self.summary.skipped.saturating_add(1);
                 return Ok(());
             }
-            if self.total_bytes + fetched.bytes.len() > MAX_ASSET_TOTAL_BYTES {
+            if self.total_bytes.saturating_add(fetched.bytes.len()) > MAX_ASSET_TOTAL_BYTES {
                 tracing::debug!(url = %key, "asset budget exhausted");
-                self.summary.skipped += 1;
+                self.summary.skipped = self.summary.skipped.saturating_add(1);
                 return Ok(());
             }
-            self.total_bytes += fetched.bytes.len();
+            self.total_bytes = self.total_bytes.saturating_add(fetched.bytes.len());
 
             let downloader::FetchedResource {
                 final_url,
@@ -185,17 +187,18 @@ impl AssetCollector<'_> {
             );
 
             let mut bytes = bytes;
-            if kind == html::AssetKind::Stylesheet && depth < MAX_CSS_DEPTH {
-                if let Some(rewritten) = self.rewrite_css(&bytes, &final_url, depth).await? {
-                    bytes = rewritten.into_bytes();
-                }
+            if kind == html::AssetKind::Stylesheet
+                && depth < MAX_CSS_DEPTH
+                && let Some(rewritten) = self.rewrite_css(&bytes, &final_url, depth).await?
+            {
+                bytes = rewritten.into_bytes();
             }
 
             let blob = match prepare_blob(self.pool, self.store, bytes, &content_type).await {
                 Ok(blob) => blob,
                 Err(e) => {
                     tracing::warn!(url = %key, error = ?e, "asset storage failed");
-                    self.summary.failed += 1;
+                    self.summary.failed = self.summary.failed.saturating_add(1);
                     return Ok(());
                 }
             };
@@ -205,14 +208,14 @@ impl AssetCollector<'_> {
                 insert_blob(&mut conn, &blob).await?
             };
 
-            self.summary.saved += 1;
+            self.summary.saved = self.summary.saved.saturating_add(1);
             if blob.existed {
-                self.summary.deduplicated += 1;
+                self.summary.deduplicated = self.summary.deduplicated.saturating_add(1);
             }
             self.saved.push(PreparedAsset {
                 url: key,
                 kind: kind.as_str(),
-                status_code: Some(status as i64),
+                status_code: Some(i64::from(status)),
                 content_id,
                 hash: to_hex(&blob.hash),
             });
@@ -221,6 +224,10 @@ impl AssetCollector<'_> {
     }
 
     /// Fetch and store whatever a stylesheet references, then rewrite its URLs.
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "the loop mirrors the CSS reference structure"
+    )]
     async fn rewrite_css(
         &mut self,
         bytes: &[u8],
@@ -247,7 +254,7 @@ impl AssetCollector<'_> {
             }
 
             if self.saved.len() >= MAX_ASSETS {
-                self.summary.skipped += 1;
+                self.summary.skipped = self.summary.skipped.saturating_add(1);
                 continue;
             }
 
@@ -259,15 +266,20 @@ impl AssetCollector<'_> {
             .await
             {
                 Ok(fetched) => {
-                    self.store(fetched, resource.url, resource.kind, depth + 1)
-                        .await?;
+                    self.store(
+                        fetched,
+                        resource.url,
+                        resource.kind,
+                        depth.saturating_add(1),
+                    )
+                    .await?;
                     if let Some(asset) = self.saved.iter().find(|asset| asset.url == key) {
                         replacements.insert(key, format!("/api/content/{}", asset.hash));
                     }
                 }
                 Err(e) => {
                     tracing::debug!(url = %key, error = %e, "css resource fetch failed");
-                    self.summary.failed += 1;
+                    self.summary.failed = self.summary.failed.saturating_add(1);
                 }
             }
         }
@@ -283,7 +295,7 @@ impl AssetCollector<'_> {
 ///
 /// Content rows are inserted before the capture transaction on purpose: network
 /// I/O must not hold a write transaction. If the archive later fails, the
-/// unreferenced rows have ref_count = 0 and are removed by the normal GC.
+/// unreferenced rows have `ref_count` = 0 and are removed by the normal GC.
 async fn collect_assets(
     pool: &SqlitePool,
     store: &BlobStore,
@@ -301,7 +313,7 @@ async fn collect_assets(
         store,
         client,
         summary: AssetSummary {
-            skipped: found_count - resources.len(),
+            skipped: found_count.saturating_sub(resources.len()),
             ..AssetSummary::default()
         },
         total_bytes: 0,
@@ -309,7 +321,7 @@ async fn collect_assets(
         saved: Vec::with_capacity(resources.len()),
     };
 
-    let mut fetches = stream::iter(resources)
+    let mut in_flight = stream::iter(resources)
         .map(|resource| {
             let client = client.clone();
             async move {
@@ -321,7 +333,7 @@ async fn collect_assets(
         })
         .buffer_unordered(ASSET_CONCURRENCY);
 
-    while let Some((resource, fetched)) = fetches.next().await {
+    while let Some((resource, fetched)) = in_flight.next().await {
         match fetched {
             Ok(fetched) => {
                 collector.seen.insert(resource.url.to_string());
@@ -331,7 +343,7 @@ async fn collect_assets(
             }
             Err(e) => {
                 tracing::debug!(url = %resource.url, error = %e, "asset fetch failed");
-                collector.summary.failed += 1;
+                collector.summary.failed = collector.summary.failed.saturating_add(1);
             }
         }
     }
@@ -339,6 +351,10 @@ async fn collect_assets(
     Ok((collector.saved, collector.summary))
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one match arm per accepted multipart field"
+)]
 async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
     let mut up = ArchiveUpload::default();
     let mut shot: Option<Vec<u8>> = None;
@@ -348,8 +364,8 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
         let name = field.name().unwrap_or("");
         match name {
             "html" => up.html = field.bytes().await?.to_vec(),
-            "url" => up.url = non_empty(field.text().await?),
-            "title" => up.title = non_empty(field.text().await?),
+            "url" => up.url = non_empty(&field.text().await?),
+            "title" => up.title = non_empty(&field.text().await?),
             "tags" => {
                 let t = field.text().await?;
                 up.tags = serde_json::from_str(&t).map_err(|_| {
@@ -411,7 +427,11 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
 }
 
 // POST /api/archive
-pub async fn archive(
+#[expect(
+    clippy::too_many_lines,
+    reason = "the archive transaction is intentionally kept in one readable flow"
+)]
+pub(super) async fn archive(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
     State(client): State<reqwest::Client>,
@@ -449,7 +469,7 @@ pub async fn archive(
             pending
                 .as_ref()
                 .and_then(|p| p.1.clone())
-                .and_then(non_empty)
+                .and_then(|s| non_empty(&s))
         });
 
     let tags = clean_tags(&upload.tags)?;

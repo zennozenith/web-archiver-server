@@ -39,7 +39,7 @@ struct ViteCounter<'a> {
     title: &'a str,
 }
 
-pub async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
+pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
     const LIMIT: u32 = 50;
 
     let stats = stats::stats(&pool).await?;
@@ -81,6 +81,10 @@ pub async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> 
     .render_html()
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "builds the complete view model for one page card"
+)]
 fn page_card(
     row: PageRow,
     tags_by_page: &mut HashMap<i64, Vec<TagRow>>,
@@ -95,8 +99,8 @@ fn page_card(
         title,
     } = row;
 
-    let title = title
-        .filter(|title| !title.trim().is_empty())
+    let display_title = title
+        .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| url.clone());
 
     let tags = tags_by_page
@@ -112,15 +116,16 @@ fn page_card(
         .join(" ");
 
     let capture_rows = captures_by_page.remove(&id).unwrap_or_default();
-    let total_versions = capture_rows.len() as i64;
+    let total_versions = i64::try_from(capture_rows.len()).unwrap_or(i64::MAX);
     let captures = capture_rows
         .into_iter()
         .enumerate()
         .map(|(index, capture)| {
-            let version = total_versions - index as i64;
+            let index = i64::try_from(index).unwrap_or(i64::MAX);
+            let version = total_versions.saturating_sub(index);
             let capture_title = capture
                 .title
-                .filter(|title| !title.trim().is_empty())
+                .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| format!("Version {version}"));
             CaptureView {
                 id: capture.id,
@@ -129,8 +134,7 @@ fn page_card(
                 captured_at: ago_timestamp(capture.captured_at),
                 status: capture
                     .status_code
-                    .map(|code| code.to_string())
-                    .unwrap_or_else(|| "—".to_string()),
+                    .map_or_else(|| "—".to_owned(), |code| code.to_string()),
                 has_html: capture.has_html,
                 has_screenshot: capture.has_screenshot,
             }
@@ -139,17 +143,17 @@ fn page_card(
 
     PageCardTemplate {
         id,
-        search: format!("{title} {url} {tag_names}").to_lowercase(),
+        search: format!("{display_title} {url} {tag_names}").to_lowercase(),
         url,
         host,
-        title,
+        title: display_title,
         last_captured: if capture_count > 0 {
             ago_timestamp(last_captured_at)
         } else {
-            "never archived".to_string()
+            "never archived".to_owned()
         },
         version_label: if capture_count == 1 {
-            "1 version".to_string()
+            "1 version".to_owned()
         } else {
             format!("{capture_count} versions")
         },
@@ -159,7 +163,7 @@ fn page_card(
     }
 }
 
-pub async fn vite_counter() -> Result<impl IntoResponse> {
+pub(super) async fn vite_counter() -> Result<impl IntoResponse> {
     ViteCounter {
         title: "Rust + Axum + Vite + Alpine",
     }

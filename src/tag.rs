@@ -6,8 +6,8 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 
-pub const MAX_TAG_LEN: usize = 64;
-pub const MAX_TAGS: usize = 50;
+pub(crate) const MAX_TAG_LEN: usize = 64;
+pub(crate) const MAX_TAGS: usize = 50;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type)]
 #[sqlx(transparent)]
@@ -123,7 +123,7 @@ impl PartialEq<String> for CleanTag {
     }
 }
 
-pub fn clean_tag_name(raw: &str) -> Result<CleanTag> {
+pub(crate) fn clean_tag_name(raw: &str) -> Result<CleanTag> {
     let name = CleanTag::new(raw);
     if name.is_empty() {
         return Err(AppError::invalid("invalid_tag", "tag name cannot be empty"));
@@ -138,7 +138,7 @@ pub fn clean_tag_name(raw: &str) -> Result<CleanTag> {
 }
 
 /// Trim, drop empties, de-duplicate case-insensitively, enforce limits.
-pub fn clean_tags(raw: &[String]) -> Result<Vec<CleanTag>> {
+pub(crate) fn clean_tags(raw: &[String]) -> Result<Vec<CleanTag>> {
     if raw.len() > MAX_TAGS {
         return Err(AppError::invalid(
             "too_many_tags",

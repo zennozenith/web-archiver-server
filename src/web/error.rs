@@ -4,7 +4,7 @@ use axum::{
     middleware::Next,
     response::{Html, IntoResponse, Response},
 };
-use http::{HeaderMap, StatusCode, Uri, header};
+use http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 
 use crate::error;
 
@@ -75,7 +75,7 @@ fn prefers_html(headers: &HeaderMap) -> bool {
     }
 }
 
-pub async fn negotiate_errors(req: Request, next: Next) -> Response {
+pub(super) async fn negotiate_errors(req: Request, next: Next) -> Response {
     let wants = wants(req.uri(), req.headers());
     let mut res = next.run(req).await;
 
@@ -91,7 +91,7 @@ pub async fn negotiate_errors(req: Request, next: Next) -> Response {
             message: &info.message,
         }
         .render(),
-        _ => ErrorPage {
+        Wants::Json | Wants::Page => ErrorPage {
             status: info.status.as_u16(),
             title: info.status.canonical_reason().unwrap_or("Error"),
             message: &info.message,
@@ -117,18 +117,18 @@ pub async fn negotiate_errors(req: Request, next: Next) -> Response {
     if matches!(wants, Wants::Fragment) {
         let h = out.headers_mut();
         // Put the error in one global container instead of the original target.
-        h.insert("HX-Retarget", "#error-container".parse().unwrap());
-        h.insert("HX-Reswap", "innerHTML".parse().unwrap());
+        h.insert("HX-Retarget", HeaderValue::from_static("#error-container"));
+        h.insert("HX-Reswap", HeaderValue::from_static("innerHTML"));
         // Optional: bounce expired sessions to login
         if info.status == StatusCode::UNAUTHORIZED {
-            h.insert("HX-Redirect", "/login".parse().unwrap());
+            h.insert("HX-Redirect", HeaderValue::from_static("/login"));
         }
     }
 
     // Same URL, different representation depending on these headers.
     out.headers_mut().append(
         header::VARY,
-        "Accept, HX-Request, HX-Boosted".parse().unwrap(),
+        HeaderValue::from_static("Accept, HX-Request, HX-Boosted"),
     );
     out
 }

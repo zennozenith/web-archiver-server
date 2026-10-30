@@ -28,7 +28,7 @@ struct AssetRow {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AssetDto {
+pub(super) struct AssetDto {
     content_id: i64,
     url: String,
     kind: String,
@@ -73,7 +73,7 @@ async fn list_assets(pool: &SqlitePool, capture_id: i64) -> Result<Vec<AssetDto>
 }
 
 // GET /api/captures/{id}/assets
-pub async fn capture_assets(
+pub(super) async fn capture_assets(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<ApiJson<Vec<AssetDto>>> {
@@ -86,7 +86,7 @@ pub async fn capture_assets(
 }
 
 // GET /api/pages/{id}/latest/assets
-pub async fn latest_assets(
+pub(super) async fn latest_assets(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<ApiJson<Vec<AssetDto>>> {
@@ -111,7 +111,7 @@ pub async fn latest_assets(
 }
 
 // GET /api/captures/{id}/assets/{content_id}
-pub async fn capture_asset(
+pub(super) async fn capture_asset(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
     headers: HeaderMap,

@@ -58,6 +58,7 @@ CREATE TABLE capture (
 );
 CREATE INDEX idx_capture_url_time ON capture(url_id, captured_at DESC);
 CREATE INDEX idx_capture_content  ON capture(content_id);
+CREATE INDEX idx_capture_orignal_content  ON capture(content_orignal_id);
 CREATE INDEX idx_capture_crawl    ON capture(crawl_id);
 
 -- Optional: group captures by crawl job

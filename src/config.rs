@@ -4,7 +4,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Settings {
+pub(crate) struct Settings {
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
     #[serde(default)]
@@ -14,7 +14,7 @@ pub struct Settings {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct DatabaseSettings {
+pub(crate) struct DatabaseSettings {
     #[serde(default = "default_db_url")]
     pub url: Box<str>,
     #[serde(default = "default_max_connections")]
@@ -34,7 +34,7 @@ impl Default for DatabaseSettings {
 }
 
 impl DatabaseSettings {
-    pub fn connect_options(&self) -> SqliteConnectOptions {
+    pub(crate) fn connect_options(&self) -> SqliteConnectOptions {
         SqliteConnectOptions::from_str(&self.url)
             .expect("Invalid database url")
             .create_if_missing(true)
@@ -47,7 +47,7 @@ impl DatabaseSettings {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct ServerSettings {
+pub(crate) struct ServerSettings {
     pub host: Option<String>,
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
@@ -61,16 +61,16 @@ fn default_db_url() -> Box<str> {
     String::from("sqlite://data/db/app.db").into_boxed_str()
 }
 
-fn default_max_connections() -> u32 {
+const fn default_max_connections() -> u32 {
     10
 }
 
-fn default_busy_timeout_sec() -> u64 {
+const fn default_busy_timeout_sec() -> u64 {
     5
 }
 
 impl Settings {
-    pub fn load() -> Settings {
+    pub(crate) fn load() -> Self {
         let env = std::env::var("APP_ENV").unwrap_or_else(|_| "local".into());
         config::Config::builder()
             // .add_source(config::File::with_name("config/base"))

@@ -15,7 +15,7 @@ use crate::{
 };
 
 fn clamp_limit(limit: Option<u32>) -> i64 {
-    limit.unwrap_or(50).clamp(1, 200) as i64
+    i64::from(limit.unwrap_or(50).clamp(1, 200))
 }
 
 fn escape_like(s: &str) -> String {
@@ -51,7 +51,7 @@ struct PageRow {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PageDto {
+pub(super) struct PageDto {
     id: i64,
     url: String,
     host: String,
@@ -63,7 +63,7 @@ pub struct PageDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PageDetail {
+pub(super) struct PageDetail {
     #[serde(flatten)]
     page: PageDto,
     latest_capture: CaptureSummary,
@@ -146,7 +146,11 @@ async fn ensure_page(pool: &SqlitePool, id: i64) -> Result<()> {
 // ── GET /api/pages ──────────────────────────────────────────────────────────
 // Sorted by most recently archived. In PageQuery, rename the field for the documented param:
 
-pub async fn list_pages(
+#[expect(
+    clippy::too_many_lines,
+    reason = "builds the dynamic filter, cursor, and pagination in one place"
+)]
+pub(super) async fn list_pages(
     State(pool): State<SqlitePool>,
     ApiQuery(q): ApiQuery<PageQuery>,
 ) -> Result<ApiJson<Page<PageDto>>> {
@@ -204,11 +208,11 @@ pub async fn list_pages(
     }
 
     qb.push(" ORDER BY last_captured_at DESC, id DESC LIMIT ")
-        .push_bind(limit + 1);
+        .push_bind(limit.saturating_add(1));
 
     let mut rows: Vec<PageRow> = qb.build_query_as().fetch_all(&pool).await?;
-    let has_more = rows.len() as i64 > limit;
-    rows.truncate(limit as usize);
+    let has_more = i64::try_from(rows.len()).map_or(true, |len| len > limit);
+    rows.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
     let next_cursor = has_more
         .then(|| {
             rows.last()
@@ -225,11 +229,11 @@ pub async fn list_pages(
 // ── GET /api/pages/lookup?url=... ───────────────────────────────────────────
 
 #[derive(Deserialize)]
-pub struct LookupQuery {
+pub(super) struct LookupQuery {
     url: String,
 }
 
-pub async fn lookup_page(
+pub(super) async fn lookup_page(
     State(pool): State<SqlitePool>,
     ApiQuery(q): ApiQuery<LookupQuery>,
 ) -> Result<ApiJson<PageDetail>> {
@@ -244,7 +248,7 @@ pub async fn lookup_page(
 
 // ── GET /api/pages/{id} ─────────────────────────────────────────────────────
 
-pub async fn get_page(
+pub(super) async fn get_page(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<ApiJson<PageDetail>> {
@@ -254,7 +258,7 @@ pub async fn get_page(
 // ── DELETE /api/pages/{id} ──────────────────────────────────────────────────
 // Orphaned content rows are left for POST /api/maintenance/gc.
 
-pub async fn delete_page(
+pub(super) async fn delete_page(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<StatusCode> {
@@ -288,12 +292,12 @@ pub async fn delete_page(
 // ── GET /api/pages/{id}/captures ────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub struct CapturesQuery {
+pub(super) struct CapturesQuery {
     limit: Option<u32>,
     cursor: Option<i64>, // last version seen
 }
 
-pub async fn list_captures(
+pub(super) async fn list_captures(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
     ApiQuery(q): ApiQuery<CapturesQuery>,
@@ -306,12 +310,12 @@ pub async fn list_captures(
     )))
     .bind(id)
     .bind(q.cursor.unwrap_or(i64::MAX))
-    .bind(limit + 1)
+    .bind(limit.saturating_add(1))
     .fetch_all(&pool)
     .await?;
 
-    let has_more = items.len() as i64 > limit;
-    items.truncate(limit as usize);
+    let has_more = i64::try_from(items.len()).map_or(true, |len| len > limit);
+    items.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
     let next_cursor = has_more
         .then(|| items.last().map(|c| c.version.to_string()))
         .flatten();
@@ -321,7 +325,7 @@ pub async fn list_captures(
 // ── Tags on a page ──────────────────────────────────────────────────────────
 
 // PUT /api/pages/{id}/tags   { "tags": [...] }  replaces the full set
-pub async fn put_page_tags(
+pub(super) async fn put_page_tags(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
     ApiJson(req): ApiJson<ReplaceTags>,
@@ -344,12 +348,12 @@ pub async fn put_page_tags(
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AddTag {
+pub(super) struct AddTag {
     name: String,
 }
 
 // POST /api/pages/{id}/tags   { "name": "..." }  get-or-create + attach
-pub async fn add_page_tag(
+pub(super) async fn add_page_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
     ApiJson(req): ApiJson<AddTag>,
@@ -370,7 +374,7 @@ pub async fn add_page_tag(
 }
 
 // DELETE /api/pages/{id}/tags/{tag_id}
-pub async fn remove_page_tag(
+pub(super) async fn remove_page_tag(
     State(pool): State<SqlitePool>,
     ApiPath((id, tag_id)): ApiPath<(i64, i64)>,
 ) -> Result<StatusCode> {

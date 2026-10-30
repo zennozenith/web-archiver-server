@@ -1,10 +1,15 @@
+#![expect(
+    dead_code,
+    reason = "database row models mirror the schema; not every column is read yet"
+)]
+
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[repr(i64)]
 #[serde(rename_all = "lowercase")]
-pub enum Compression {
+pub(crate) enum Compression {
     None = 0,
     Gzip = 1,
     Brotli = 2,
@@ -12,7 +17,7 @@ pub enum Compression {
 }
 
 impl Compression {
-    pub fn content_encoding(self) -> Option<&'static str> {
+    pub(crate) const fn content_encoding(self) -> Option<&'static str> {
         match self {
             Self::None => None,
             Self::Gzip => Some("gzip"),
@@ -25,14 +30,14 @@ impl Compression {
 #[sqlx(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
-pub enum PendingStatus {
+pub(crate) enum PendingStatus {
     Queued,
     InProgress,
     Failed,
 }
 
 #[derive(Debug, FromRow)]
-pub struct ContentRow {
+pub(crate) struct ContentRow {
     pub id: i64,
     pub hash: Vec<u8>, // 32 bytes
     pub mime_type: Option<String>,
@@ -46,7 +51,7 @@ pub struct ContentRow {
 }
 
 #[derive(Debug, FromRow)]
-pub struct UrlRow {
+pub(crate) struct UrlRow {
     pub id: i64,
     pub url: String,
     pub scheme: String,
@@ -56,7 +61,7 @@ pub struct UrlRow {
 }
 
 #[derive(Debug, FromRow)]
-pub struct CaptureRow {
+pub(crate) struct CaptureRow {
     pub id: i64,
     pub url_id: i64,
     pub content_id: Option<i64>,
@@ -77,7 +82,7 @@ pub struct CaptureRow {
 
 #[derive(Debug, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TagRow {
+pub(crate) struct TagRow {
     pub id: i64,
     pub name: String,
     pub color: Option<String>, // palette key, never a hex value
@@ -85,7 +90,7 @@ pub struct TagRow {
 }
 
 #[derive(Debug, FromRow)]
-pub struct PendingRow {
+pub(crate) struct PendingRow {
     pub id: i64,
     pub url: String,
     pub title: Option<String>,

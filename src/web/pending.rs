@@ -19,7 +19,7 @@ use sqlx::SqlitePool;
 
 #[derive(Template)]
 #[template(path = "fragments/pending-card.html")]
-pub struct PendingFragmentTemplate<'a> {
+pub(super) struct PendingFragmentTemplate<'a> {
     pub id: i64,
     pub url: &'a str,
     pub title: &'a str,
@@ -43,7 +43,7 @@ impl<'a> From<&'a dto::PendingDto> for PendingFragmentTemplate<'a> {
 
 #[derive(Template)]
 #[template(path = "pending.html")]
-pub struct PendingTemplate<'a> {
+pub(super) struct PendingTemplate<'a> {
     pub id: i64,
     pub url: &'a str,
     pub title: &'a str,
@@ -65,7 +65,7 @@ impl<'a> From<&'a dto::PendingDto> for PendingTemplate<'a> {
     }
 }
 
-pub async fn create_pending(
+pub(super) async fn create_pending(
     State(pool): State<SqlitePool>,
     Form(req): Form<dto::CreatePending>,
 ) -> Result<HtmxResponse> {
@@ -101,13 +101,13 @@ pub async fn create_pending(
 }
 
 #[derive(Deserialize)]
-pub struct QueryPending {
+pub(super) struct QueryPending {
     limit: Option<u32>,
     status: Option<models::PendingStatus>,
     after_id: Option<i64>,
 }
 
-pub async fn get_pending(
+pub(super) async fn get_pending(
     State(pool): State<SqlitePool>,
     Query(query): Query<QueryPending>,
 ) -> Result<Json<dto::Page<dto::PendingDto>>> {
@@ -123,7 +123,7 @@ pub async fn get_pending(
     ))
 }
 
-pub async fn delete_pending(
+pub(super) async fn delete_pending(
     State(pool): State<SqlitePool>,
     Path(id): Path<i64>,
 ) -> Result<HtmxResponse> {

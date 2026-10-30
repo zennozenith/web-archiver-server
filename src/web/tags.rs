@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct TagView {
+pub(super) struct TagView {
     pub id: i64,
     pub name: String,
     pub pages: i64,
@@ -24,18 +24,18 @@ pub struct TagView {
 
 #[derive(Template)]
 #[template(path = "fragments/tag-list.html")]
-pub struct TagListTemplate {
+pub(super) struct TagListTemplate {
     pub tags: Vec<TagView>,
 }
 
 #[derive(Deserialize)]
-pub struct CreateTagForm {
+pub(super) struct CreateTagForm {
     pub name: String,
     pub color: Option<String>,
 }
 
 #[derive(Deserialize)]
-pub struct RenameTagForm {
+pub(super) struct RenameTagForm {
     pub name: String,
 }
 
@@ -54,7 +54,7 @@ fn clean_color(color: Option<&str>) -> Result<Option<String>> {
             "color must be a palette key: lowercase letters, digits and '-' (max 32)",
         ));
     }
-    Ok(Some(color.to_string()))
+    Ok(Some(color.to_owned()))
 }
 
 async fn tags_response(pool: &SqlitePool, message: &'static str) -> Result<HtmxResponse> {
@@ -75,7 +75,7 @@ async fn tags_response(pool: &SqlitePool, message: &'static str) -> Result<HtmxR
     ]))
 }
 
-pub async fn create_tag(
+pub(super) async fn create_tag(
     State(pool): State<SqlitePool>,
     Form(form): Form<CreateTagForm>,
 ) -> Result<HtmxResponse> {
@@ -95,7 +95,7 @@ pub async fn create_tag(
     tags_response(&pool, "Tag added").await
 }
 
-pub async fn rename_tag(
+pub(super) async fn rename_tag(
     State(pool): State<SqlitePool>,
     Path(id): Path<i64>,
     Form(form): Form<RenameTagForm>,
@@ -115,7 +115,7 @@ pub async fn rename_tag(
     tags_response(&pool, "Tag renamed").await
 }
 
-pub async fn delete_tag(
+pub(super) async fn delete_tag(
     State(pool): State<SqlitePool>,
     Path(id): Path<i64>,
 ) -> Result<HtmxResponse> {

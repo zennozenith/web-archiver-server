@@ -23,10 +23,10 @@ use serde_json::{Value, json};
 //     }
 // }
 
-pub type Result<T, E = AppError> = std::result::Result<T, E>;
+pub(crate) type Result<T, E = AppError> = std::result::Result<T, E>;
 
 #[derive(Clone)]
-pub struct ErrorInfo {
+pub(crate) struct ErrorInfo {
     pub status: StatusCode,
     pub code: &'static str,
     pub message: String,
@@ -102,7 +102,10 @@ pub enum AppError {
 
 impl AppError {
     fn parts(&self) -> (StatusCode, &'static str, Option<Value>) {
-        use AppError::*;
+        use AppError::{
+            BadRequest, Conflict, Database, DuplicatePending, DuplicateTag, Internal, InvalidUrl,
+            NotFound, PayloadTooLarge, Render, Unauthorized, Unprocessable,
+        };
         match self {
             InvalidUrl(_) => (StatusCode::BAD_REQUEST, "invalid_url", None),
             BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", None),
@@ -151,7 +154,7 @@ impl IntoResponse for AppError {
         // Log server errors with the full cause chain, but never leak it to clients.
         let message = if status.is_server_error() {
             tracing::error!(error = ?self, "request failed");
-            "internal server error".to_string()
+            "internal server error".to_owned()
         } else {
             self.to_string()
         };
@@ -185,17 +188,21 @@ impl IntoResponse for AppError {
 // ── Conversions so `?` just works ───────────────────────────────────────────
 
 impl From<sqlx::Error> for AppError {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "sqlx::Error is non-exhaustive; all unhandled variants become database errors"
+    )]
     fn from(e: sqlx::Error) -> Self {
         match &e {
-            sqlx::Error::RowNotFound => AppError::NotFound("resource"),
+            sqlx::Error::RowNotFound => Self::NotFound("resource"),
             sqlx::Error::Database(db) if db.is_unique_violation() => {
-                AppError::Conflict("resource already exists".into())
+                Self::Conflict("resource already exists".into())
             }
-            sqlx::Error::Database(db) if db.is_foreign_key_violation() => AppError::Unprocessable {
+            sqlx::Error::Database(db) if db.is_foreign_key_violation() => Self::Unprocessable {
                 code: "invalid_reference",
                 message: "referenced resource does not exist".into(),
             },
-            _ => AppError::Database(e),
+            _ => Self::Database(e),
         }
     }
 }
@@ -203,8 +210,8 @@ impl From<sqlx::Error> for AppError {
 impl From<MultipartError> for AppError {
     fn from(e: MultipartError) -> Self {
         match e.status() {
-            StatusCode::PAYLOAD_TOO_LARGE => AppError::PayloadTooLarge { limit: 0 },
-            _ => AppError::BadRequest(format!("invalid multipart body: {}", e.body_text())),
+            StatusCode::PAYLOAD_TOO_LARGE => Self::PayloadTooLarge { limit: 0 },
+            _ => Self::BadRequest(format!("invalid multipart body: {}", e.body_text())),
         }
     }
 }
@@ -223,13 +230,13 @@ fn from_rejection(status: StatusCode, message: String) -> AppError {
 
 impl From<PathRejection> for AppError {
     fn from(r: PathRejection) -> Self {
-        AppError::BadRequest(r.body_text())
+        Self::BadRequest(r.body_text())
     }
 }
 
 impl From<QueryRejection> for AppError {
     fn from(r: QueryRejection) -> Self {
-        AppError::BadRequest(r.body_text())
+        Self::BadRequest(r.body_text())
     }
 }
 
@@ -248,15 +255,15 @@ impl From<FormRejection> for AppError {
 impl From<MultipartRejection> for AppError {
     fn from(r: MultipartRejection) -> Self {
         match r.status() {
-            StatusCode::PAYLOAD_TOO_LARGE => AppError::PayloadTooLarge { limit: 0 },
-            _ => AppError::BadRequest(r.body_text()),
+            StatusCode::PAYLOAD_TOO_LARGE => Self::PayloadTooLarge { limit: 0 },
+            _ => Self::BadRequest(r.body_text()),
         }
     }
 }
 
 /// Extension to turn `Option` into `NotFound` ergonomically:
 /// `row.or_not_found("page")?`
-pub trait OptionExt<T> {
+pub(crate) trait OptionExt<T> {
     fn or_not_found(self, what: &'static str) -> Result<T>;
 }
 impl<T> OptionExt<T> for Option<T> {
@@ -265,6 +272,6 @@ impl<T> OptionExt<T> for Option<T> {
     }
 }
 
-pub fn join_err(e: tokio::task::JoinError) -> AppError {
+pub(crate) fn join_err(e: tokio::task::JoinError) -> AppError {
     AppError::Internal(Box::new(e))
 }

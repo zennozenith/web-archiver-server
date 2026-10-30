@@ -1,9 +1,14 @@
+#![expect(
+    clippy::same_name_method,
+    reason = "the Embed derive generates methods with the same names as the trait"
+)]
+
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use axum::{Router, body::Body, extract::Path, response::Response, routing::get};
 use http::{StatusCode, header};
-use rust_embed::RustEmbed;
+use rust_embed::Embed;
 use serde::Deserialize;
 use tower_http::services::ServeDir;
 
@@ -22,13 +27,13 @@ fn manifest() -> &'static HashMap<String, ManifestEntry> {
 }
 
 /// Resolve a Vite entry (e.g. `src/app.ts`) to its built `/static/vite/...` URL.
-pub fn vite_asset(entry: &str) -> Option<String> {
+pub(crate) fn vite_asset(entry: &str) -> Option<String> {
     manifest()
         .get(entry)
         .map(|item| format!("/static/vite/{}", item.file))
 }
 
-trait ServeEmbed: RustEmbed {
+trait ServeEmbed: Embed {
     fn serve_embedded(path: &str) -> Response {
         match Self::get(path) {
             Some(content) => {
@@ -40,31 +45,27 @@ trait ServeEmbed: RustEmbed {
                     // drop this header if you're using the fixed filenames from the earlier scaffold
                     .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
                     .body(Body::from(content.data))
-                    .unwrap()
+                    .expect("static response headers are valid")
             }
             None => Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("404 Not Found"))
-                .unwrap(),
+                .expect("static response headers are valid"),
         }
     }
 }
 
-impl<T: RustEmbed> ServeEmbed for T {}
+impl<T: Embed> ServeEmbed for T {}
 
-#[derive(RustEmbed)]
+#[derive(Embed)]
 #[folder = "static/vite/assets"]
-pub struct ViteAssets;
+pub(crate) struct ViteAssets;
 
-#[derive(RustEmbed)]
+#[derive(Embed)]
 #[folder = "static/vite/images"]
-pub struct ViteImages;
+pub(crate) struct ViteImages;
 
-// pub async fn static_handler(Path(path): Path<String>) -> impl IntoResponse {
-//     serve_embedded(&path)
-// }
-
-pub(super) fn serve_dir() -> Router {
+pub(crate) fn serve_dir() -> Router {
     Router::new()
         .nest_service(
             "/static/vite/vendored",

@@ -1,11 +1,14 @@
-use crate::{extract::comma_separated_or_seq, models::*};
+use crate::{
+    extract::comma_separated_or_seq,
+    models::{PendingStatus, TagRow},
+};
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 
 // ── Requests ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub struct CreatePending {
+pub(crate) struct CreatePending {
     pub url: String,
     pub title: Option<String>,
     #[serde(default, deserialize_with = "comma_separated_or_seq")]
@@ -13,31 +16,39 @@ pub struct CreatePending {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PatchPending {
+pub(crate) struct PatchPending {
     pub title: Option<String>,
     pub tags: Option<Vec<String>>,
     pub status: Option<PendingStatus>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct FailPending {
+pub(crate) struct FailPending {
     pub error: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CreateTag {
+pub(crate) struct CreateTag {
     pub name: String,
     pub color: Option<String>,
 }
 
 /// PATCH semantics: `color: null` clears, absent leaves unchanged.
 #[derive(Debug, Deserialize)]
-pub struct PatchTag {
+#[expect(
+    clippy::option_option,
+    reason = "distinguishes an absent field from an explicit null in PATCH payloads"
+)]
+pub(crate) struct PatchTag {
     pub name: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     pub color: Option<Option<String>>,
 }
 
+#[expect(
+    clippy::option_option,
+    reason = "distinguishes an absent field from an explicit null in PATCH payloads"
+)]
 fn double_option<'de, T, D>(d: D) -> Result<Option<Option<T>>, D::Error>
 where
     T: Deserialize<'de>,
@@ -47,17 +58,17 @@ where
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ReplaceTags {
+pub(crate) struct ReplaceTags {
     pub tags: Vec<CreateTag>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MergeTag {
+pub(crate) struct MergeTag {
     pub into: i64,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PageQuery {
+pub(crate) struct PageQuery {
     #[serde(default)]
     pub tag: Vec<String>, // needs axum-extra's Query for repeated keys
     #[serde(default, rename = "match")]
@@ -70,7 +81,7 @@ pub struct PageQuery {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum MatchMode {
+pub(crate) enum MatchMode {
     #[default]
     All,
     Any,
@@ -78,7 +89,7 @@ pub enum MatchMode {
 
 /// Parsed from the multipart fields of POST /api/archive
 #[derive(Debug, Default)]
-pub struct ArchiveUpload {
+pub(crate) struct ArchiveUpload {
     pub html: Vec<u8>,
     pub screenshot: Option<(Vec<u8>, ScreenshotFormat)>,
     pub metadata: Option<serde_json::Value>,
@@ -92,20 +103,20 @@ pub struct ArchiveUpload {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum ScreenshotFormat {
+pub(crate) enum ScreenshotFormat {
     Png,
     Jpeg,
 }
 
 impl ScreenshotFormat {
-    pub fn mime(self) -> &'static str {
+    pub(crate) const fn mime(self) -> &'static str {
         match self {
             Self::Png => "image/png",
             Self::Jpeg => "image/jpeg",
         }
     }
     /// Verify claimed format against magic bytes.
-    pub fn matches(self, bytes: &[u8]) -> bool {
+    pub(crate) fn matches(self, bytes: &[u8]) -> bool {
         match self {
             Self::Png => bytes.starts_with(&[0x89, b'P', b'N', b'G']),
             Self::Jpeg => bytes.starts_with(&[0xFF, 0xD8, 0xFF]),
@@ -117,7 +128,7 @@ impl ScreenshotFormat {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArchiveResponse {
+pub(crate) struct ArchiveResponse {
     pub capture_id: i64,
     pub page_id: i64,
     pub version: i64,
@@ -127,7 +138,7 @@ pub struct ArchiveResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Dedup {
+pub(crate) struct Dedup {
     /// The served (rewritten) HTML blob already existed.
     pub html: bool,
     /// The exact uploaded HTML blob already existed.
@@ -137,7 +148,7 @@ pub struct Dedup {
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AssetSummary {
+pub(crate) struct AssetSummary {
     /// Asset rows written for this capture.
     pub saved: usize,
     /// Saved assets whose bytes already existed in `content`.
@@ -150,14 +161,14 @@ pub struct AssetSummary {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Page<T> {
+pub(crate) struct Page<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PendingDto {
+pub(crate) struct PendingDto {
     pub id: i64,
     pub url: String,
     pub title: Option<String>,
@@ -170,7 +181,7 @@ pub struct PendingDto {
 
 #[derive(Debug, Serialize, FromRow)]
 #[serde(rename_all = "camelCase")]
-pub struct CaptureSummary {
+pub(crate) struct CaptureSummary {
     pub id: i64,
     pub version: i64,
     pub captured_at: i64,

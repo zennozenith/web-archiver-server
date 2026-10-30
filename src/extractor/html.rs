@@ -12,7 +12,7 @@ use url::Url;
 
 /// Stable label stored in `capture_asset.kind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AssetKind {
+pub(crate) enum AssetKind {
     Stylesheet,
     Script,
     Image,
@@ -25,7 +25,7 @@ pub enum AssetKind {
 }
 
 impl AssetKind {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Stylesheet => "stylesheet",
             Self::Script => "script",
@@ -41,7 +41,7 @@ impl AssetKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExtractedResource {
+pub(crate) struct ExtractedResource {
     pub url: Url,
     pub kind: AssetKind,
 }
@@ -114,7 +114,7 @@ fn kind_for_as(value: &str) -> AssetKind {
     }
 }
 
-fn kind_for_link(element: &ElementRef) -> Option<AssetKind> {
+fn kind_for_link(element: &ElementRef<'_>) -> Option<AssetKind> {
     let rel = element.attr("rel").unwrap_or("").to_ascii_lowercase();
     let rels: HashSet<&str> = rel.split_whitespace().collect();
 
@@ -136,10 +136,15 @@ fn kind_for_link(element: &ElementRef) -> Option<AssetKind> {
     }
 }
 
-fn parent_tag<'a>(element: ElementRef<'a>) -> Option<&'a str> {
+fn parent_tag(element: ElementRef<'_>) -> Option<&str> {
     element.parent().and_then(|parent| match parent.value() {
         Node::Element(el) => Some(el.name()),
-        _ => None,
+        Node::Document
+        | Node::Fragment
+        | Node::Doctype(_)
+        | Node::Comment(_)
+        | Node::Text(_)
+        | Node::ProcessingInstruction(_) => None,
     })
 }
 
@@ -147,13 +152,17 @@ fn parent_tag<'a>(element: ElementRef<'a>) -> Option<&'a str> {
 ///
 /// `attr` is the attribute to rewrite, `srcset` tells the rewriter that the
 /// attribute contains several URL/descriptor pairs.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass over every supported HTML resource element"
+)]
 fn walk<F>(document: &Html, page_url: &Url, mut visit: F)
 where
     F: FnMut(&ElementRef<'_>, &'static str, bool, Url, AssetKind),
 {
     let base = document_base(document, page_url);
 
-    let mut push = |el: &ElementRef, attr: &'static str, srcset: bool, raw: &str, kind| {
+    let mut push = |el: &ElementRef<'_>, attr: &'static str, srcset: bool, raw: &str, kind| {
         let Some(url) = resolve(&base, raw) else {
             return;
         };
@@ -252,7 +261,7 @@ where
     // SVG <image href> / <use href>, including the legacy xlink:href form.
     // Attributes are matched by local name so both forms are found.
     for el in document.select(&sel("image, use")) {
-        for (name, value) in el.value().attrs.iter() {
+        for (name, value) in &el.value().attrs {
             if name.local.as_str() == "href" {
                 push(&el, "href", false, value.as_ref(), AssetKind::Image);
             }
@@ -289,13 +298,13 @@ where
 }
 
 /// Extract every resource the document references, in document order.
-pub fn extract_resources(page_url: &Url, html: &str) -> Vec<ExtractedResource> {
+pub(crate) fn extract_resources(page_url: &Url, html: &str) -> Vec<ExtractedResource> {
     let document = Html::parse_document(html);
     let mut seen = HashSet::new();
     let mut out = Vec::new();
 
     walk(&document, page_url, |_el, _attr, _srcset, url, kind| {
-        if seen.insert(url.as_str().to_string()) {
+        if seen.insert(url.as_str().to_owned()) {
             out.push(ExtractedResource { url, kind });
         }
     });
@@ -305,15 +314,15 @@ pub fn extract_resources(page_url: &Url, html: &str) -> Vec<ExtractedResource> {
 
 fn rewrite_url(raw: &str, base: &Url, replacements: &HashMap<String, String>) -> Option<String> {
     let resolved = Url::options().base_url(Some(base)).parse(raw.trim()).ok()?;
-    let fragment = resolved.fragment().map(str::to_string);
+    let fragment = resolved.fragment().map(str::to_owned);
     let mut key = resolved;
     key.set_fragment(None);
 
     let replacement = replacements.get(key.as_str())?;
-    Some(match fragment {
-        Some(fragment) => format!("{replacement}#{fragment}"),
-        None => replacement.clone(),
-    })
+    Some(fragment.map_or_else(
+        || replacement.clone(),
+        |fragment| format!("{replacement}#{fragment}"),
+    ))
 }
 
 fn rewrite_srcset(raw: &str, base: &Url, replacements: &HashMap<String, String>) -> String {
@@ -327,7 +336,7 @@ fn rewrite_srcset(raw: &str, base: &Url, replacements: &HashMap<String, String>)
             let mut parts = candidate.split_whitespace();
             let url = parts.next()?;
             let descriptors = parts.collect::<Vec<_>>();
-            let rewritten = rewrite_url(url, base, replacements).unwrap_or_else(|| url.to_string());
+            let rewritten = rewrite_url(url, base, replacements).unwrap_or_else(|| url.to_owned());
 
             Some(if descriptors.is_empty() {
                 rewritten
@@ -372,7 +381,11 @@ fn absolute_link(base: &Url, raw: &str) -> Option<String> {
 /// serves the captured bytes (usually `/api/content/<blake3>`). Returns `None`
 /// when nothing in the document matched, so the caller can avoid storing a
 /// second identical HTML blob.
-pub fn rewrite_resources(
+#[expect(
+    clippy::too_many_lines,
+    reason = "resource rewriting and link absolutization share one parsed document"
+)]
+pub(crate) fn rewrite_resources(
     html: &[u8],
     page_url: &Url,
     replacements: &HashMap<String, String>,
@@ -479,16 +492,16 @@ mod tests {
             </body></html>"#;
 
         let got = urls(html);
-        assert!(got.contains(&"https://example.com/assets/site.css".to_string()));
-        assert!(got.contains(&"https://example.com/docs/favicon.ico".to_string()));
-        assert!(got.contains(&"https://example.com/fonts/inter.woff2".to_string()));
-        assert!(got.contains(&"https://example.com/docs/app.js".to_string()));
-        assert!(got.contains(&"https://cdn.example.com/card.png".to_string()));
-        assert!(got.contains(&"https://example.com/docs/hero.png".to_string()));
-        assert!(got.contains(&"https://example.com/docs/hero-2x.png".to_string()));
-        assert!(got.contains(&"https://example.com/docs/pic.webp".to_string()));
-        assert!(got.contains(&"https://example.com/docs/movie.mp4".to_string()));
-        assert!(got.contains(&"https://example.com/docs/poster.jpg".to_string()));
+        assert!(got.contains(&"https://example.com/assets/site.css".to_owned()));
+        assert!(got.contains(&"https://example.com/docs/favicon.ico".to_owned()));
+        assert!(got.contains(&"https://example.com/fonts/inter.woff2".to_owned()));
+        assert!(got.contains(&"https://example.com/docs/app.js".to_owned()));
+        assert!(got.contains(&"https://cdn.example.com/card.png".to_owned()));
+        assert!(got.contains(&"https://example.com/docs/hero.png".to_owned()));
+        assert!(got.contains(&"https://example.com/docs/hero-2x.png".to_owned()));
+        assert!(got.contains(&"https://example.com/docs/pic.webp".to_owned()));
+        assert!(got.contains(&"https://example.com/docs/movie.mp4".to_owned()));
+        assert!(got.contains(&"https://example.com/docs/poster.jpg".to_owned()));
     }
 
     #[test]
@@ -531,32 +544,32 @@ mod tests {
 
         let replacements = HashMap::from([
             (
-                "https://example.com/assets/site.css".to_string(),
-                "/api/content/css".to_string(),
+                "https://example.com/assets/site.css".to_owned(),
+                "/api/content/css".to_owned(),
             ),
             (
-                "https://cdn.example.com/card.png".to_string(),
-                "/api/content/card".to_string(),
+                "https://cdn.example.com/card.png".to_owned(),
+                "/api/content/card".to_owned(),
             ),
             (
-                "https://example.com/docs/hero.png".to_string(),
-                "/api/content/hero".to_string(),
+                "https://example.com/docs/hero.png".to_owned(),
+                "/api/content/hero".to_owned(),
             ),
             (
-                "https://example.com/docs/hero-2x.png".to_string(),
-                "/api/content/hero2".to_string(),
+                "https://example.com/docs/hero-2x.png".to_owned(),
+                "/api/content/hero2".to_owned(),
             ),
             (
-                "https://example.com/docs/hero-3x.png".to_string(),
-                "/api/content/hero3".to_string(),
+                "https://example.com/docs/hero-3x.png".to_owned(),
+                "/api/content/hero3".to_owned(),
             ),
             (
-                "https://example.com/docs/poster.jpg".to_string(),
-                "/api/content/poster".to_string(),
+                "https://example.com/docs/poster.jpg".to_owned(),
+                "/api/content/poster".to_owned(),
             ),
             (
-                "https://example.com/sprite.svg".to_string(),
-                "/api/content/sprite".to_string(),
+                "https://example.com/sprite.svg".to_owned(),
+                "/api/content/sprite".to_owned(),
             ),
         ]);
 

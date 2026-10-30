@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Colors are palette keys like "red" or "deep-blue", never hex values.
-pub fn validate_color(color: Option<&str>) -> Result<Option<String>> {
+pub(super) fn validate_color(color: Option<&str>) -> Result<Option<String>> {
     let Some(c) = color.map(str::trim).filter(|c| !c.is_empty()) else {
         return Ok(None);
     };
@@ -25,12 +25,12 @@ pub fn validate_color(color: Option<&str>) -> Result<Option<String>> {
             "color must be a palette key: lowercase letters, digits and '-' (max 32)",
         ));
     }
-    Ok(Some(c.to_string()))
+    Ok(Some(c.to_owned()))
 }
 
 #[derive(Debug, Serialize, FromRow)]
 #[serde(rename_all = "camelCase")]
-pub struct TagWithCount {
+pub(super) struct TagWithCount {
     pub id: i64,
     pub name: String,
     pub color: Option<String>,
@@ -40,7 +40,9 @@ pub struct TagWithCount {
 }
 
 // GET /api/tags
-pub async fn list_tags(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<TagWithCount>>> {
+pub(super) async fn list_tags(
+    State(pool): State<SqlitePool>,
+) -> Result<ApiJson<Vec<TagWithCount>>> {
     let rows = sqlx::query_as(
         "SELECT t.id, t.name, t.color, t.created_at,
                 (SELECT COUNT(*) FROM url_tag ut WHERE ut.tag_id = t.id)     AS pages,
@@ -54,7 +56,7 @@ pub async fn list_tags(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<Tag
 }
 
 // POST /api/tags
-pub async fn create_tag(
+pub(super) async fn create_tag(
     State(pool): State<SqlitePool>,
     ApiJson(req): ApiJson<CreateTag>,
 ) -> Result<(StatusCode, ApiJson<TagRow>)> {
@@ -71,20 +73,19 @@ pub async fn create_tag(
     .fetch_optional(&pool)
     .await?;
 
-    match created {
-        Some(tag) => Ok((StatusCode::CREATED, ApiJson(tag))),
-        None => {
-            let existing_id: i64 = sqlx::query_scalar("SELECT id FROM tag WHERE name = ?")
-                .bind(&name)
-                .fetch_one(&pool)
-                .await?;
-            Err(AppError::DuplicateTag { existing_id })
-        }
+    if let Some(tag) = created {
+        Ok((StatusCode::CREATED, ApiJson(tag)))
+    } else {
+        let existing_id: i64 = sqlx::query_scalar("SELECT id FROM tag WHERE name = ?")
+            .bind(&name)
+            .fetch_one(&pool)
+            .await?;
+        Err(AppError::DuplicateTag { existing_id })
     }
 }
 
 // PATCH /api/tags/{id}   (color: null clears, absent keeps)
-pub async fn patch_tag(
+pub(super) async fn patch_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
     ApiJson(req): ApiJson<PatchTag>,
@@ -123,7 +124,7 @@ pub async fn patch_tag(
 }
 
 // DELETE /api/tags/{id}   (url_tag / pending_tag rows cascade)
-pub async fn delete_tag(
+pub(super) async fn delete_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<StatusCode> {
@@ -139,7 +140,7 @@ pub async fn delete_tag(
 }
 
 // POST /api/tags/{id}/merge   { "into": <tag_id> }
-pub async fn merge_tag(
+pub(super) async fn merge_tag(
     State(pool): State<SqlitePool>,
     ApiPath(from): ApiPath<i64>,
     ApiJson(req): ApiJson<MergeTag>,

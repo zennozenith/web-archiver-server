@@ -1,9 +1,22 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-pub mod css;
-pub mod html;
+pub(crate) mod css;
+pub(crate) mod html;
 
-pub fn data_uri_to_bytes(uri: &str) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {
+#[expect(
+    clippy::type_complexity,
+    reason = "the boxed error is the natural return type for this standalone helper"
+)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "data URI decoding is exercised by tests and kept for resource capture"
+    )
+)]
+pub(crate) fn data_uri_to_bytes(
+    uri: &str,
+) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {
     // Format: data:[<mime>][;base64],<data>
     let rest = uri.strip_prefix("data:").ok_or("not a data URI")?;
     let (meta, data) = rest.split_once(',').ok_or("missing comma")?;
@@ -11,7 +24,7 @@ pub fn data_uri_to_bytes(uri: &str) -> Result<(String, Vec<u8>), Box<dyn std::er
     if !meta.ends_with(";base64") {
         return Err("only base64 data URIs are supported".into());
     }
-    let mime = meta.trim_end_matches(";base64").to_string();
+    let mime = meta.trim_end_matches(";base64").to_owned();
 
     let bytes = STANDARD.decode(data.trim())?;
     Ok((mime, bytes))

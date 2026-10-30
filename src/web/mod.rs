@@ -13,7 +13,7 @@ mod tags;
 
 use error::negotiate_errors;
 
-pub fn router(state: AppState) -> Router {
+pub(crate) fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index::index))
         .route("/counter", get(index::vite_counter))

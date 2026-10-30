@@ -2,7 +2,14 @@
 
 use axum::{
     body::Body,
-    http::{HeaderMap, HeaderValue, StatusCode, header::*},
+    http::{
+        HeaderMap, HeaderValue, StatusCode,
+        header::{
+            ACCEPT_ENCODING, ACCESS_CONTROL_ALLOW_ORIGIN, CACHE_CONTROL, CONTENT_ENCODING,
+            CONTENT_LENGTH, CONTENT_SECURITY_POLICY, CONTENT_TYPE, ETAG, IF_NONE_MATCH, VARY,
+            X_CONTENT_TYPE_OPTIONS,
+        },
+    },
     response::{IntoResponse, Response},
 };
 use tokio_util::io::ReaderStream;
@@ -16,17 +23,18 @@ use crate::{compress, helpers::to_hex};
 
 /// Archived content is untrusted: no scripts, no framing tricks, no sniffing.
 /// Loosen img-src/style-src if you want archived pages to load remote resources.
-pub const CSP: &str = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+pub(crate) const CSP: &str =
+    "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
 
 /// Archived HTML is served from our own origin so it can load the rewritten
 /// `/api/content/...` resources. Scripts stay disabled by `sandbox` (no
 /// `allow-scripts`) and by an explicit `script-src 'none'`.
-pub const CSP_ARCHIVED_HTML: &str = "sandbox; default-src 'none'; \
+pub(crate) const CSP_ARCHIVED_HTML: &str = "sandbox; default-src 'none'; \
     script-src 'none'; connect-src 'none'; \
     img-src 'self' data:; style-src 'self' 'unsafe-inline'; \
     font-src 'self' data:; media-src 'self'; frame-src 'self'";
 
-pub const COLS: &str = "ct.id, ct.hash, ct.mime_type, ct.size_original, ct.size_stored, \
+pub(crate) const COLS: &str = "ct.id, ct.hash, ct.mime_type, ct.size_original, ct.size_stored, \
                         ct.compression_id, ct.data, ct.storage_ref, ct.ref_count, ct.created_at";
 
 fn accepts(header: &str, coding: &str) -> bool {
@@ -56,7 +64,7 @@ fn hv(s: &str) -> Result<HeaderValue> {
     HeaderValue::from_str(s).map_err(|e| AppError::Internal(Box::new(e)))
 }
 
-pub fn etag_for(hash: &[u8]) -> String {
+pub(crate) fn etag_for(hash: &[u8]) -> String {
     format!("\"{}\"", to_hex(hash))
 }
 
@@ -101,7 +109,7 @@ fn body_plan(comp: Compression, accept: &str) -> (Option<&'static str>, BodyPlan
     }
 }
 
-pub async fn serve_content(
+pub(crate) async fn serve_content(
     store: &BlobStore,
     req: &HeaderMap,
     row: ContentRow,
@@ -111,7 +119,15 @@ pub async fn serve_content(
     serve_content_with_csp(store, req, row, content_type, cache_control, CSP).await
 }
 
-pub async fn serve_content_with_csp(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the extra policy arguments keep the call sites explicit"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "response negotiation and body construction belong together"
+)]
+pub(crate) async fn serve_content_with_csp(
     store: &BlobStore,
     req: &HeaderMap,
     row: ContentRow,
@@ -138,10 +154,7 @@ pub async fn serve_content_with_csp(
     let (encoding, plan) = body_plan(comp, accept);
 
     // Strong ETag per representation (identity vs br vs gzip differ byte-wise).
-    let etag = match encoding {
-        Some(e) => format!("\"{}-{e}\"", to_hex(&hash)),
-        None => etag_for(&hash),
-    };
+    let etag = encoding.map_or_else(|| etag_for(&hash), |e| format!("\"{}-{e}\"", to_hex(&hash)));
 
     let mut h = HeaderMap::new();
     h.insert(ETAG, hv(&etag)?);
@@ -181,7 +194,10 @@ pub async fn serve_content_with_csp(
         // On disk and sendable as-is: stream it, never hold the whole file in memory.
         (None, Some(r)) if matches!(plan, BodyPlan::Stored) => {
             let file = store.open_file(&r).await?;
-            h.insert(CONTENT_LENGTH, HeaderValue::from(size_stored as u64));
+            h.insert(
+                CONTENT_LENGTH,
+                HeaderValue::from(u64::try_from(size_stored).unwrap_or_default()),
+            );
             Body::from_stream(ReaderStream::new(file))
         }
         // On disk but the client can't take the stored encoding: read, decode,
@@ -190,9 +206,8 @@ pub async fn serve_content_with_csp(
             let raw = store.read(&r).await?;
             let decoded = decompress_blocking(raw, comp).await?;
             Body::from(match plan {
-                BodyPlan::Decode => decoded,
+                BodyPlan::Decode | BodyPlan::Stored => decoded,
                 BodyPlan::Transcode(target) => compress_blocking(decoded, target).await?,
-                BodyPlan::Stored => unreachable!(),
             })
         }
         (None, None) => {
@@ -215,9 +230,9 @@ mod tests {
         assert_eq!(encoding, Some("br"));
         assert_eq!(plan, BodyPlan::Stored);
 
-        let (encoding, plan) = body_plan(Compression::Gzip, "gzip, deflate");
-        assert_eq!(encoding, Some("gzip"));
-        assert_eq!(plan, BodyPlan::Stored);
+        let (encoding_gzip, plan_gzip) = body_plan(Compression::Gzip, "gzip, deflate");
+        assert_eq!(encoding_gzip, Some("gzip"));
+        assert_eq!(plan_gzip, BodyPlan::Stored);
     }
 
     #[test]

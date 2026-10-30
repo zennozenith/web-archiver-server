@@ -4,20 +4,22 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
 use crate::config::DatabaseSettings;
 
-pub mod archive;
-pub mod helpers;
-pub mod pages;
-pub mod pending;
-pub mod stats;
-pub mod store;
+pub(crate) mod archive;
+pub(crate) mod helpers;
+pub(crate) mod pages;
+pub(crate) mod pending;
+pub(crate) mod stats;
+pub(crate) mod store;
 
-pub async fn create_pool(database_settings: &DatabaseSettings) -> Result<SqlitePool, sqlx::Error> {
+pub(crate) async fn create_pool(
+    database_settings: &DatabaseSettings,
+) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
         .max_connections(database_settings.max_connections)
         .min_connections(1)
         .acquire_timeout(Duration::from_secs(10))
-        .idle_timeout(Duration::from_secs(600))
-        .max_lifetime(Duration::from_secs(1800))
+        .idle_timeout(Duration::from_mins(10))
+        .max_lifetime(Duration::from_mins(30))
         .connect_with(database_settings.connect_options())
         .await?;
 

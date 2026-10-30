@@ -4,7 +4,7 @@ use crate::{error::AppError, models::TagRow, tag::CleanTag, url_canon::Canonical
 
 // TODO: Should functions be only public to super
 
-pub async fn missing_pending_or(
+pub(crate) async fn missing_pending_or(
     pool: &SqlitePool,
     id: i64,
     conflict_msg: &str,
@@ -20,7 +20,7 @@ pub async fn missing_pending_or(
     })
 }
 
-pub async fn replace_pending_tags(
+pub(crate) async fn replace_pending_tags(
     conn: &mut SqliteConnection,
     pending_id: i64,
     names: &[CleanTag],
@@ -40,7 +40,7 @@ pub async fn replace_pending_tags(
     Ok(())
 }
 
-pub async fn get_or_create_tag(
+pub(crate) async fn get_or_create_tag(
     conn: &mut SqliteConnection,
     name: &CleanTag,
 ) -> Result<i64, sqlx::Error> {
@@ -56,7 +56,7 @@ pub async fn get_or_create_tag(
 }
 
 /// Union tags into a page (never removes existing ones).
-pub async fn add_url_tags(
+pub(crate) async fn add_url_tags(
     conn: &mut SqliteConnection,
     url_id: i64,
     names: &[CleanTag],
@@ -72,7 +72,7 @@ pub async fn add_url_tags(
     Ok(())
 }
 
-pub async fn get_or_create_url(
+pub(crate) async fn get_or_create_url(
     conn: &mut SqliteConnection,
     canon: &CanonicalUrl,
 ) -> Result<i64, sqlx::Error> {
@@ -90,14 +90,17 @@ pub async fn get_or_create_url(
     .await
 }
 
-pub async fn load_tag(conn: &mut SqliteConnection, id: i64) -> Result<Option<TagRow>, sqlx::Error> {
+pub(crate) async fn load_tag(
+    conn: &mut SqliteConnection,
+    id: i64,
+) -> Result<Option<TagRow>, sqlx::Error> {
     sqlx::query_as("SELECT id, name, color, created_at FROM tag WHERE id = ?")
         .bind(id)
         .fetch_optional(&mut *conn)
         .await
 }
 
-pub async fn replace_url_tags(
+pub(crate) async fn replace_url_tags(
     conn: &mut SqliteConnection,
     url_id: i64,
     names: &[CleanTag],
@@ -109,7 +112,7 @@ pub async fn replace_url_tags(
     add_url_tags(conn, url_id, names).await
 }
 
-pub async fn page_tags(
+pub(crate) async fn page_tags(
     conn: &mut SqliteConnection,
     url_id: i64,
 ) -> Result<Vec<TagRow>, sqlx::Error> {

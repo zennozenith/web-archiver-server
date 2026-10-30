@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::restriction,
+    clippy::cargo
+)]
+
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -132,7 +140,7 @@ enum HashType {
 }
 
 impl HashType {
-    pub fn to_hex(&self) -> String {
+    fn to_hex(&self) -> String {
         let bytes = match self {
             HashType::Blake3(b) => b,
             HashType::Sha256(b) => b,
