@@ -52,6 +52,10 @@
 
   tasks."app:test".exec = "cargo test";
 
+  tasks."init:server" = {
+    exec = "mkdir -p data/db";
+  };
+
   tasks."init:frontend" = {
     exec = "vp install";
     cwd = "./frontend";

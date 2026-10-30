@@ -6,7 +6,7 @@ use std::{path::PathBuf, str::FromStr};
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     #[serde(default = "default_data_dir")]
-    pub _data_dir: PathBuf,
+    pub data_dir: PathBuf,
     #[serde(default)]
     pub database: DatabaseSettings,
 
@@ -58,7 +58,7 @@ fn default_data_dir() -> PathBuf {
 }
 
 fn default_db_url() -> Box<str> {
-    String::from("sqlite://db/app.db").into_boxed_str()
+    String::from("sqlite://data/db/app.db").into_boxed_str()
 }
 
 fn default_max_connections() -> u32 {

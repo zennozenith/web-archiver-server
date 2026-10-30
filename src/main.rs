@@ -19,6 +19,7 @@ mod dto;
 mod error;
 mod extract;
 mod extractor;
+mod helpers;
 mod htmx;
 mod models;
 mod scrapper;
@@ -67,7 +68,7 @@ async fn main() {
         .init();
 
     let settings = Settings::load();
-    let store = BlobStore::open("data/blobs", 16 * 1024)
+    let store = BlobStore::open(settings.data_dir.join("blobs"), 16 * 1024)
         .await
         .expect("Cannot create blob store");
 

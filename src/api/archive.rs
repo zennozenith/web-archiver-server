@@ -13,10 +13,11 @@ use futures::{StreamExt, stream};
 use serde_json::Value;
 use sqlx::SqlitePool;
 
+use crate::helpers::to_hex;
 use crate::{
     blob_store::BlobStore,
     db::{
-        helpers::{add_url_tags, get_or_create_url, to_hex},
+        helpers::{add_url_tags, get_or_create_url},
         store::{insert_blob, prepare_blob},
     },
     downloader,

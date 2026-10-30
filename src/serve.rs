@@ -12,7 +12,7 @@ use crate::{
     blob_store::BlobStore,
     error::{AppError, Result, join_err},
 };
-use crate::{compress, db::helpers::to_hex};
+use crate::{compress, helpers::to_hex};
 
 /// Archived content is untrusted: no scripts, no framing tricks, no sniffing.
 /// Loosen img-src/style-src if you want archived pages to load remote resources.
