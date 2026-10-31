@@ -7,18 +7,20 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
-    db,
+    db::{
+        self,
+        tags::{TagRow, get_or_create_tag},
+    },
     error::{AppError, Result},
     htmx::{HtmxResponse, PartialSwap},
-    models::TagRow,
-    tag::clean_tag_name,
+    tag::{self, Name},
     template::FeedbackTemplate,
 };
 
 #[derive(Clone)]
 pub(super) struct PageTag {
     pub id: i64,
-    pub name: String,
+    pub name: Name,
 }
 
 impl From<&TagRow> for PageTag {
@@ -82,13 +84,13 @@ pub(super) async fn add_page_tag(
     Path(id): Path<i64>,
     Form(form): Form<TagForm>,
 ) -> Result<HtmxResponse> {
-    let name = clean_tag_name(&form.name)?;
+    let name = tag::clean_name(&form.name)?;
     if !db::pages::page_exists(&pool, id).await? {
         return Err(AppError::NotFound("page"));
     }
 
     let mut tx = pool.begin().await?;
-    let tag_id = db::helpers::get_or_create_tag(&mut tx, &name).await?;
+    let tag_id = get_or_create_tag(&mut tx, &name).await?;
     sqlx::query("INSERT OR IGNORE INTO url_tag (url_id, tag_id) VALUES (?, ?)")
         .bind(id)
         .bind(tag_id)

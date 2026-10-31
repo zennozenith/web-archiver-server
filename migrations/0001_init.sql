@@ -27,6 +27,7 @@ CREATE TABLE content (
 CREATE INDEX idx_content_ref_count ON content(ref_count);
 
 -- Normalized URLs
+-- TODO: Rename to page
 CREATE TABLE url (
     id          INTEGER PRIMARY KEY,
     url         TEXT NOT NULL UNIQUE,          -- canonicalized
@@ -58,7 +59,7 @@ CREATE TABLE capture (
 );
 CREATE INDEX idx_capture_url_time ON capture(url_id, captured_at DESC);
 CREATE INDEX idx_capture_content  ON capture(content_id);
-CREATE INDEX idx_capture_orignal_content  ON capture(content_orignal_id);
+CREATE INDEX idx_capture_orignal_content  ON capture(original_content_id);
 CREATE INDEX idx_capture_crawl    ON capture(crawl_id);
 
 -- Optional: group captures by crawl job

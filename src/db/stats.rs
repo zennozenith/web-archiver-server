@@ -1,7 +1,17 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use serde::Serialize;
-use sqlx::{SqlitePool, prelude::FromRow};
+use sqlx::{Result, SqlitePool, prelude::FromRow};
+
+use crate::{blob_store::BlobStore, error::AppError};
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GCStat {
+    rows_deleted: usize,
+    files_deleted: usize,
+    tmp_removed: usize,
+}
 
 #[derive(FromRow)]
 struct Totals {
@@ -36,7 +46,7 @@ pub(crate) struct Stats {
 }
 
 // GET /api/stats
-pub(crate) async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
+pub(crate) async fn stats(pool: &SqlitePool) -> Result<Stats> {
     let t: Totals = sqlx::query_as(
         "SELECT
            (SELECT COUNT(*) FROM url)     AS pages,
@@ -79,5 +89,51 @@ pub(crate) async fn stats(pool: &SqlitePool) -> Result<Stats, sqlx::Error> {
         logical_bytes: t.logical_bytes,
         saved_bytes: t.logical_bytes.saturating_sub(t.stored_bytes),
         queue,
+    })
+}
+
+pub(crate) async fn health(pool: &SqlitePool) -> Result<()> {
+    sqlx::query("SELECT 1").execute(pool).await?;
+    Ok(())
+}
+
+// 1. deletes content rows no capture references (1h grace avoids racing in-flight archives)
+// 2. deletes the files those rows pointed at
+// 3. removes abandoned temp files from crashed writes
+//
+// ref_count is maintained by triggers on capture/capture_asset, so it covers the
+// document, screenshot and every saved sub-resource.
+//
+// DB first, files second: a crash in between leaves an orphan file, never a row pointing at nothing.
+pub(crate) async fn gc_content(pool: &SqlitePool, store: &BlobStore) -> Result<GCStat, AppError> {
+    let refs: Vec<Option<String>> = sqlx::query_scalar(
+        "DELETE FROM content
+         WHERE created_at < unixepoch() - 3600
+           AND ref_count <= 0
+         RETURNING storage_ref",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let rows_deleted = refs.len();
+    let mut files_deleted: usize = 0;
+    for r in refs.into_iter().flatten() {
+        // Skip if the same hash was re-archived (new row, same path) while we were deleting.
+        let reused: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content WHERE storage_ref = ?)")
+                .bind(&r)
+                .fetch_one(pool)
+                .await?;
+        if !reused {
+            store.remove(&r).await?;
+            files_deleted = files_deleted.saturating_add(1);
+        }
+    }
+    let tmp_removed = store.clean_tmp(Duration::from_secs(3600)).await;
+
+    Ok(GCStat {
+        rows_deleted,
+        files_deleted,
+        tmp_removed,
     })
 }

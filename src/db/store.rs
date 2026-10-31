@@ -5,8 +5,8 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::blob_store::BlobStore;
 use crate::compress;
+use crate::compress::Compression;
 use crate::error::{AppError, Result, join_err};
-use crate::models::Compression;
 
 pub(crate) enum Location {
     Inline(Vec<u8>),

@@ -6,45 +6,20 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::Value;
-use sqlx::{AssertSqlSafe, FromRow, SqlitePool};
+use sqlx::SqlitePool;
 
 use crate::{
     blob_store::BlobStore,
+    db::{
+        captures::{AssetRow, CaptureDetailRow},
+        contents::ContentRow,
+    },
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath},
-    models::ContentRow,
-    serve::{COLS, CSP, CSP_ARCHIVED_HTML, serve_content_with_csp},
+    serve::{CSP, CSP_ARCHIVED_HTML, serve_content_with_csp},
 };
 
 const CAPTURE_CACHE: &str = "private, max-age=86400";
-
-#[derive(FromRow)]
-struct CaptureDetailRow {
-    id: i64,
-    url_id: i64,
-    url: String,
-    version: i64,
-    captured_at: i64,
-    title: Option<String>,
-    status_code: Option<i64>,
-    content_type: Option<String>,
-    original_encoding: Option<String>,
-    request_headers: Option<String>,
-    response_headers: Option<String>,
-    metadata: Option<String>,
-    error: Option<String>,
-    redirect_url: Option<String>,
-    html_hash: Option<String>,
-    html_size: Option<i64>,
-    html_stored: Option<i64>,
-    original_html_hash: Option<String>,
-    original_html_size: Option<i64>,
-    original_html_stored: Option<i64>,
-    screenshot_hash: Option<String>,
-    screenshot_size: Option<i64>,
-    screenshot_mime: Option<String>,
-    asset_count: i64,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,41 +58,13 @@ fn json(s: Option<String>) -> Option<Value> {
 }
 
 // GET /api/captures/{id}
-#[expect(
-    clippy::too_many_lines,
-    reason = "maps one detailed capture row into its API representation"
-)]
 pub(super) async fn get_capture(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<ApiJson<CaptureDetail>> {
-    let r: CaptureDetailRow = sqlx::query_as(
-        "SELECT c.id, c.url_id, u.url,
-                (SELECT COUNT(*) FROM capture c2
-                  WHERE c2.url_id = c.url_id
-                    AND (c2.captured_at, c2.id) <= (c.captured_at, c.id)) AS version,
-                c.captured_at, c.title, c.status_code, c.content_type, c.original_encoding,
-                c.request_headers, c.response_headers, c.metadata, c.error,
-                ru.url AS redirect_url,
-                NULLIF(lower(hex(h.hash)), '') AS html_hash,
-                h.size_original AS html_size, h.size_stored AS html_stored,
-                NULLIF(lower(hex(oh.hash)), '') AS original_html_hash,
-                oh.size_original AS original_html_size, oh.size_stored AS original_html_stored,
-                NULLIF(lower(hex(s.hash)), '') AS screenshot_hash,
-                s.size_original AS screenshot_size, s.mime_type AS screenshot_mime,
-                (SELECT COUNT(*) FROM capture_asset ca WHERE ca.capture_id = c.id) AS asset_count
-         FROM capture c
-         JOIN url u ON u.id = c.url_id
-         LEFT JOIN url ru ON ru.id = c.redirect_url_id
-         LEFT JOIN content h ON h.id = c.content_id
-         LEFT JOIN content oh ON oh.id = c.original_content_id
-         LEFT JOIN content s ON s.id = c.screenshot_content_id
-         WHERE c.id = ?",
-    )
-    .bind(id)
-    .fetch_optional(&pool)
-    .await?
-    .or_not_found("capture")?;
+    let r = CaptureDetailRow::get(&pool, id)
+        .await?
+        .or_not_found("capture")?;
 
     let html = r.html_hash.map(|hash| Blob {
         hash,
@@ -165,16 +112,10 @@ pub(super) async fn delete_capture(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<StatusCode> {
-    let mut tx = pool.begin().await?;
-    let n = sqlx::query("DELETE FROM capture WHERE id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+    let n = CaptureDetailRow::delete(&pool, id).await?;
     if n == 0 {
         return Err(AppError::NotFound("capture"));
     }
-    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -192,13 +133,9 @@ async fn serve_capture_blob(
     force_type: Option<&str>,
     csp: &'static str,
 ) -> Result<Response> {
-    let row: ContentRow = sqlx::query_as(AssertSqlSafe(format!(
-        "SELECT {COLS} FROM capture c JOIN content ct ON ct.id = c.{join_col} WHERE c.id = ?"
-    )))
-    .bind(id)
-    .fetch_optional(pool)
-    .await?
-    .or_not_found(what)?;
+    let row: ContentRow = ContentRow::get_from_id(pool, id, join_col)
+        .await?
+        .or_not_found(what)?;
 
     let ct = force_type
         .map(str::to_owned)
@@ -274,14 +211,9 @@ async fn latest_redirect(
     suffix: &str,
     what: &'static str,
 ) -> Result<Response> {
-    let id: i64 = sqlx::query_scalar(AssertSqlSafe(format!(
-        "SELECT id FROM capture WHERE url_id = ? AND {col} IS NOT NULL
-         ORDER BY captured_at DESC, id DESC LIMIT 1"
-    )))
-    .bind(page_id)
-    .fetch_optional(pool)
-    .await?
-    .or_not_found(what)?;
+    let id: i64 = AssetRow::where_not_null(pool, page_id, col)
+        .await?
+        .or_not_found(what)?;
     // 307 (axum has no 302 helper); fine for GET
     Ok(Redirect::temporary(&format!("/api/captures/{id}/{suffix}")).into_response())
 }

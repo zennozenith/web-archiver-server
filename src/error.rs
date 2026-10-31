@@ -89,13 +89,9 @@ pub enum AppError {
 
     // 500
     #[error("Failed to render template. Error: {0}")]
-    Render(
-        #[source]
-        #[from]
-        askama::Error,
-    ),
+    Render(#[from] askama::Error),
     #[error("database error")]
-    Database(#[source] sqlx::Error),
+    Database(sqlx::Error),
     #[error("internal error")]
     Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
 }

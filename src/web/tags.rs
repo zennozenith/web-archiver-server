@@ -7,10 +7,13 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
-    db,
+    db::{
+        helpers::Inserted,
+        tags::{TagRow, list_tag_counts},
+    },
     error::{AppError, Result},
     htmx::{HtmxResponse, PartialSwap},
-    tag::clean_tag_name,
+    tag,
     template::FeedbackTemplate,
 };
 
@@ -39,26 +42,8 @@ pub(super) struct RenameTagForm {
     pub name: String,
 }
 
-/// Colors are palette keys like "red" or "deep-blue", never hex values.
-fn clean_color(color: Option<&str>) -> Result<Option<String>> {
-    let Some(color) = color.map(str::trim).filter(|c| !c.is_empty()) else {
-        return Ok(None);
-    };
-    let ok = color.len() <= 32
-        && color
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-    if !ok {
-        return Err(AppError::invalid(
-            "invalid_color",
-            "color must be a palette key: lowercase letters, digits and '-' (max 32)",
-        ));
-    }
-    Ok(Some(color.to_owned()))
-}
-
 async fn tags_response(pool: &SqlitePool, message: &'static str) -> Result<HtmxResponse> {
-    let tags = db::pages::list_tag_counts(pool)
+    let tags = list_tag_counts(pool)
         .await?
         .into_iter()
         .map(|t| TagView {
@@ -79,16 +64,10 @@ pub(super) async fn create_tag(
     State(pool): State<SqlitePool>,
     Form(form): Form<CreateTagForm>,
 ) -> Result<HtmxResponse> {
-    let name = clean_tag_name(&form.name)?;
-    let color = clean_color(form.color.as_deref())?;
+    let name = tag::clean_name(&form.name)?;
+    let color = tag::validate_color(form.color.as_deref())?;
 
-    if db::pages::create_tag(&pool, name.as_str(), color.as_deref())
-        .await?
-        .is_none()
-    {
-        let existing_id = db::pages::tag_name_exists(&pool, name.as_str(), None)
-            .await?
-            .unwrap_or(0);
+    if let Inserted::Existing(existing_id) = TagRow::create(&pool, name, color).await? {
         return Err(AppError::DuplicateTag { existing_id });
     }
 
@@ -100,15 +79,12 @@ pub(super) async fn rename_tag(
     Path(id): Path<i64>,
     Form(form): Form<RenameTagForm>,
 ) -> Result<HtmxResponse> {
-    let name = clean_tag_name(&form.name)?;
+    let name = tag::clean_name(&form.name)?;
 
-    if let Some(existing_id) = db::pages::tag_name_exists(&pool, name.as_str(), Some(id)).await? {
+    if let Some(existing_id) = TagRow::exists(&pool, &name, Some(id)).await? {
         return Err(AppError::DuplicateTag { existing_id });
     }
-    if db::pages::rename_tag(&pool, id, name.as_str())
-        .await?
-        .is_none()
-    {
+    if TagRow::rename(&pool, id, &name).await?.is_none() {
         return Err(AppError::NotFound("tag"));
     }
 
@@ -119,7 +95,7 @@ pub(super) async fn delete_tag(
     State(pool): State<SqlitePool>,
     Path(id): Path<i64>,
 ) -> Result<HtmxResponse> {
-    if !db::pages::delete_tag(&pool, id).await? {
+    if TagRow::delete(&pool, id).await? == 0 {
         return Err(AppError::NotFound("tag"));
     }
     tags_response(&pool, "Tag deleted").await

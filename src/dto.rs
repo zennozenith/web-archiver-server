@@ -1,9 +1,8 @@
 use crate::{
+    db::{pending::PendingStatus, tags::TagRow},
     extract::comma_separated_or_seq,
-    models::{PendingStatus, TagRow},
 };
 use serde::{Deserialize, Serialize};
-use sqlx::prelude::FromRow;
 
 // ── Requests ────────────────────────────────────────────────────────────────
 
@@ -25,46 +24,6 @@ pub(crate) struct PatchPending {
 #[derive(Debug, Deserialize)]
 pub(crate) struct FailPending {
     pub error: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct CreateTag {
-    pub name: String,
-    pub color: Option<String>,
-}
-
-/// PATCH semantics: `color: null` clears, absent leaves unchanged.
-#[derive(Debug, Deserialize)]
-#[expect(
-    clippy::option_option,
-    reason = "distinguishes an absent field from an explicit null in PATCH payloads"
-)]
-pub(crate) struct PatchTag {
-    pub name: Option<String>,
-    #[serde(default, deserialize_with = "double_option")]
-    pub color: Option<Option<String>>,
-}
-
-#[expect(
-    clippy::option_option,
-    reason = "distinguishes an absent field from an explicit null in PATCH payloads"
-)]
-fn double_option<'de, T, D>(d: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    Deserialize::deserialize(d).map(Some)
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ReplaceTags {
-    pub tags: Vec<CreateTag>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct MergeTag {
-    pub into: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,14 +138,8 @@ pub(crate) struct PendingDto {
     pub tags: Vec<TagRow>,
 }
 
-#[derive(Debug, Serialize, FromRow)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct CaptureSummary {
+#[derive(Debug)]
+pub(crate) struct Cursor {
+    pub ts: i64,
     pub id: i64,
-    pub version: i64,
-    pub captured_at: i64,
-    pub title: Option<String>,
-    pub status_code: Option<i64>,
-    pub content_hash: Option<String>, // hex
-    pub has_screenshot: bool,
 }

@@ -1,229 +1,64 @@
-use std::collections::HashMap;
-
 use axum::{extract::State, http::StatusCode};
-use serde::{Deserialize, Serialize};
-use sqlx::{AssertSqlSafe, FromRow, QueryBuilder, Sqlite, SqlitePool};
+use serde::Deserialize;
+use sqlx::SqlitePool;
 
 use crate::{
-    db::helpers::{get_or_create_tag, load_tag, page_tags, replace_url_tags},
-    dto::{CaptureSummary, MatchMode, Page, PageQuery, ReplaceTags},
+    api::tag::{ReplaceTags, clean_tag_name},
+    db::{
+        captures::CaptureSummary,
+        pages::{
+            PageDetail, PageDto, QueryFilter, ensure_page, list_pages_dynamic_filter, page_detail,
+        },
+        tags::TagRow,
+    },
+    dto::{Cursor, Page, PageQuery},
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath, ApiQuery},
-    models::TagRow,
-    tag::{clean_tag_name, clean_tags},
+    tag,
     url_canon::canonicalize_url,
 };
 
-fn clamp_limit(limit: Option<u32>) -> i64 {
-    i64::from(limit.unwrap_or(50).clamp(1, 200))
-}
+// todo: Limit struct
+// todo: Cursor struct and how they work
 
-fn escape_like(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
-}
-
-const PAGE_SELECT: &str = "SELECT u.id, u.url, u.host,
-    COALESCE((SELECT MAX(captured_at) FROM capture WHERE url_id = u.id), 0) AS last_captured_at,
-    (SELECT COUNT(*) FROM capture WHERE url_id = u.id) AS capture_count,
-    (SELECT title FROM capture WHERE url_id = u.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS title
-    FROM url u";
-
-/// Version numbers are computed (1 = oldest) so they renumber if a capture is deleted.
-const CAPTURE_SUMMARY_SQL: &str = "SELECT c.id AS id,
-    ROW_NUMBER() OVER (ORDER BY c.captured_at, c.id) AS version,
-    c.captured_at AS captured_at, c.title AS title, c.status_code AS status_code,
-    NULLIF(lower(hex(h.hash)), '') AS content_hash,
-    (c.screenshot_content_id IS NOT NULL) AS has_screenshot
-    FROM capture c LEFT JOIN content h ON h.id = c.content_id
-    WHERE c.url_id = ?";
-
-#[derive(FromRow)]
-struct PageRow {
-    id: i64,
-    url: String,
-    host: String,
-    last_captured_at: i64, // 0 if no capture exists
-    capture_count: i64,
-    title: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct PageDto {
-    id: i64,
-    url: String,
-    host: String,
-    title: Option<String>,
-    capture_count: i64,
-    last_captured_at: Option<i64>,
-    tags: Vec<TagRow>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct PageDetail {
-    #[serde(flatten)]
-    page: PageDto,
-    latest_capture: CaptureSummary,
-}
-
-#[derive(FromRow)]
-struct UrlTagRow {
-    url_id: i64,
-    #[sqlx(flatten)]
-    tag: TagRow,
-}
-
-async fn hydrate_pages(pool: &SqlitePool, rows: Vec<PageRow>) -> Result<Vec<PageDto>> {
-    if rows.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
-        "SELECT ut.url_id, t.id, t.name, t.color, t.created_at
-         FROM url_tag ut JOIN tag t ON t.id = ut.tag_id
-         WHERE ut.url_id IN (",
-    );
-    let mut sep = qb.separated(", ");
-    for r in &rows {
-        sep.push_bind(r.id);
-    }
-    sep.push_unseparated(") ORDER BY t.name COLLATE NOCASE");
-
-    let tag_rows: Vec<UrlTagRow> = qb.build_query_as().fetch_all(pool).await?;
-    let mut by_url: HashMap<i64, Vec<TagRow>> = HashMap::new();
-    for t in tag_rows {
-        by_url.entry(t.url_id).or_default().push(t.tag);
-    }
-
-    Ok(rows
-        .into_iter()
-        .map(|r| PageDto {
-            tags: by_url.remove(&r.id).unwrap_or_default(),
-            id: r.id,
-            url: r.url,
-            host: r.host,
-            title: r.title,
-            capture_count: r.capture_count,
-            last_captured_at: (r.capture_count > 0).then_some(r.last_captured_at),
-        })
-        .collect())
-}
-
-async fn load_page(pool: &SqlitePool, id: i64) -> Result<PageDto> {
-    let row: PageRow = sqlx::query_as(AssertSqlSafe(format!("{PAGE_SELECT} WHERE u.id = ?")))
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .or_not_found("page")?;
-    Ok(hydrate_pages(pool, vec![row]).await?.remove(0))
-}
-
-async fn page_detail(pool: &SqlitePool, id: i64) -> Result<PageDetail> {
-    let page = load_page(pool, id).await?;
-    let latest_capture = sqlx::query_as(AssertSqlSafe(format!(
-        "SELECT * FROM ({CAPTURE_SUMMARY_SQL}) ORDER BY version DESC LIMIT 1"
-    )))
-    .bind(id)
-    .fetch_one(pool)
-    .await?;
-    Ok(PageDetail {
-        page,
-        latest_capture,
-    })
-}
-
-async fn ensure_page(pool: &SqlitePool, id: i64) -> Result<()> {
-    sqlx::query_scalar::<_, i64>("SELECT id FROM url WHERE id = ?")
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .or_not_found("page")
-        .map(|_| ())
+fn clamp_limit(limit: Option<u32>) -> u32 {
+    limit.unwrap_or(50).clamp(1, 200)
 }
 
 // ── GET /api/pages ──────────────────────────────────────────────────────────
 // Sorted by most recently archived. In PageQuery, rename the field for the documented param:
-
-#[expect(
-    clippy::too_many_lines,
-    reason = "builds the dynamic filter, cursor, and pagination in one place"
-)]
 pub(super) async fn list_pages(
     State(pool): State<SqlitePool>,
     ApiQuery(q): ApiQuery<PageQuery>,
 ) -> Result<ApiJson<Page<PageDto>>> {
     let limit = clamp_limit(q.limit);
-    let tags = clean_tags(&q.tag)?;
+    let tag_names = tag::clean_names(&q.tag)?;
 
-    let mut qb: QueryBuilder<Sqlite> =
-        QueryBuilder::new(format!("SELECT * FROM ({PAGE_SELECT} WHERE 1=1"));
-
-    if let Some(host) = q.host.as_deref().map(str::trim).filter(|h| !h.is_empty()) {
-        qb.push(" AND u.host = ").push_bind(host.to_lowercase());
-    }
-
-    if let Some(s) = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        let pat = format!("%{}%", escape_like(s));
-        qb.push(" AND (u.url LIKE ")
-            .push_bind(pat.clone())
-            .push(" ESCAPE '\\' OR EXISTS (SELECT 1 FROM capture c WHERE c.url_id = u.id AND c.title LIKE ")
-            .push_bind(pat)
-            .push(" ESCAPE '\\'))");
-    }
-
-    if !tags.is_empty() {
-        let joiner = match q.match_mode {
-            MatchMode::All => " AND ",
-            MatchMode::Any => " OR ",
-        };
-        qb.push(" AND (");
-        for (i, t) in tags.iter().enumerate() {
-            if i > 0 {
-                qb.push(joiner);
-            }
-            qb.push(
-                "EXISTS (SELECT 1 FROM url_tag ut JOIN tag t ON t.id = ut.tag_id \
-                 WHERE ut.url_id = u.id AND t.name = ",
-            )
-            .push_bind(t.clone())
-            .push(")");
+    let cursor = match q.cursor.as_deref() {
+        Some(c) => {
+            let bad = || AppError::BadRequest("invalid cursor".into());
+            let (ts, id) = c.split_once(':').ok_or_else(bad)?;
+            let ts: i64 = ts.parse().map_err(|_| bad())?;
+            let id: i64 = id.parse().map_err(|_| bad())?;
+            Some(Cursor { ts, id })
         }
-        qb.push(")");
-    }
+        None => None,
+    };
 
-    qb.push(") WHERE 1=1");
+    let page_dto = list_pages_dynamic_filter(
+        &pool,
+        QueryFilter {
+            host: q.host,
+            q: q.q,
+            tag_names,
+            match_mode: q.match_mode,
+            limit,
+            cursor,
+        },
+    )
+    .await?;
 
-    if let Some(c) = q.cursor.as_deref() {
-        let bad = || AppError::BadRequest("invalid cursor".into());
-        let (ts, id) = c.split_once(':').ok_or_else(bad)?;
-        let ts: i64 = ts.parse().map_err(|_| bad())?;
-        let id: i64 = id.parse().map_err(|_| bad())?;
-        qb.push(" AND (last_captured_at, id) < (")
-            .push_bind(ts)
-            .push(", ")
-            .push_bind(id)
-            .push(")");
-    }
-
-    qb.push(" ORDER BY last_captured_at DESC, id DESC LIMIT ")
-        .push_bind(limit.saturating_add(1));
-
-    let mut rows: Vec<PageRow> = qb.build_query_as().fetch_all(&pool).await?;
-    let has_more = i64::try_from(rows.len()).map_or(true, |len| len > limit);
-    rows.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
-    let next_cursor = has_more
-        .then(|| {
-            rows.last()
-                .map(|r| format!("{}:{}", r.last_captured_at, r.id))
-        })
-        .flatten();
-
-    Ok(ApiJson(Page {
-        items: hydrate_pages(&pool, rows).await?,
-        next_cursor,
-    }))
+    Ok(ApiJson(page_dto))
 }
 
 // ── GET /api/pages/lookup?url=... ───────────────────────────────────────────
@@ -243,7 +78,8 @@ pub(super) async fn lookup_page(
         .fetch_optional(&pool)
         .await?
         .or_not_found("page")?;
-    Ok(ApiJson(page_detail(&pool, id).await?))
+
+    Ok(ApiJson(page_detail(&pool, id).await?.or_not_found("page")?))
 }
 
 // ── GET /api/pages/{id} ─────────────────────────────────────────────────────
@@ -252,7 +88,7 @@ pub(super) async fn get_page(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<ApiJson<PageDetail>> {
-    Ok(ApiJson(page_detail(&pool, id).await?))
+    Ok(ApiJson(page_detail(&pool, id).await?.or_not_found("page")?))
 }
 
 // ── DELETE /api/pages/{id} ──────────────────────────────────────────────────
@@ -262,30 +98,12 @@ pub(super) async fn delete_page(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
 ) -> Result<StatusCode> {
-    let mut tx = pool.begin().await?;
+    let found = crate::db::pages::delete_page(&pool, id).await?;
 
-    sqlx::query_scalar::<_, i64>("SELECT id FROM url WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?
-        .or_not_found("page")?;
+    if !found {
+        return Err(AppError::NotFound("page"));
+    }
 
-    // Other pages' captures that redirected to this URL keep existing, minus the link.
-    sqlx::query("UPDATE capture SET redirect_url_id = NULL WHERE redirect_url_id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-    // capture_asset rows cascade from capture; the ref_count triggers fire too.
-    sqlx::query("DELETE FROM capture WHERE url_id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM url WHERE id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await?; // url_tag cascades
-
-    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -302,24 +120,17 @@ pub(super) async fn list_captures(
     ApiPath(id): ApiPath<i64>,
     ApiQuery(q): ApiQuery<CapturesQuery>,
 ) -> Result<ApiJson<Page<CaptureSummary>>> {
-    ensure_page(&pool, id).await?;
+    let found = ensure_page(&pool, id).await?;
+
+    if !found {
+        return Err(AppError::NotFound("page"));
+    }
+
     let limit = clamp_limit(q.limit);
 
-    let mut items: Vec<CaptureSummary> = sqlx::query_as(AssertSqlSafe(format!(
-        "SELECT * FROM ({CAPTURE_SUMMARY_SQL}) WHERE version < ? ORDER BY version DESC LIMIT ?"
-    )))
-    .bind(id)
-    .bind(q.cursor.unwrap_or(i64::MAX))
-    .bind(limit.saturating_add(1))
-    .fetch_all(&pool)
-    .await?;
+    let page = CaptureSummary::list(&pool, id, q.cursor, limit).await?;
 
-    let has_more = i64::try_from(items.len()).map_or(true, |len| len > limit);
-    items.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
-    let next_cursor = has_more
-        .then(|| items.last().map(|c| c.version.to_string()))
-        .flatten();
-    Ok(ApiJson(Page { items, next_cursor }))
+    Ok(ApiJson(page))
 }
 
 // ── Tags on a page ──────────────────────────────────────────────────────────
@@ -331,7 +142,7 @@ pub(super) async fn put_page_tags(
     ApiJson(req): ApiJson<ReplaceTags>,
 ) -> Result<ApiJson<Vec<TagRow>>> {
     // TODO: also process color
-    let names = clean_tags(
+    let names = tag::clean_names(
         req.tags
             .into_iter()
             .map(|v| v.name)
@@ -340,10 +151,7 @@ pub(super) async fn put_page_tags(
     )?;
     ensure_page(&pool, id).await?;
 
-    let mut tx = pool.begin().await?;
-    replace_url_tags(&mut tx, id, &names).await?;
-    let tags = page_tags(&mut tx, id).await?;
-    tx.commit().await?;
+    let tags = crate::db::pages::put_page_tags(&pool, id, names).await?;
     Ok(ApiJson(tags))
 }
 
@@ -359,17 +167,10 @@ pub(super) async fn add_page_tag(
     ApiJson(req): ApiJson<AddTag>,
 ) -> Result<ApiJson<TagRow>> {
     let name = clean_tag_name(&req.name)?;
-    ensure_page(&pool, id).await?;
+    let tag = crate::db::pages::add_page_tag(&pool, id, name)
+        .await?
+        .or_not_found("tag")?;
 
-    let mut tx = pool.begin().await?;
-    let tag_id = get_or_create_tag(&mut tx, &name).await?;
-    sqlx::query("INSERT OR IGNORE INTO url_tag (url_id, tag_id) VALUES (?, ?)")
-        .bind(id)
-        .bind(tag_id)
-        .execute(&mut *tx)
-        .await?;
-    let tag = load_tag(&mut tx, tag_id).await?.or_not_found("tag")?;
-    tx.commit().await?;
     Ok(ApiJson(tag))
 }
 
@@ -378,12 +179,7 @@ pub(super) async fn remove_page_tag(
     State(pool): State<SqlitePool>,
     ApiPath((id, tag_id)): ApiPath<(i64, i64)>,
 ) -> Result<StatusCode> {
-    let n = sqlx::query("DELETE FROM url_tag WHERE url_id = ? AND tag_id = ?")
-        .bind(id)
-        .bind(tag_id)
-        .execute(&pool)
-        .await?
-        .rows_affected();
+    let n = crate::db::pages::remove_page_tag(&pool, id, tag_id).await?;
     if n == 0 {
         return Err(AppError::NotFound("tag on page"));
     }

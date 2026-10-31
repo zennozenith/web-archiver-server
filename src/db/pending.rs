@@ -1,21 +1,73 @@
-// db/pending.rs
-use sqlx::{AssertSqlSafe, FromRow, QueryBuilder, Sqlite, SqliteConnection, SqlitePool};
+use serde::{Deserialize, Serialize};
+use sqlx::{AssertSqlSafe, FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqlitePool};
 use std::collections::HashMap;
 
-use super::helpers::replace_pending_tags;
-
-use crate::dto::PendingDto;
-use crate::models::PendingRow;
-use crate::models::{self, PendingStatus};
-use crate::tag::CleanTag;
+use crate::db::helpers::Inserted;
+use crate::db::tags::{TagRow, get_or_create_tag};
+use crate::dto::{self, PendingDto};
+use crate::tag::Name;
 use crate::url_canon::CanonicalUrl;
 
 const PENDING_COLS: &str = "id, url, title, status, attempts, last_error, created_at";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Inserted {
-    New(i64),
-    Existing(i64),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, strum::Display)]
+#[sqlx(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub(crate) enum PendingStatus {
+    Queued,
+    InProgress,
+    Failed,
+}
+
+#[derive(Debug, FromRow)]
+pub(crate) struct PendingRow {
+    pub id: i64,
+    pub url: String,
+    pub title: Option<String>,
+    pub status: PendingStatus,
+    pub attempts: i64,
+    pub last_error: Option<String>,
+    pub created_at: i64,
+}
+
+pub(crate) async fn replace_pending_tags(
+    conn: &mut SqliteConnection,
+    pending_id: i64,
+    names: &[Name],
+) -> Result<()> {
+    sqlx::query("DELETE FROM pending_tag WHERE pending_id = ?")
+        .bind(pending_id)
+        .execute(&mut *conn)
+        .await?;
+    for name in names {
+        let tag_id = get_or_create_tag(&mut *conn, name).await?;
+        sqlx::query("INSERT OR IGNORE INTO pending_tag (pending_id, tag_id) VALUES (?, ?)")
+            .bind(pending_id)
+            .bind(tag_id)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn missing_pending_or(pool: &SqlitePool, id: i64) -> Result<Option<i64>> {
+    sqlx::query_scalar("SELECT id FROM pending WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+}
+
+pub(crate) async fn pending_url_title_optional(
+    pool: &SqlitePool,
+    id: i64,
+) -> Result<Option<(String, Option<String>)>> {
+    let row = sqlx::query_as("SELECT url, title FROM pending WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(row)
 }
 
 /// Shared by create + bulk. Tags are only attached when the row is new.
@@ -23,8 +75,8 @@ pub(crate) async fn insert_pending(
     conn: &mut SqliteConnection,
     url: &CanonicalUrl,
     title: Option<&str>,
-    tags: &[CleanTag],
-) -> Result<Inserted, sqlx::Error> {
+    tags: &[Name],
+) -> Result<Inserted<i64>> {
     let title = title.map(str::trim).filter(|t| !t.is_empty());
 
     let new_id: Option<i64> = sqlx::query_scalar(
@@ -55,7 +107,7 @@ pub(crate) async fn insert_pending(
     dead_code,
     reason = "startup recovery hook for deployments with external workers"
 )]
-pub(crate) async fn reset_in_progress(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+pub(crate) async fn reset_in_progress(pool: &SqlitePool) -> Result<u64> {
     Ok(
         sqlx::query("UPDATE pending SET status = 'queued' WHERE status = 'in_progress'")
             .execute(pool)
@@ -68,7 +120,7 @@ pub(crate) async fn reset_in_progress(pool: &SqlitePool) -> Result<u64, sqlx::Er
 pub(crate) async fn pending_status(
     tx: &mut SqliteConnection,
     id: i64,
-) -> Result<Option<PendingStatus>, sqlx::Error> {
+) -> Result<Option<PendingStatus>> {
     sqlx::query_scalar("SELECT status FROM pending WHERE id = ?")
         .bind(id)
         .fetch_optional(&mut *tx)
@@ -81,8 +133,8 @@ pub(crate) async fn update_pending(
     id: i64,
     title: Option<&str>,
     status: Option<PendingStatus>,
-    tags: Option<&Vec<CleanTag>>,
-) -> Result<(), sqlx::Error> {
+    tags: Option<&Vec<Name>>,
+) -> Result<()> {
     if let Some(title) = title {
         let title = Some(title.trim()).filter(|t| !t.is_empty()); // "" clears the title
         sqlx::query("UPDATE pending SET title = ? WHERE id = ?")
@@ -111,7 +163,7 @@ pub(crate) async fn update_pending(
 }
 
 /// TODO: docs
-pub(crate) async fn claim_pending(pool: &SqlitePool) -> Result<Option<i64>, sqlx::Error> {
+pub(crate) async fn claim_pending(pool: &SqlitePool) -> Result<Option<i64>> {
     let id: Option<i64> = sqlx::query_scalar(
         "UPDATE pending SET status = 'in_progress'
          WHERE id = (SELECT id FROM pending WHERE status = 'queued'
@@ -125,7 +177,7 @@ pub(crate) async fn claim_pending(pool: &SqlitePool) -> Result<Option<i64>, sqlx
 }
 
 /// TODO: docs
-pub(crate) async fn retry_pending(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Error> {
+pub(crate) async fn retry_pending(pool: &SqlitePool, id: i64) -> Result<u64> {
     let n = sqlx::query(
         "UPDATE pending SET status = 'queued', last_error = NULL WHERE id = ? AND status = 'failed'",
     )
@@ -138,11 +190,7 @@ pub(crate) async fn retry_pending(pool: &SqlitePool, id: i64) -> Result<u64, sql
 }
 
 /// TODO: docs
-pub(crate) async fn fail_pending(
-    pool: &SqlitePool,
-    id: i64,
-    error: &str,
-) -> Result<u64, sqlx::Error> {
+pub(crate) async fn fail_pending(pool: &SqlitePool, id: i64, error: &str) -> Result<u64> {
     let n = sqlx::query(
         "UPDATE pending SET status = 'failed', attempts = attempts + 1, last_error = ?
          WHERE id = ? AND status = 'in_progress'",
@@ -157,7 +205,7 @@ pub(crate) async fn fail_pending(
 }
 
 /// TODO: docs
-pub(crate) async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<u64, sqlx::Error> {
+pub(crate) async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<u64> {
     let n = sqlx::query("DELETE FROM pending WHERE id = ? AND status != 'in_progress'")
         .bind(id)
         .execute(pool)
@@ -171,13 +219,10 @@ pub(crate) async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<u64, sq
 struct PendingTagRow {
     pending_id: i64,
     #[sqlx(flatten)]
-    tag: models::TagRow, // id, name, color, created_at
+    tag: TagRow, // id, name, color, created_at
 }
 
-pub(crate) async fn load_pending(
-    pool: &SqlitePool,
-    id: i64,
-) -> Result<Option<PendingDto>, sqlx::Error> {
+pub(crate) async fn load_pending(pool: &SqlitePool, id: i64) -> Result<Option<PendingDto>> {
     // Aduit
     if let Some(row) = sqlx::query_as(AssertSqlSafe(format!(
         "SELECT {PENDING_COLS} FROM pending WHERE id = ?"
@@ -198,7 +243,7 @@ pub(crate) async fn load_pending(
 pub(crate) async fn hydrate_pending(
     pool: &SqlitePool,
     rows: Vec<PendingRow>,
-) -> Result<Vec<PendingDto>, sqlx::Error> {
+) -> Result<Vec<PendingDto>> {
     if rows.is_empty() {
         return Ok(Vec::new());
     }
@@ -217,7 +262,7 @@ pub(crate) async fn hydrate_pending(
 
     let tag_rows: Vec<PendingTagRow> = qb.build_query_as().fetch_all(pool).await?;
 
-    let mut by_pending: HashMap<i64, Vec<models::TagRow>> = HashMap::new();
+    let mut by_pending: HashMap<i64, Vec<TagRow>> = HashMap::new();
     for t in tag_rows {
         by_pending.entry(t.pending_id).or_default().push(t.tag);
     }
@@ -241,10 +286,10 @@ pub(crate) async fn hydrate_pending(
 /// For GET /api/pending (keyset pagination on id, new first)
 pub(crate) async fn list_pending(
     pool: &SqlitePool,
-    status: Option<crate::models::PendingStatus>,
+    status: Option<PendingStatus>,
     after_id: Option<i64>,
     limit: u32,
-) -> Result<crate::dto::Page<PendingDto>, sqlx::Error> {
+) -> Result<dto::Page<PendingDto>> {
     let limit = i64::from(limit.clamp(1, 200));
 
     let mut qb: QueryBuilder<Sqlite> =
@@ -269,11 +314,11 @@ pub(crate) async fn list_pending(
     })
 }
 
-// pub async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
-//     let result = sqlx::query("DELETE FROM pending WHERE id = ?")
-//         .bind(id)
-//         .execute(pool)
-//         .await?;
-
-//     Ok(result.rows_affected() > 0)
-// }
+pub(crate) async fn clear_pending(pool: &SqlitePool, status: PendingStatus) -> Result<u64> {
+    let n = sqlx::query("DELETE FROM pending WHERE status = ?")
+        .bind(status)
+        .execute(pool)
+        .await?
+        .rows_affected();
+    Ok(n)
+}

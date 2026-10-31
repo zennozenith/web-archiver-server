@@ -1,11 +1,32 @@
 use std::io::{Read, Write};
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::{AppError, Result};
-use crate::models::Compression;
 
 const MIN_COMPRESS_SIZE: usize = 256;
 /// Guards against decompression bombs when serving.
 const MAX_DECOMPRESSED: u64 = 512 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[repr(i64)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Compression {
+    None = 0,
+    Gzip = 1,
+    Brotli = 2,
+    // Zstd = 3,
+}
+
+impl Compression {
+    pub(crate) const fn content_encoding(self) -> Option<&'static str> {
+        match self {
+            Self::None => None,
+            Self::Gzip => Some("gzip"),
+            Self::Brotli => Some("br"),
+        }
+    }
+}
 
 pub(crate) fn is_compressible(mime: &str) -> bool {
     let m = mime

@@ -377,6 +377,8 @@ fn absolute_link(base: &Url, raw: &str) -> Option<String> {
 /// Rewrite resource URLs to their archived equivalents, and make page links
 /// point at the original site.
 ///
+/// Early return with None if replacement is empty.
+///
 /// `replacements` maps absolute, fragmentless resource URLs to the URL that
 /// serves the captured bytes (usually `/api/content/<blake3>`). Returns `None`
 /// when nothing in the document matched, so the caller can avoid storing a
@@ -390,6 +392,10 @@ pub(crate) fn rewrite_resources(
     page_url: &Url,
     replacements: &HashMap<String, String>,
 ) -> Option<Vec<u8>> {
+    if replacements.is_empty() {
+        return None;
+    }
+
     let text = String::from_utf8_lossy(html);
     let mut document = Html::parse_document(&text);
     let base = document_base(&document, page_url);

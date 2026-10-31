@@ -14,9 +14,10 @@ use axum::{
 };
 use tokio_util::io::ReaderStream;
 
-use crate::models::{Compression, ContentRow};
 use crate::{
     blob_store::BlobStore,
+    compress::Compression,
+    db::contents::ContentRow,
     error::{AppError, Result, join_err},
 };
 use crate::{compress, helpers::to_hex};
@@ -33,9 +34,6 @@ pub(crate) const CSP_ARCHIVED_HTML: &str = "sandbox; default-src 'none'; \
     script-src 'none'; connect-src 'none'; \
     img-src 'self' data:; style-src 'self' 'unsafe-inline'; \
     font-src 'self' data:; media-src 'self'; frame-src 'self'";
-
-pub(crate) const COLS: &str = "ct.id, ct.hash, ct.mime_type, ct.size_original, ct.size_stored, \
-                        ct.compression_id, ct.data, ct.storage_ref, ct.ref_count, ct.created_at";
 
 fn accepts(header: &str, coding: &str) -> bool {
     header.split(',').any(|part| {

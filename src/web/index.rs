@@ -5,10 +5,10 @@ use crate::{
         self,
         pages::PageRow,
         stats::{self, Stats},
+        tags::TagRow,
     },
     dto,
     error::Result,
-    models::TagRow,
     template::RenderHtml,
     time::ago_timestamp,
 };
@@ -60,7 +60,7 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
         .map(|row| page_card(row, &mut tags_by_page, &mut captures_by_page))
         .collect();
 
-    let tags = db::pages::list_tag_counts(&pool)
+    let tags = db::tags::list_tag_counts(&pool)
         .await?
         .into_iter()
         .map(|tag| TagView {
@@ -88,7 +88,7 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
 fn page_card(
     row: PageRow,
     tags_by_page: &mut HashMap<i64, Vec<TagRow>>,
-    captures_by_page: &mut HashMap<i64, Vec<db::pages::CaptureRow>>,
+    captures_by_page: &mut HashMap<i64, Vec<db::captures::CaptureForPageRow>>,
 ) -> PageCardTemplate {
     let PageRow {
         id,

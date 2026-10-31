@@ -7,12 +7,15 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::{
-    db::{self, pending::Inserted},
+    db::{
+        self,
+        helpers::Inserted,
+        pending::{PendingStatus, missing_pending_or},
+    },
     dto::{CreatePending, FailPending, Page, PatchPending, PendingDto},
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath, ApiQuery},
-    models::PendingStatus,
-    tag::clean_tags,
+    tag,
     url_canon::canonicalize_url,
 };
 
@@ -57,13 +60,13 @@ pub(super) async fn create_pending(
     ApiJson(req): ApiJson<CreatePending>,
 ) -> Result<(StatusCode, ApiJson<PendingDto>)> {
     let canon = canonicalize_url(&req.url)?;
-    let tags = clean_tags(&req.tags)?;
+    let tags = tag::clean_names(&req.tags)?;
 
     let mut tx = pool.begin().await?;
     let id = match db::pending::insert_pending(&mut tx, &canon, req.title.as_deref(), &tags).await?
     {
-        db::pending::Inserted::New(id) => id,
-        db::pending::Inserted::Existing(existing_id) => {
+        Inserted::New(id) => id,
+        Inserted::Existing(existing_id) => {
             return Err(AppError::DuplicatePending { existing_id });
         }
     };
@@ -124,7 +127,8 @@ pub(super) async fn bulk_create_pending(
     let (mut created, mut duplicates, mut invalid): (usize, usize, usize) = (0, 0, 0);
 
     for item in req.items {
-        let prepared = canonicalize_url(&item.url).and_then(|c| Ok((c, clean_tags(&item.tags)?)));
+        let prepared =
+            canonicalize_url(&item.url).and_then(|c| Ok((c, tag::clean_names(&item.tags)?)));
         let result = match prepared {
             Err(e) => {
                 invalid = invalid.saturating_add(1);
@@ -198,7 +202,7 @@ pub(super) async fn patch_pending(
             message: "use POST /api/pending/claim to start work on an item".into(),
         });
     }
-    let tags = req.tags.as_deref().map(clean_tags).transpose()?;
+    let tags = req.tags.as_deref().map(tag::clean_names).transpose()?;
 
     let mut tx = pool.begin().await?;
 
@@ -233,9 +237,10 @@ pub(super) async fn retry_pending(
     let n = db::pending::retry_pending(&pool, id).await?;
 
     if n == 0 {
-        return Err(
-            db::helpers::missing_pending_or(&pool, id, "only failed items can be retried").await?,
-        );
+        return Err(match missing_pending_or(&pool, id).await? {
+            Some(_) => AppError::Conflict("only failed items can be retried".into()),
+            None => AppError::NotFound("pending item"),
+        });
     }
     Ok(ApiJson(
         db::pending::load_pending(&pool, id)
@@ -269,7 +274,10 @@ pub(super) async fn fail_pending(
     let n = db::pending::fail_pending(&pool, id, &error).await?;
 
     if n == 0 {
-        return Err(db::helpers::missing_pending_or(&pool, id, "item is not in progress").await?);
+        return Err(match missing_pending_or(&pool, id).await? {
+            Some(_) => AppError::Conflict("item is not in progress".into()),
+            None => AppError::NotFound("pending item"),
+        });
     }
     Ok(ApiJson(
         db::pending::load_pending(&pool, id)
@@ -287,9 +295,10 @@ pub(super) async fn delete_pending(
 ) -> Result<StatusCode> {
     let n = db::pending::delete_pending(&pool, id).await?;
     if n == 0 {
-        return Err(
-            db::helpers::missing_pending_or(&pool, id, "item is currently being archived").await?,
-        );
+        return Err(match missing_pending_or(&pool, id).await? {
+            Some(_) => AppError::Conflict("item is currently being archived".into()),
+            None => AppError::NotFound("pending item"),
+        });
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -310,23 +319,6 @@ pub(super) async fn clear_pending(
             "cannot clear in_progress items".into(),
         ));
     }
-    let n = sqlx::query("DELETE FROM pending WHERE status = ?")
-        .bind(q.status)
-        .execute(&pool)
-        .await?
-        .rows_affected();
+    let n = db::pending::clear_pending(&pool, q.status).await?;
     Ok(ApiJson(serde_json::json!({ "deleted": n })))
 }
-
-// pub async fn delete_pending(
-//     State(pool): State<SqlitePool>,
-//     Path(id): Path<i64>,
-// ) -> Result<StatusCode> {
-//     let deleted = db::pending::delete_pending(&pool, id).await?;
-
-//     if !deleted {
-//         return Err(AppError::NotFound("pending item"));
-//     }
-
-//     Ok(StatusCode::NO_CONTENT)
-// }

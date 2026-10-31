@@ -6,14 +6,14 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use sqlx::{AssertSqlSafe, SqlitePool};
+use sqlx::SqlitePool;
 
 use crate::{
     blob_store::BlobStore,
+    db::contents::ContentRow,
     error::{AppError, OptionExt, Result},
     extract::ApiPath,
-    models::ContentRow,
-    serve::{COLS, etag_for, serve_content},
+    serve::{etag_for, serve_content},
 };
 
 // Content is immutable by hash. "private" because the API sits behind bearer auth;
@@ -46,13 +46,9 @@ pub(super) async fn get_content(
     ApiPath(hash): ApiPath<String>,
 ) -> Result<Response> {
     let hash = parse_hash(&hash)?;
-    let row: ContentRow = sqlx::query_as(AssertSqlSafe(format!(
-        "SELECT {COLS} FROM content ct WHERE ct.hash = ?"
-    )))
-    .bind(&hash)
-    .fetch_optional(&pool)
-    .await?
-    .or_not_found("content")?;
+    let row = ContentRow::get_from_hash(&pool, hash)
+        .await?
+        .or_not_found("content")?;
 
     let ct = row
         .mime_type
@@ -67,12 +63,9 @@ pub(super) async fn head_content(
     ApiPath(hash): ApiPath<String>,
 ) -> Result<Response> {
     let hash = parse_hash(&hash)?;
-    let found: Option<(i64, Option<String>)> =
-        sqlx::query_as("SELECT size_original, mime_type FROM content WHERE hash = ?")
-            .bind(&hash)
-            .fetch_optional(&pool)
-            .await?;
-    let (size, mime) = found.ok_or(AppError::NotFound("content"))?;
+    let (size, mime) = ContentRow::head(&pool, &hash)
+        .await?
+        .ok_or(AppError::NotFound("content"))?;
 
     let mut h = HeaderMap::new();
     h.insert(

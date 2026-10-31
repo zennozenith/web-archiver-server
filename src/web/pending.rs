@@ -1,9 +1,13 @@
 use crate::{
-    db, dto,
+    db::{
+        self,
+        helpers::Inserted,
+        pending::{self, PendingStatus},
+    },
+    dto,
     error::{AppError, OptionExt, Result},
     htmx::{HtmxResponse, PartialSwap},
-    models,
-    tag::clean_tags,
+    tag,
     template::FeedbackTemplate,
     time::ago_timestamp,
     url_canon::canonicalize_url,
@@ -23,7 +27,7 @@ pub(super) struct PendingFragmentTemplate<'a> {
     pub id: i64,
     pub url: &'a str,
     pub title: &'a str,
-    pub status: models::PendingStatus,
+    pub status: PendingStatus,
     pub created_at: String,
     pub tags: String,
 }
@@ -47,7 +51,7 @@ pub(super) struct PendingTemplate<'a> {
     pub id: i64,
     pub url: &'a str,
     pub title: &'a str,
-    pub status: models::PendingStatus,
+    pub status: PendingStatus,
     pub created_at: String,
     pub tags: String,
 }
@@ -70,13 +74,12 @@ pub(super) async fn create_pending(
     Form(req): Form<dto::CreatePending>,
 ) -> Result<HtmxResponse> {
     let canon = canonicalize_url(&req.url)?;
-    let tags = clean_tags(&req.tags)?;
+    let tags = tag::clean_names(&req.tags)?;
 
     let mut tx = pool.begin().await?;
-    let id = match db::pending::insert_pending(&mut tx, &canon, req.title.as_deref(), &tags).await?
-    {
-        db::pending::Inserted::New(id) => id,
-        db::pending::Inserted::Existing(existing_id) => {
+    let id = match pending::insert_pending(&mut tx, &canon, req.title.as_deref(), &tags).await? {
+        Inserted::New(id) => id,
+        Inserted::Existing(existing_id) => {
             return Err(AppError::DuplicatePending { existing_id });
             // PartialSwap::tpl("#pending-feedback", &FeedbackTemplate::success("Removed"))?
             //     .swap("innerHTML"),
@@ -103,7 +106,7 @@ pub(super) async fn create_pending(
 #[derive(Deserialize)]
 pub(super) struct QueryPending {
     limit: Option<u32>,
-    status: Option<models::PendingStatus>,
+    status: Option<PendingStatus>,
     after_id: Option<i64>,
 }
 

@@ -21,8 +21,6 @@ mod extract;
 mod extractor;
 mod helpers;
 mod htmx;
-mod models;
-mod scrapper;
 mod serve;
 mod tag;
 mod template;
