@@ -10,6 +10,8 @@ use http::StatusCode;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::{error::AppError::HashParse, hash::HashParseError};
+
 // pub trait IntoAnyhow<T> {
 //     fn anyhow(self) -> anyhow::Result<T>;
 // }
@@ -51,6 +53,8 @@ pub enum AppError {
     // 400
     #[error("invalid url: {0}")]
     InvalidUrl(String),
+    #[error("Failed to parse hash: {0}")]
+    HashParse(#[from] HashParseError),
     #[error("{0}")]
     BadRequest(String),
 
@@ -104,6 +108,7 @@ impl AppError {
         };
         match self {
             InvalidUrl(_) => (StatusCode::BAD_REQUEST, "invalid_url", None),
+            HashParse(_) => (StatusCode::BAD_REQUEST, "bad_hash", None),
             BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", None),
             Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             NotFound(_) => (StatusCode::NOT_FOUND, "not_found", None),

@@ -16,11 +16,12 @@ use tokio_util::io::ReaderStream;
 
 use crate::{
     blob_store::BlobStore,
+    compress,
     compress::Compression,
     db::contents::ContentRow,
     error::{AppError, Result, join_err},
+    hash::Blake3Hash,
 };
-use crate::{compress, helpers::to_hex};
 
 /// Archived content is untrusted: no scripts, no framing tricks, no sniffing.
 /// Loosen img-src/style-src if you want archived pages to load remote resources.
@@ -62,8 +63,8 @@ fn hv(s: &str) -> Result<HeaderValue> {
     HeaderValue::from_str(s).map_err(|e| AppError::Internal(Box::new(e)))
 }
 
-pub(crate) fn etag_for(hash: &[u8]) -> String {
-    format!("\"{}\"", to_hex(hash))
+pub(crate) fn etag_for(hash: &Blake3Hash) -> String {
+    format!("\"{}\"", hash.to_hex())
 }
 
 async fn decompress_blocking(data: Vec<u8>, comp: Compression) -> Result<Vec<u8>> {
@@ -142,6 +143,9 @@ pub(crate) async fn serve_content_with_csp(
         ..
     } = row;
 
+    let hash = Blake3Hash::from_bytes(hash)
+        .map_err(|e| AppError::Internal(format!("Invaild hash stored in data base: {e}").into()))?;
+
     let accept = req
         .get(ACCEPT_ENCODING)
         .and_then(|v| v.to_str().ok())
@@ -152,7 +156,7 @@ pub(crate) async fn serve_content_with_csp(
     let (encoding, plan) = body_plan(comp, accept);
 
     // Strong ETag per representation (identity vs br vs gzip differ byte-wise).
-    let etag = encoding.map_or_else(|| etag_for(&hash), |e| format!("\"{}-{e}\"", to_hex(&hash)));
+    let etag = encoding.map_or_else(|| etag_for(&hash), |e| format!("\"{}-{e}\"", hash.to_hex()));
 
     let mut h = HeaderMap::new();
     h.insert(ETAG, hv(&etag)?);

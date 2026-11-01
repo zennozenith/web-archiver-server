@@ -12,7 +12,7 @@ use crate::{
     dto::AssetSummary,
     error::Result,
     extractor::{css, html},
-    helpers::to_hex,
+    hash::Blake3Hash,
 };
 
 /// Upper bound on sub-resources fetched per archive request (CSS resources included).
@@ -31,7 +31,7 @@ pub(crate) struct PreparedAsset {
     pub status_code: Option<i64>,
     pub content_id: i64,
     /// Hex blake3 of the bytes, used to build rewritten `/api/content/{hash}` URLs.
-    pub hash: String,
+    pub hash: Blake3Hash,
 }
 
 /// Classify by what the server actually returned, falling back to the URL
@@ -165,7 +165,7 @@ impl AssetCollector<'_> {
                 kind: kind.as_str(),
                 status_code: Some(i64::from(status)),
                 content_id,
-                hash: to_hex(&blob.hash),
+                hash: blob.hash,
             });
             Ok(())
         })
@@ -196,7 +196,7 @@ impl AssetCollector<'_> {
 
             if !self.seen.insert(key.clone()) {
                 if let Some(asset) = self.saved.iter().find(|asset| asset.url == key) {
-                    replacements.insert(key, format!("/api/content/{}", asset.hash));
+                    replacements.insert(key, format!("/api/content/{}", asset.hash.to_hex()));
                 }
                 continue;
             }
@@ -222,7 +222,7 @@ impl AssetCollector<'_> {
                     )
                     .await?;
                     if let Some(asset) = self.saved.iter().find(|asset| asset.url == key) {
-                        replacements.insert(key, format!("/api/content/{}", asset.hash));
+                        replacements.insert(key, format!("/api/content/{}", asset.hash.to_hex()));
                     }
                 }
                 Err(e) => {

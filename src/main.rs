@@ -19,7 +19,7 @@ mod dto;
 mod error;
 mod extract;
 mod extractor;
-mod helpers;
+mod hash;
 mod htmx;
 mod serve;
 mod tag;

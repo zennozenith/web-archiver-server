@@ -13,30 +13,13 @@ use crate::{
     db::contents::ContentRow,
     error::{AppError, OptionExt, Result},
     extract::ApiPath,
+    hash::Blake3Hash,
     serve::{etag_for, serve_content},
 };
 
 // Content is immutable by hash. "private" because the API sits behind bearer auth;
 // switch to "public" if you serve it unauthenticated behind a CDN.
 const IMMUTABLE: &str = "private, max-age=31536000, immutable";
-
-fn parse_hash(s: &str) -> Result<Vec<u8>> {
-    if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(AppError::BadRequest(
-            "hash must be 64 hex characters".into(),
-        ));
-    }
-    s.as_bytes()
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| {
-            let pair = std::str::from_utf8(pair)
-                .map_err(|_| AppError::BadRequest("invalid hash".into()))?;
-            u8::from_str_radix(pair, 16).map_err(|_| AppError::BadRequest("invalid hash".into()))
-        })
-        .collect()
-}
 
 // GET /api/content/{hash}
 pub(super) async fn get_content(
@@ -45,7 +28,7 @@ pub(super) async fn get_content(
     headers: HeaderMap,
     ApiPath(hash): ApiPath<String>,
 ) -> Result<Response> {
-    let hash = parse_hash(&hash)?;
+    let hash: Blake3Hash = hash.parse()?;
     let row = ContentRow::get_from_hash(&pool, hash)
         .await?
         .or_not_found("content")?;
@@ -62,7 +45,7 @@ pub(super) async fn head_content(
     State(pool): State<SqlitePool>,
     ApiPath(hash): ApiPath<String>,
 ) -> Result<Response> {
-    let hash = parse_hash(&hash)?;
+    let hash: Blake3Hash = hash.parse()?;
     let (size, mime) = ContentRow::head(&pool, &hash)
         .await?
         .ok_or(AppError::NotFound("content"))?;

@@ -192,7 +192,12 @@ pub(super) async fn archive(
     // links can be resolved against the original page URL.
     let replacements: HashMap<String, String> = assets
         .iter()
-        .map(|asset| (asset.url.clone(), format!("/api/content/{}", asset.hash)))
+        .map(|asset| {
+            (
+                asset.url.clone(),
+                format!("/api/content/{}", asset.hash.to_hex()),
+            )
+        })
         .collect();
     let rewritten = html::rewrite_resources(&upload.html, &page_url, &replacements);
 

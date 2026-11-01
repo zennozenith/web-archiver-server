@@ -3,10 +3,12 @@
 
 use sqlx::{SqliteConnection, SqlitePool};
 
-use crate::blob_store::BlobStore;
-use crate::compress;
-use crate::compress::Compression;
-use crate::error::{AppError, Result, join_err};
+use crate::{
+    blob_store::BlobStore,
+    compress::{self, Compression},
+    error::{AppError, Result, join_err},
+    hash::Blake3Hash,
+};
 
 pub(crate) enum Location {
     Inline(Vec<u8>),
@@ -21,7 +23,7 @@ pub(crate) struct NewPayload {
 }
 
 pub(crate) struct PreparedBlob {
-    pub hash: Vec<u8>,
+    pub hash: Blake3Hash,
     pub mime: String,
     pub size_original: i64,
     /// None when the hash already existed (nothing to write).
@@ -39,14 +41,14 @@ pub(crate) async fn prepare_blob(
     let size_original = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
 
     let (hash, bytes) = tokio::task::spawn_blocking(move || {
-        let h = blake3::hash(&bytes).as_bytes().to_vec();
+        let h: Blake3Hash = blake3::hash(&bytes).as_bytes().into();
         (h, bytes)
     })
     .await
     .map_err(join_err)?;
 
     let existed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content WHERE hash = ?)")
-        .bind(&hash)
+        .bind(hash.as_slice())
         .fetch_one(pool)
         .await?;
 
@@ -95,7 +97,7 @@ pub(crate) async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -
              VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(hash) DO NOTHING",
         )
-        .bind(&b.hash)
+        .bind(b.hash.as_slice())
         .bind(&b.mime)
         .bind(b.size_original)
         .bind(p.size_stored)
@@ -107,7 +109,7 @@ pub(crate) async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -
     }
 
     sqlx::query_scalar("SELECT id FROM content WHERE hash = ?")
-        .bind(&b.hash)
+        .bind(b.hash.as_slice())
         .fetch_optional(&mut *conn)
         .await?
         // existed at prepare time but was garbage-collected before we got here

@@ -20,7 +20,7 @@ use tokio::{fs, io::AsyncWriteExt};
 
 use crate::{
     error::{AppError, Result},
-    helpers::to_hex,
+    hash::Blake3Hash,
 };
 
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -53,8 +53,8 @@ impl BlobStore {
 
     /// Two levels of fan-out keep directories small (256 * 256 buckets).
     #[expect(clippy::string_slice, reason = "hash is 32 bytes")]
-    pub fn rel_path(hash: &[u8]) -> String {
-        let hex = to_hex(hash);
+    pub fn rel_path(hash: &Blake3Hash) -> String {
+        let hex = hash.to_hex();
         format!("{}/{}/{}", &hex[0..2], &hex[2..4], hex)
     }
 
@@ -72,12 +72,12 @@ impl BlobStore {
     /// Atomically write `data` (write to tmp, fsync, rename). Returns the `storage_ref`.
     /// Always overwrites, so a leftover file from a failed earlier insert can't disagree
     /// with the compression recorded in the database.
-    pub async fn put(&self, hash: &[u8], data: Vec<u8>) -> Result<String> {
+    pub async fn put(&self, hash: &Blake3Hash, data: Vec<u8>) -> Result<String> {
         let rel = Self::rel_path(hash);
         let dest = self.resolve(&rel)?;
         let tmp = self.root.join("tmp").join(format!(
             "{}.{}.{}",
-            to_hex(hash),
+            hash.to_hex(),
             std::process::id(),
             TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
