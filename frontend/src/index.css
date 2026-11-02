@@ -189,3 +189,33 @@ h2,
 [x-cloak] {
   display: none !important;
 }
+
+.link-card {
+  transition: border-color 0.15s;
+}
+
+.link-card:hover {
+  border-color: oklch(var(--p));
+}
+
+.thumb {
+  display: block;
+  height: 9rem;
+  background-size: cover;
+  background-position: center;
+}
+
+.reader p {
+  line-height: 1.9;
+  margin-bottom: 1.1rem;
+}
+
+.reader mark.y {
+  background: #a07d2a99;
+  color: inherit;
+}
+
+.reader mark.g {
+  background: #3f8a4a99;
+  color: inherit;
+}

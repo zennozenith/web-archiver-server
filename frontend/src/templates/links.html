@@ -1,0 +1,40 @@
+{% extends "base_new.html" %}
+{% block title %}Links{% endblock %}
+{% block content %}
+<div x-data="{ view: localStorage.view || 'grid' }" x-effect="localStorage.view = view">
+  <div class="flex flex-wrap gap-2 justify-between items-center mb-4">
+    <h1 class="text-2xl">🔗 All Links</h1>
+    <form class="flex flex-wrap gap-2" hx-get="/links/search" hx-trigger="change, input delay:300ms from:input[name=q]"
+      hx-target="#results">
+      <input name="q" type="search" placeholder="Search links" class="input input-bordered input-sm">
+      <select name="sort" class="select select-bordered select-sm">
+        <option value="newest">Date (newest)</option>
+        <option value="oldest">Date (oldest)</option>
+        <option value="name">Name (A–Z)</option>
+      </select>
+      <select name="in" class="select select-bordered select-sm">
+        <option value="name">Name</option>
+        <option value="url">URL</option>
+        <option value="text">Content</option>
+        <option value="tags">Tags</option>
+      </select>
+      <div class="join">
+        <button type="button" class="btn btn-sm join-item" :class="view=='grid'&&'btn-active'"
+          @click="view='grid'">▦</button>
+        <button type="button" class="btn btn-sm join-item" :class="view=='list'&&'btn-active'"
+          @click="view='list'">☰</button>
+      </div>
+    </form>
+  </div>
+  <div id="results" class="grid gap-4"
+    :class="view=='grid' ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4' : 'grid-cols-1'">
+    {% for link in links %}{% include "partials/link_card.html" %}{% endfor %}
+  </div>
+  {% if has_more %}
+  <div hx-get="/links?page={{ next_page }}" hx-trigger="intersect once" hx-target="#results" hx-swap="append"
+    class="text-center py-6">
+    <span class="loading loading-dots"></span>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

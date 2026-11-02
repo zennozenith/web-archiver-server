@@ -32,8 +32,8 @@
   <section aria-labelledby="archives-h" x-data="{ q: '' }">
     <div class="flex items-baseline justify-between gap-3 mb-3">
       <h2 id="archives-h" class="font-serif text-lg font-semibold">Archived pages</h2>
-      <button type="button" class="btn btn-xs btn-ghost text-base-content/50"
-        x-show="q !== ''" x-cloak @click="q = ''">Clear filter</button>
+      <button type="button" class="btn btn-xs btn-ghost text-base-content/50" x-show="q !== ''" x-cloak
+        @click="q = ''">Clear filter</button>
     </div>
 
     <!-- Search -->
@@ -53,7 +53,8 @@
     </div>
     {% endif %}
 
-    {% for PageCardTemplate { id, url, host, title, search, last_captured, capture_count, version_label, tags, captures, .. } in pages %}
+    {% for PageCardTemplate { id, url, host, title, search, last_captured, capture_count, version_label, tags, captures,
+    .. } in pages %}
     {% include "fragments/page-card.html" %}
     {% endfor %}
 

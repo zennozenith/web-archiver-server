@@ -1,0 +1,2 @@
+<tr><td>{{ token.name }}</td><td>{{ token.created }}</td><td>{{ token.expires }}</td>
+  <td><button class="btn btn-ghost btn-xs text-error" hx-delete="/settings/tokens/{{ token.id }}" hx-target="closest tr" hx-swap="outerHTML">Revoke</button></td></tr>

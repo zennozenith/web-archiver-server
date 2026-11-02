@@ -1,0 +1,38 @@
+<dialog class="modal" :class="{'modal-open': share}" @keydown.escape.window="share=false">
+  <div class="modal-box max-w-xl" x-data="{ pub: {% if collection.public %}true{% else %}false{% endif %}, copied: false }">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="font-bold text-lg">Share and Collaborate</h3>
+      <button class="btn btn-ghost btn-sm btn-circle" @click="share=false">✕</button>
+    </div>
+    <form hx-put="/collections/{{ collection.id }}/sharing" hx-swap="none" @htmx:after:request="share=false">
+      <h4 class="font-medium">Make Collection Public</h4>
+      <label class="label cursor-pointer justify-start gap-3">
+        <input type="checkbox" name="public" class="checkbox checkbox-primary" x-model="pub">
+        <span>Make this a public collection</span></label>
+      <p class="text-sm opacity-70 mb-3">This will allow anyone to view this collection and its users.</p>
+      <div x-show="pub" x-transition>
+        <h4 class="font-medium">Sharable Link</h4>
+        <div class="join w-full my-2">
+          <input id="share-url" readonly value="{{ collection.share_url }}" class="input input-bordered join-item w-full">
+          <button type="button" class="btn join-item"
+                  @click="navigator.clipboard.writeText(document.getElementById('share-url').value); copied=true; setTimeout(()=>copied=false,1500)"
+                  x-text="copied ? 'Copied' : 'Copy'"></button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <h4 class="font-medium mb-2">Members</h4>
+      <div class="join w-full mb-3">
+        <input name="member" placeholder="Add members by email or username" class="input input-bordered join-item w-full"
+               hx-get="/users/suggest" hx-vals='{"collection_id":"{{ collection.id }}"}' hx-trigger="input changed delay:300ms" hx-target="#suggest" autocomplete="off">
+        <button type="button" class="btn btn-primary join-item" hx-post="/collections/{{ collection.id }}/members" hx-include="[name=member]" hx-target="#members" hx-swap="append">＋</button>
+      </div>
+      <div id="suggest"></div>
+      <ul id="members" class="rounded-box border border-base-300 divide-y divide-base-300">
+        {% let collection_id = collection.id %}
+        {% for member in collection.members %}{% include "partials/member_row.html" %}{% endfor %}
+      </ul>
+      <div class="modal-action"><button class="btn btn-primary">Save changes</button></div>
+    </form>
+  </div>
+  <div class="modal-backdrop" @click="share=false"></div>
+</dialog>

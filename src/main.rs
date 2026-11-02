@@ -28,6 +28,7 @@ mod template;
 mod time;
 mod url_canon;
 mod web;
+mod web_old;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -119,6 +120,7 @@ async fn main() {
 fn app(state: AppState) -> Router {
     Router::new()
         .nest("/api", api::router(state.clone()))
+        .nest("/old", web_old::router(state.clone()))
         .merge(web::router(state))
         .merge(asset::serve_dir())
         .layer(TraceLayer::new_for_http())

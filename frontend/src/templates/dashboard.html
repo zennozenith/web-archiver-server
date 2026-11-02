@@ -1,0 +1,42 @@
+{% extends "base_new.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+  <h1 class="text-2xl">🏠 Dashboard</h1>
+  <button class="btn btn-ghost btn-sm" x-data @click="$dispatch('edit-layout')">✏️ Edit Layout</button>
+</div>
+<div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+  <div class="stat bg-base-200 rounded-box">
+    <div class="stat-figure text-2xl">🔗</div>
+    <div class="stat-title">Links</div>
+    <div class="stat-value text-primary">{{ stats.links }}</div>
+  </div>
+  <div class="stat bg-base-200 rounded-box">
+    <div class="stat-figure text-2xl">📁</div>
+    <div class="stat-title">Collections</div>
+    <div class="stat-value text-primary">{{ stats.collections }}</div>
+  </div>
+  <div class="stat bg-base-200 rounded-box">
+    <div class="stat-figure text-2xl">#</div>
+    <div class="stat-title">Tags</div>
+    <div class="stat-value text-primary">{{ stats.tags }}</div>
+  </div>
+  <div class="stat bg-base-200 rounded-box">
+    <div class="stat-figure text-2xl">📌</div>
+    <div class="stat-title">Pinned</div>
+    <div class="stat-value text-primary">{{ stats.pinned }}</div>
+  </div>
+</div>
+{% for section in sections %}
+<section class="mb-8">
+  <div class="flex justify-between mb-2">
+    <h2 class="text-lg">{{ section.title }}</h2><a href="{{ section.href }}" class="link link-hover text-sm">View All
+      ›</a>
+  </div>
+  <div class="flex gap-4 overflow-x-auto pb-2 snap-x">
+    {% for link in section.links %}<div class="w-64 shrink-0 snap-start">{% include "partials/link_card.html" %}</div>{%
+    endfor %}
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

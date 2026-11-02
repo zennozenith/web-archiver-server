@@ -1,0 +1,7 @@
+{% if links.is_empty() %}
+<div class="col-span-full text-center py-16 opacity-70">
+  <p class="text-lg">No links found</p>
+</div>
+{% else %}
+{% for link in links %}{% include "partials/link_card.html" %}{% endfor %}
+{% endif %}

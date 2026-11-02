@@ -1,0 +1,116 @@
+{% extends "base_new.html" %}
+{% block title %}{{ link.title }}{% endblock %}
+{% block content %}
+<div x-data="{ panel: true, mode: 'view', format: 'readable', size: 18, sel: null }" class="flex gap-4 -m-4 lg:-m-6">
+  <article class="flex-1 min-w-0">
+    <div class="flex items-center gap-2 p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
+      <a href="/links" class="btn btn-ghost btn-sm">‹</a>
+      <div class="join">
+        <button class="btn btn-sm join-item" @click="size=Math.max(14,size-2)">A−</button>
+        <button class="btn btn-sm join-item" @click="size=Math.min(28,size+2)">A+</button>
+      </div>
+      <span class="flex-1"></span>
+      <select class="select select-bordered select-sm" x-model="format" hx-get="/links/{{ link.id }}/format"
+        name="format" hx-trigger="change" hx-target="#content">
+        <option value="readable">Readable</option>
+        <option value="screenshot">Screenshot</option>
+        <option value="pdf">PDF</option>
+        <option value="webpage">Webpage</option>
+      </select>
+      <button class="btn btn-sm" @click="panel=!panel">ℹ️ Details</button>
+    </div>
+    <div id="content" class="reader max-w-3xl mx-auto px-6 py-10" :style="`font-size:${size}px`"
+      @mouseup="sel = window.getSelection().toString() ? window.getSelection().toString() : null">
+      <h1 class="text-4xl font-bold mb-3">{{ link.title }}</h1>
+      <p class="text-sm opacity-70 !mb-1">🔗 {{ link.domain }}</p>
+      <p class="text-sm opacity-70 border-b border-base-300 pb-4">📅 {{ link.date }}</p>
+      <p class="mt-8">{{ link.description }}</p>
+      {% if !link.highlights.is_empty() %}
+      <div class="mt-6">
+        <h2 class="text-xl font-bold mb-2">Your highlights</h2>
+        {% for highlight in link.highlights %}
+        <p><mark class="{% if highlight.color == " green" %}g{% else %}y{% endif %}">{{ highlight.text }}</mark></p>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div x-show="sel" x-transition class="fixed bottom-6 left-1/2 -translate-x-1/2 join shadow-xl z-20">
+      <button class="btn btn-sm join-item bg-yellow-600/70" hx-post="/links/{{ link.id }}/highlights"
+        hx-vals='{"color":"yellow"}' hx-swap="none" @click="sel=null">Yellow</button>
+      <button class="btn btn-sm join-item bg-green-600/70" hx-post="/links/{{ link.id }}/highlights"
+        hx-vals='{"color":"green"}' hx-swap="none" @click="sel=null">Green</button>
+      <button class="btn btn-sm join-item" @click="sel=null">✕</button>
+    </div>
+  </article>
+
+  <aside x-show="panel" x-transition
+    class="w-96 max-w-full bg-base-200 border-l border-base-300 min-h-screen overflow-y-auto">
+    <div class="h-32 bg-indigo-700 relative">
+      <div class="absolute top-3 left-3"><button class="btn btn-circle btn-sm" @click="panel=false">✕</button></div>
+      <div class="absolute top-3 left-1/2 -translate-x-1/2 join">
+        <button class="btn btn-sm join-item" :class="mode=='view'&&'btn-active'" @click="mode='view'">View</button>
+        <button class="btn btn-sm join-item" :class="mode=='edit'&&'btn-active'" @click="mode='edit'">Edit</button>
+      </div>
+      <div class="absolute top-3 right-3 dropdown dropdown-end">
+        <button tabindex="0" class="btn btn-circle btn-sm">⋯</button>
+        <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-300 rounded-box w-44 z-10 shadow">
+          <li><a hx-post="/links/{{ link.id }}/pin" hx-swap="none">📌 Pin</a></li>
+          <li><a hx-post="/links/{{ link.id }}/refetch" hx-target="#formats" hx-swap="outerHTML">🔄 Refresh formats</a>
+          </li>
+          <li><a class="text-error" hx-delete="/links/{{ link.id }}" hx-confirm="Delete this link?">🗑 Delete</a></li>
+        </ul>
+      </div>
+    </div>
+    <div x-show="mode=='view'" class="p-4 space-y-4">
+      <h2 class="text-xl">{{ link.title }}</h2>
+      <div>
+        <div class="label-text opacity-70">Link</div>
+        <div class="join w-full"><input readonly value="{{ link.url }}"
+            class="input input-bordered input-sm join-item w-full">
+          <button class="btn btn-sm join-item" @click="navigator.clipboard.writeText('{{ link.url }}')">Copy</button>
+        </div>
+      </div>
+      <div>
+        <div class="label-text opacity-70">Collection</div>
+        <div class="input input-bordered input-sm flex items-center justify-between">{{ link.collection_name }} <span>{{
+            link.collection_emoji }}</span></div>
+      </div>
+      <div>
+        <div class="label-text opacity-70">Tags</div>
+        <div class="flex gap-2 mt-1">
+          {% for tag in link.tags %}<a href="/tags/{{ tag.slug }}" class="badge badge-lg">{{ tag.name }}</a>{% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="label-text opacity-70">Description</div>
+        <p class="text-sm opacity-70">{{ link.description }}</p>
+      </div>
+      <div>
+        <div class="flex items-center gap-2 label-text opacity-70">Preserved Formats
+          <button class="btn btn-ghost btn-xs" hx-post="/links/{{ link.id }}/refetch" hx-target="#formats"
+            hx-swap="outerHTML">⟳</button>
+        </div>
+        {% include "partials/formats.html" %}
+      </div>
+    </div>
+    <form x-show="mode=='edit'" class="p-4 space-y-3" hx-put="/links/{{ link.id }}" hx-swap="none"
+      @htmx:after:request="mode='view'">
+      <label class="form-control"><span class="label-text">Name</span><input name="name" value="{{ link.title }}"
+          class="input input-bordered input-sm"></label>
+      <label class="form-control"><span class="label-text">Collection</span><select name="collection_id"
+          class="select select-bordered select-sm">
+          <option value="">Unorganized</option>
+          {% for collection in collections %}
+          <option value="{{ collection.id }}" {% if collection.selected %}selected{% endif %}>{{ collection.name }}
+          </option>
+          {% endfor %}
+        </select></label>
+      <label class="form-control"><span class="label-text">Tags</span><input name="tags" value="{{ link.tags_csv }}"
+          class="input input-bordered input-sm"></label>
+      <label class="form-control"><span class="label-text">Description</span><textarea name="description" rows="3"
+          class="textarea textarea-bordered">{{ link.description }}</textarea></label>
+      <button class="btn btn-primary btn-sm">Save changes</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}
