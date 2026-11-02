@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use askama::Template;
 use axum::{
     Form,
@@ -8,29 +10,14 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        self,
-        tags::{TagRow, get_or_create_tag},
+        page::{self, PageId},
+        tag::Tag,
     },
     error::{AppError, Result},
     htmx::{HtmxResponse, PartialSwap},
-    tag::{self, Name},
+    tag::TagName,
     template::FeedbackTemplate,
 };
-
-#[derive(Clone)]
-pub(super) struct PageTag {
-    pub id: i64,
-    pub name: Name,
-}
-
-impl From<&TagRow> for PageTag {
-    fn from(value: &TagRow) -> Self {
-        Self {
-            id: value.id,
-            name: value.name.clone(),
-        }
-    }
-}
 
 pub(super) struct CaptureView {
     pub id: i64,
@@ -53,7 +40,7 @@ pub(super) struct PageCardTemplate {
     pub last_captured: String,
     pub capture_count: i64,
     pub version_label: String,
-    pub tags: Vec<PageTag>,
+    pub tags: Vec<Tag>,
     pub captures: Vec<CaptureView>,
 }
 
@@ -61,16 +48,13 @@ pub(super) struct PageCardTemplate {
 #[template(path = "fragments/page-tags.html")]
 pub(super) struct PageTagsTemplate {
     pub page_id: i64,
-    pub tags: Vec<PageTag>,
+    pub tags: Vec<Tag>,
 }
 
 impl PageTagsTemplate {
     pub(super) async fn load(pool: &SqlitePool, page_id: i64) -> Result<Self> {
-        let tags = db::pages::page_tags(pool, page_id).await?;
-        Ok(Self {
-            page_id,
-            tags: tags.iter().map(PageTag::from).collect(),
-        })
+        let tags = page::tags_of(pool, page_id.into()).await?;
+        Ok(Self { page_id, tags })
     }
 }
 
@@ -81,24 +65,25 @@ pub(super) struct TagForm {
 
 pub(super) async fn add_page_tag(
     State(pool): State<SqlitePool>,
-    Path(id): Path<i64>,
+    Path(id): Path<PageId>,
     Form(form): Form<TagForm>,
 ) -> Result<HtmxResponse> {
-    let name = tag::clean_name(&form.name)?;
-    if !db::pages::page_exists(&pool, id).await? {
+    let name = TagName::from_str(&form.name)?;
+
+    if !page::exists(&pool, id).await? {
         return Err(AppError::NotFound("page"));
     }
 
     let mut tx = pool.begin().await?;
-    let tag_id = get_or_create_tag(&mut tx, &name).await?;
-    sqlx::query("INSERT OR IGNORE INTO url_tag (url_id, tag_id) VALUES (?, ?)")
+    let tag_id = Tag::get_or_create_id(&mut *tx, &name).await?;
+    sqlx::query("INSERT OR IGNORE INTO url_tag (page_id, tag_id) VALUES (?, ?)")
         .bind(id)
         .bind(tag_id)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
 
-    let tags = PageTagsTemplate::load(&pool, id).await?;
+    let tags = PageTagsTemplate::load(&pool, id.get()).await?;
     Ok(HtmxResponse::partials([PartialSwap::tpl(
         format!("#page-tags-{id}"),
         &tags,
@@ -110,7 +95,7 @@ pub(super) async fn remove_page_tag(
     State(pool): State<SqlitePool>,
     Path((id, tag_id)): Path<(i64, i64)>,
 ) -> Result<HtmxResponse> {
-    sqlx::query("DELETE FROM url_tag WHERE url_id = ? AND tag_id = ?")
+    sqlx::query("DELETE FROM url_tag WHERE page_id = ? AND tag_id = ?")
         .bind(id)
         .bind(tag_id)
         .execute(&pool)
@@ -126,10 +111,10 @@ pub(super) async fn remove_page_tag(
 
 pub(super) async fn delete_page(
     State(pool): State<SqlitePool>,
-    Path(id): Path<i64>,
+    Path(id): Path<PageId>,
 ) -> Result<HtmxResponse> {
     // Idempotent: the card should disappear even if the page is already gone.
-    db::pages::delete_page(&pool, id).await?;
+    page::delete(&pool, id).await?;
 
     Ok(HtmxResponse::partials([
         PartialSwap::new(format!("#page-{id}"), "").swap("outerHTML"),

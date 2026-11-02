@@ -1,26 +1,80 @@
 use axum::{
     extract::State,
+    http::StatusCode,
     response::{IntoResponse, Response},
 };
-use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        self,
-        helpers::Inserted,
-        pending::{PendingStatus, missing_pending_or},
+        helper::{CreateOutcome, Cursor, CursorPage, FieldPatch},
+        pending::{PendingId, PendingItem, PendingRecord, PendingStatus, PendingUpdate},
     },
-    dto::{CreatePending, FailPending, Page, PatchPending, PendingDto},
     error::{AppError, OptionExt, Result},
-    extract::{ApiJson, ApiPath, ApiQuery},
+    extract::{ApiJson, ApiPath, ApiQuery, comma_separated_or_seq, opt_comma_separated_or_seq},
     limit::Limit,
-    tag,
-    url_canon::canonicalize_url,
+    tag::{TagName, parse_names},
+    url_canon::{CanonicalUrl, canonicalize_url},
 };
 
-const DEFAULT_PENDING_LIMIT: Limit = Limit::from_const(50);
+const ITEM: &str = "pending item";
+const DEFAULT_LIST_LIMIT: Limit = Limit::from_const(50);
+const MAX_BULK_ITEMS: usize = 500;
+const MAX_ERROR_CHARS: usize = 2000;
+
+/// Body of `POST /api/pending` and each entry of `POST /api/pending/bulk`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct CreatePendingRequest {
+    pub url: String,
+    pub title: Option<String>,
+    /// Accepts either `["a", "b"]` or `"a,b"`.
+    #[serde(default, deserialize_with = "comma_separated_or_seq")]
+    pub tags: Vec<String>,
+}
+
+/// Body of `PATCH /api/pending/{id}`. Absent fields are left unchanged.
+#[derive(Debug, Deserialize)]
+pub(super) struct PatchPendingRequest {
+    /// Absent: unchanged. `null`: clear. A string: set it (blank also clears).
+    #[serde(default)]
+    pub title: FieldPatch<String>,
+    /// Replaces the whole tag set when present.
+    #[serde(default, deserialize_with = "opt_comma_separated_or_seq")]
+    pub tags: Option<Vec<String>>,
+    pub status: Option<PendingStatus>,
+}
+
+/// Body of `POST /api/pending/{id}/fail`.
+#[derive(Debug, Deserialize)]
+pub(super) struct FailPendingRequest {
+    pub error: String,
+}
+
+// ── Shared helpers ──────────────────────────────────────────────────────────
+
+async fn load_item(pool: &SqlitePool, id: PendingId) -> Result<ApiJson<PendingItem>> {
+    let item = PendingItem::load(pool, id).await?.or_not_found(ITEM)?;
+    Ok(ApiJson(item))
+}
+
+/// After a guarded update touched no rows: 409 if the item exists (wrong
+/// state), 404 if it does not.
+async fn conflict_or_not_found(
+    pool: &SqlitePool,
+    id: PendingId,
+    conflict_message: &str,
+) -> Result<AppError> {
+    Ok(if PendingRecord::exists(pool, id).await? {
+        AppError::Conflict(conflict_message.into())
+    } else {
+        AppError::NotFound(ITEM)
+    })
+}
+
+fn parse_new_item(item: &CreatePendingRequest) -> Result<(CanonicalUrl, Vec<TagName>)> {
+    Ok((canonicalize_url(&item.url)?, parse_names(&item.tags)?))
+}
 
 // ── GET /api/pending ────────────────────────────────────────────────────────
 
@@ -28,188 +82,176 @@ const DEFAULT_PENDING_LIMIT: Limit = Limit::from_const(50);
 pub(super) struct ListPendingQuery {
     pub status: Option<PendingStatus>,
     pub limit: Option<Limit>,
-    pub cursor: Option<String>,
+    pub cursor: Option<Cursor>,
 }
 
-pub(super) async fn list_pending_handler(
+pub(super) async fn list_pending(
     State(pool): State<SqlitePool>,
-    ApiQuery(q): ApiQuery<ListPendingQuery>,
-) -> Result<ApiJson<Page<PendingDto>>> {
-    let after = q
-        .cursor
-        .as_deref()
-        .map(|c| {
-            c.parse::<i64>()
-                .map_err(|_| AppError::BadRequest("invalid cursor".into()))
-        })
-        .transpose()?;
-    Ok(ApiJson(
-        db::pending::list_pending(
-            &pool,
-            q.status,
-            after,
-            q.limit.unwrap_or(DEFAULT_PENDING_LIMIT),
-        )
-        .await?,
-    ))
+    ApiQuery(query): ApiQuery<ListPendingQuery>,
+) -> Result<ApiJson<CursorPage<PendingItem>>> {
+    let page = PendingItem::list(
+        &pool,
+        query.status,
+        query.cursor,
+        query.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+    )
+    .await?;
+    Ok(ApiJson(page))
 }
 
 // ── POST /api/pending ───────────────────────────────────────────────────────
 
 pub(super) async fn create_pending(
     State(pool): State<SqlitePool>,
-    ApiJson(req): ApiJson<CreatePending>,
-) -> Result<(StatusCode, ApiJson<PendingDto>)> {
-    let canon = canonicalize_url(&req.url)?;
-    let tags = tag::clean_names(&req.tags)?;
+    ApiJson(req): ApiJson<CreatePendingRequest>,
+) -> Result<(StatusCode, ApiJson<PendingItem>)> {
+    let (url, tags) = parse_new_item(&req)?;
 
     let mut tx = pool.begin().await?;
-    let id = match db::pending::insert_pending(&mut tx, &canon, req.title.as_deref(), &tags).await?
-    {
-        Inserted::New(id) => id,
-        Inserted::Existing(existing_id) => {
-            return Err(AppError::DuplicatePending { existing_id });
+    let id = match PendingRecord::enqueue(&mut tx, &url, req.title.as_deref(), &tags).await? {
+        CreateOutcome::Created(id) => id,
+        CreateOutcome::Existing(existing_id) => {
+            return Err(AppError::DuplicatePending {
+                existing_id: existing_id.get(),
+            });
         }
     };
     tx.commit().await?;
 
-    Ok((
-        StatusCode::CREATED,
-        ApiJson(
-            db::pending::load_pending(&pool, id)
-                .await?
-                .or_not_found("pending item")?,
-        ),
-    ))
+    Ok((StatusCode::CREATED, load_item(&pool, id).await?))
 }
 
 // ── POST /api/pending/bulk ──────────────────────────────────────────────────
 
-const MAX_BULK: usize = 500;
-
 #[derive(Debug, Deserialize)]
-pub(super) struct BulkCreate {
-    pub items: Vec<CreatePending>,
+pub(super) struct BulkCreateRequest {
+    pub items: Vec<CreatePendingRequest>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum BulkItemStatus {
+    Created,
+    Duplicate,
+    Invalid,
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct BulkItemResult {
     url: String,
-    status: &'static str, // created | duplicate | invalid
+    status: BulkItemStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<i64>,
+    id: Option<PendingId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
-#[derive(Serialize)]
+impl BulkItemResult {
+    fn invalid(url: String, error: &AppError) -> Self {
+        Self {
+            url,
+            status: BulkItemStatus::Invalid,
+            id: None,
+            error: Some(error.to_string()),
+        }
+    }
+
+    fn from_outcome(url: String, outcome: CreateOutcome<PendingId>) -> Self {
+        let status = if outcome.is_created() {
+            BulkItemStatus::Created
+        } else {
+            BulkItemStatus::Duplicate
+        };
+        Self {
+            url,
+            status,
+            id: Some(outcome.into_inner()),
+            error: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct BulkResponse {
+pub(super) struct BulkCreateResponse {
     created: usize,
     duplicates: usize,
     invalid: usize,
     results: Vec<BulkItemResult>,
 }
 
+impl BulkCreateResponse {
+    fn from_results(results: Vec<BulkItemResult>) -> Self {
+        let count = |status| results.iter().filter(|r| r.status == status).count();
+        Self {
+            created: count(BulkItemStatus::Created),
+            duplicates: count(BulkItemStatus::Duplicate),
+            invalid: count(BulkItemStatus::Invalid),
+            results,
+        }
+    }
+}
+
 /// One bad item doesn't fail the batch; DB errors roll back everything.
 pub(super) async fn bulk_create_pending(
     State(pool): State<SqlitePool>,
-    ApiJson(req): ApiJson<BulkCreate>,
-) -> Result<ApiJson<BulkResponse>> {
-    if req.items.is_empty() || req.items.len() > MAX_BULK {
+    ApiJson(req): ApiJson<BulkCreateRequest>,
+) -> Result<ApiJson<BulkCreateResponse>> {
+    if req.items.is_empty() || req.items.len() > MAX_BULK_ITEMS {
         return Err(AppError::BadRequest(format!(
-            "items must contain 1..={MAX_BULK} entries"
+            "items must contain 1..={MAX_BULK_ITEMS} entries"
         )));
     }
 
     let mut tx = pool.begin().await?;
     let mut results = Vec::with_capacity(req.items.len());
-    let (mut created, mut duplicates, mut invalid): (usize, usize, usize) = (0, 0, 0);
 
     for item in req.items {
-        let prepared =
-            canonicalize_url(&item.url).and_then(|c| Ok((c, tag::clean_names(&item.tags)?)));
-        let result = match prepared {
-            Err(e) => {
-                invalid = invalid.saturating_add(1);
-                BulkItemResult {
-                    url: item.url,
-                    status: "invalid",
-                    id: None,
-                    error: Some(e.to_string()),
-                }
-            }
-            Ok((canon, tags)) => {
-                match db::pending::insert_pending(&mut tx, &canon, item.title.as_deref(), &tags)
-                    .await?
-                {
-                    Inserted::New(id) => {
-                        created = created.saturating_add(1);
-                        BulkItemResult {
-                            url: canon.url,
-                            status: "created",
-                            id: Some(id),
-                            error: None,
-                        }
-                    }
-                    Inserted::Existing(id) => {
-                        duplicates = duplicates.saturating_add(1);
-                        BulkItemResult {
-                            url: canon.url,
-                            status: "duplicate",
-                            id: Some(id),
-                            error: None,
-                        }
-                    }
-                }
+        let result = match parse_new_item(&item) {
+            Err(error) => BulkItemResult::invalid(item.url, &error),
+            Ok((url, tags)) => {
+                let outcome =
+                    PendingRecord::enqueue(&mut tx, &url, item.title.as_deref(), &tags).await?;
+                BulkItemResult::from_outcome(url.url, outcome)
             }
         };
         results.push(result);
     }
     tx.commit().await?;
 
-    Ok(ApiJson(BulkResponse {
-        created,
-        duplicates,
-        invalid,
-        results,
-    }))
+    Ok(ApiJson(BulkCreateResponse::from_results(results)))
 }
 
 // ── GET /api/pending/{id} ───────────────────────────────────────────────────
 
 pub(super) async fn get_pending(
     State(pool): State<SqlitePool>,
-    ApiPath(id): ApiPath<i64>,
-) -> Result<ApiJson<PendingDto>> {
-    Ok(ApiJson(
-        db::pending::load_pending(&pool, id)
-            .await?
-            .or_not_found("pending item")?,
-    ))
+    ApiPath(id): ApiPath<PendingId>,
+) -> Result<ApiJson<PendingItem>> {
+    load_item(&pool, id).await
 }
 
 // ── PATCH /api/pending/{id} ─────────────────────────────────────────────────
 
 pub(super) async fn patch_pending(
     State(pool): State<SqlitePool>,
-    ApiPath(id): ApiPath<i64>,
-    ApiJson(req): ApiJson<PatchPending>,
-) -> Result<ApiJson<PendingDto>> {
+    ApiPath(id): ApiPath<PendingId>,
+    ApiJson(req): ApiJson<PatchPendingRequest>,
+) -> Result<ApiJson<PendingItem>> {
     if req.status == Some(PendingStatus::InProgress) {
         return Err(AppError::Unprocessable {
             code: "invalid_status",
             message: "use POST /api/pending/claim to start work on an item".into(),
         });
     }
-    let tags = req.tags.as_deref().map(tag::clean_names).transpose()?;
+    let tags = req.tags.as_deref().map(parse_names).transpose()?;
 
     let mut tx = pool.begin().await?;
 
-    let current = db::pending::pending_status(&mut tx, id)
+    let current = PendingRecord::status_of(&mut *tx, id)
         .await?
-        .ok_or(AppError::NotFound("pending item"))?;
+        .ok_or(AppError::NotFound(ITEM))?;
 
     if req.status.is_some() && current == PendingStatus::InProgress {
         return Err(AppError::Conflict(
@@ -217,74 +259,54 @@ pub(super) async fn patch_pending(
         ));
     }
 
-    db::pending::update_pending(&mut tx, id, req.title.as_deref(), req.status, tags.as_ref())
-        .await?;
+    PendingUpdate {
+        title: req.title.as_deref(),
+        status: req.status,
+        tags: tags.as_deref(),
+    }
+    .apply(&mut tx, id)
+    .await?;
 
     tx.commit().await?;
 
-    Ok(ApiJson(
-        db::pending::load_pending(&pool, id)
-            .await?
-            .or_not_found("pending item")?,
-    ))
+    load_item(&pool, id).await
 }
 
 // ── POST /api/pending/{id}/retry ────────────────────────────────────────────
 
 pub(super) async fn retry_pending(
     State(pool): State<SqlitePool>,
-    ApiPath(id): ApiPath<i64>,
-) -> Result<ApiJson<PendingDto>> {
-    let n = db::pending::retry_pending(&pool, id).await?;
-
-    if n == 0 {
-        return Err(match missing_pending_or(&pool, id).await? {
-            Some(_) => AppError::Conflict("only failed items can be retried".into()),
-            None => AppError::NotFound("pending item"),
-        });
+    ApiPath(id): ApiPath<PendingId>,
+) -> Result<ApiJson<PendingItem>> {
+    if !PendingRecord::retry(&pool, id).await? {
+        return Err(conflict_or_not_found(&pool, id, "only failed items can be retried").await?);
     }
-    Ok(ApiJson(
-        db::pending::load_pending(&pool, id)
-            .await?
-            .or_not_found("pending item")?,
-    ))
+    load_item(&pool, id).await
 }
 
 // ── POST /api/pending/claim ─────────────────────────────────────────────────
 
 /// Atomically take the oldest queued item. 204 when the queue is empty.
-/// A single UPDATE ... RETURNING means two workers can never claim the same row.
 pub(super) async fn claim_pending(State(pool): State<SqlitePool>) -> Result<Response> {
-    let id: Option<i64> = db::pending::claim_pending(&pool).await?;
-
-    Ok(match id {
-        Some(id) => ApiJson(db::pending::load_pending(&pool, id).await?).into_response(),
-        None => StatusCode::NO_CONTENT.into_response(),
-    })
+    let Some(id) = PendingRecord::claim_next(&pool).await? else {
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    };
+    Ok(load_item(&pool, id).await?.into_response())
 }
 
 // ── POST /api/pending/{id}/fail ─────────────────────────────────────────────
 
 pub(super) async fn fail_pending(
     State(pool): State<SqlitePool>,
-    ApiPath(id): ApiPath<i64>,
-    ApiJson(req): ApiJson<FailPending>,
-) -> Result<ApiJson<PendingDto>> {
-    let error: String = req.error.chars().take(2000).collect();
+    ApiPath(id): ApiPath<PendingId>,
+    ApiJson(req): ApiJson<FailPendingRequest>,
+) -> Result<ApiJson<PendingItem>> {
+    let error: String = req.error.chars().take(MAX_ERROR_CHARS).collect();
 
-    let n = db::pending::fail_pending(&pool, id, &error).await?;
-
-    if n == 0 {
-        return Err(match missing_pending_or(&pool, id).await? {
-            Some(_) => AppError::Conflict("item is not in progress".into()),
-            None => AppError::NotFound("pending item"),
-        });
+    if !PendingRecord::mark_failed(&pool, id, &error).await? {
+        return Err(conflict_or_not_found(&pool, id, "item is not in progress").await?);
     }
-    Ok(ApiJson(
-        db::pending::load_pending(&pool, id)
-            .await?
-            .or_not_found("pending item")?,
-    ))
+    load_item(&pool, id).await
 }
 
 // ── DELETE /api/pending/{id} ────────────────────────────────────────────────
@@ -292,14 +314,10 @@ pub(super) async fn fail_pending(
 
 pub(super) async fn delete_pending(
     State(pool): State<SqlitePool>,
-    ApiPath(id): ApiPath<i64>,
+    ApiPath(id): ApiPath<PendingId>,
 ) -> Result<StatusCode> {
-    let n = db::pending::delete_pending(&pool, id).await?;
-    if n == 0 {
-        return Err(match missing_pending_or(&pool, id).await? {
-            Some(_) => AppError::Conflict("item is currently being archived".into()),
-            None => AppError::NotFound("pending item"),
-        });
+    if !PendingRecord::delete(&pool, id).await? {
+        return Err(conflict_or_not_found(&pool, id, "item is currently being archived").await?);
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -307,19 +325,24 @@ pub(super) async fn delete_pending(
 // ── DELETE /api/pending?status=failed|queued ────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub(super) struct ClearQuery {
+pub(super) struct ClearPendingQuery {
     status: PendingStatus,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct ClearPendingResponse {
+    deleted: u64,
 }
 
 pub(super) async fn clear_pending(
     State(pool): State<SqlitePool>,
-    ApiQuery(q): ApiQuery<ClearQuery>,
-) -> Result<ApiJson<serde_json::Value>> {
-    if q.status == PendingStatus::InProgress {
+    ApiQuery(query): ApiQuery<ClearPendingQuery>,
+) -> Result<ApiJson<ClearPendingResponse>> {
+    if query.status == PendingStatus::InProgress {
         return Err(AppError::BadRequest(
             "cannot clear in_progress items".into(),
         ));
     }
-    let n = db::pending::clear_pending(&pool, q.status).await?;
-    Ok(ApiJson(serde_json::json!({ "deleted": n })))
+    let deleted = PendingRecord::delete_all_with_status(&pool, query.status).await?;
+    Ok(ApiJson(ClearPendingResponse { deleted }))
 }

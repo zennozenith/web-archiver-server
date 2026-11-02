@@ -1,10 +1,9 @@
 use crate::{
+    api::CreatePendingRequest,
     db::{
-        self,
-        helpers::Inserted,
-        pending::{self, PendingStatus},
+        helper::{CreateOutcome, Cursor, CursorPage},
+        pending::{PendingId, PendingItem, PendingRecord, PendingStatus},
     },
-    dto,
     error::{AppError, OptionExt, Result},
     htmx::{HtmxResponse, PartialSwap},
     limit::Limit,
@@ -35,14 +34,14 @@ pub(super) struct PendingFragmentTemplate<'a> {
     pub tags: String,
 }
 
-impl<'a> From<&'a dto::PendingDto> for PendingFragmentTemplate<'a> {
-    fn from(value: &'a dto::PendingDto) -> Self {
+impl<'a> From<&'a PendingItem> for PendingFragmentTemplate<'a> {
+    fn from(value: &'a PendingItem) -> Self {
         PendingFragmentTemplate {
-            id: value.id,
-            url: &value.url,
-            title: value.title.as_deref().unwrap_or(&value.url),
-            status: value.status,
-            created_at: ago_timestamp(value.created_at),
+            id: value.record.id.get(),
+            url: &value.record.url,
+            title: value.record.title.as_deref().unwrap_or(&value.record.url),
+            status: value.record.status,
+            created_at: ago_timestamp(value.record.created_at),
             tags: Vec::from_iter(value.tags.iter().map(|v| v.name.clone())).join(", "),
         }
     }
@@ -59,14 +58,14 @@ pub(super) struct PendingTemplate<'a> {
     pub tags: String,
 }
 
-impl<'a> From<&'a dto::PendingDto> for PendingTemplate<'a> {
-    fn from(value: &'a dto::PendingDto) -> Self {
+impl<'a> From<&'a PendingItem> for PendingTemplate<'a> {
+    fn from(value: &'a PendingItem) -> Self {
         PendingTemplate {
-            id: value.id,
-            url: &value.url,
-            title: value.title.as_deref().unwrap_or(&value.url),
-            status: value.status,
-            created_at: ago_timestamp(value.created_at),
+            id: value.record.id.get(),
+            url: &value.record.url,
+            title: value.record.title.as_deref().unwrap_or(&value.record.url),
+            status: value.record.status,
+            created_at: ago_timestamp(value.record.created_at),
             tags: Vec::from_iter(value.tags.iter().map(|v| v.name.clone())).join(", "),
         }
     }
@@ -74,23 +73,23 @@ impl<'a> From<&'a dto::PendingDto> for PendingTemplate<'a> {
 
 pub(super) async fn create_pending(
     State(pool): State<SqlitePool>,
-    Form(req): Form<dto::CreatePending>,
+    Form(req): Form<CreatePendingRequest>,
 ) -> Result<HtmxResponse> {
     let canon = canonicalize_url(&req.url)?;
-    let tags = tag::clean_names(&req.tags)?;
+    let tags = tag::parse_names(&req.tags)?;
 
     let mut tx = pool.begin().await?;
-    let id = match pending::insert_pending(&mut tx, &canon, req.title.as_deref(), &tags).await? {
-        Inserted::New(id) => id,
-        Inserted::Existing(existing_id) => {
-            return Err(AppError::DuplicatePending { existing_id });
-            // PartialSwap::tpl("#pending-feedback", &FeedbackTemplate::success("Removed"))?
-            //     .swap("innerHTML"),
+    let id = match PendingRecord::enqueue(&mut tx, &canon, req.title.as_deref(), &tags).await? {
+        CreateOutcome::Created(id) => id,
+        CreateOutcome::Existing(existing_id) => {
+            return Err(AppError::DuplicatePending {
+                existing_id: existing_id.get(),
+            });
         }
     };
     tx.commit().await?;
 
-    let pending_dto = db::pending::load_pending(&pool, id)
+    let pending_dto = PendingItem::load(&pool, id)
         .await?
         .or_not_found("pending item")?;
 
@@ -116,25 +115,24 @@ pub(super) struct QueryPending {
 pub(super) async fn get_pending(
     State(pool): State<SqlitePool>,
     Query(query): Query<QueryPending>,
-) -> Result<Json<dto::Page<dto::PendingDto>>> {
+) -> Result<Json<CursorPage<PendingItem>>> {
     let QueryPending {
         limit,
         status,
         after_id,
     } = query;
-    // TODO: hardcoded limit
+
+    let cursor = after_id.map(Cursor::new);
     let limit = limit.unwrap_or(DEFAULT_PENDING_LIMIT);
-    Ok(Json(
-        db::pending::list_pending(&pool, status, after_id, limit).await?,
-    ))
+    Ok(Json(PendingItem::list(&pool, status, cursor, limit).await?))
 }
 
 pub(super) async fn delete_pending(
     State(pool): State<SqlitePool>,
-    Path(id): Path<i64>,
+    Path(id): Path<PendingId>,
 ) -> Result<HtmxResponse> {
     // Idempotent: if the row is already gone, the card should disappear anyway.
-    db::pending::delete_pending(&pool, id).await?;
+    PendingRecord::delete(&pool, id).await?;
 
     // 200 with an empty body, not 204. htmx 4 doesn't swap 204 responses,
     // so the card would never be removed.

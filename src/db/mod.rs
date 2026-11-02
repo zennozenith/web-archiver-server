@@ -5,14 +5,14 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use crate::config::DatabaseSettings;
 
 pub(crate) mod archive;
-pub(crate) mod captures;
-pub(crate) mod contents;
-pub(crate) mod helpers;
-pub(crate) mod pages;
+pub(crate) mod capture;
+pub(crate) mod content;
+pub(crate) mod helper;
+pub(crate) mod page;
 pub(crate) mod pending;
 pub(crate) mod stats;
 pub(crate) mod store;
-pub(crate) mod tags;
+pub(crate) mod tag;
 
 pub(crate) async fn create_pool(
     database_settings: &DatabaseSettings,

@@ -4,141 +4,113 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        helpers::Inserted,
-        tags::{TagRow, TagWithCount},
+        helper::{CreateOutcome, FieldPatch},
+        tag::{PatchOutcome, Tag, TagPatch, TagSummary},
     },
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath},
-    tag::{Color, Merge, Name},
+    tag::{TagId, TagMerge, TagName, parse_optional_color},
 };
 
+// GET /api/tags
+pub(super) async fn list_tags(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<TagSummary>>> {
+    let tags = TagSummary::list(&pool).await?;
+    Ok(ApiJson(tags))
+}
+
 #[derive(Debug, Deserialize)]
-pub(super) struct CreateTag {
+pub(super) struct CreateTagRequest {
     pub name: String,
     pub color: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ReplaceTags {
-    pub tags: Vec<CreateTag>,
-}
-
-/// PATCH semantics: `color: null` clears, absent leaves unchanged.
-#[derive(Debug, Deserialize)]
-#[expect(
-    clippy::option_option,
-    reason = "distinguishes an absent field from an explicit null in PATCH payloads"
-)]
-pub(super) struct PatchTag {
-    pub name: Option<String>,
-    #[serde(default, deserialize_with = "double_option")]
-    pub color: Option<Option<String>>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct MergeTag {
-    pub into: i64,
-}
-
-#[expect(
-    clippy::option_option,
-    reason = "distinguishes an absent field from an explicit null in PATCH payloads"
-)]
-fn double_option<'de, T, D>(d: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    Deserialize::deserialize(d).map(Some)
-}
-
-/// Colors are palette keys like "red" or "deep-blue", never hex values.
-pub(super) fn validate_color(color: Option<&str>) -> Result<Option<Color>> {
-    color.map(str::trim).filter(|c| !c.is_empty()).map_or_else(
-        || Ok(None),
-        |c| {
-            Color::new(c)
-                .map(Some)
-                .map_err(|e| AppError::invalid("invalid_color", e.to_string()))
-        },
-    )
-}
-
-pub(crate) fn clean_tag_name(raw: &str) -> Result<Name> {
-    Name::new(raw).map_err(|e| AppError::invalid("invalid_tag", e.to_string()))
-}
-
-// GET /api/tags
-pub(super) async fn list_tags(
-    State(pool): State<SqlitePool>,
-) -> Result<ApiJson<Vec<TagWithCount>>> {
-    let list = TagWithCount::list(&pool).await?;
-    Ok(ApiJson(list))
 }
 
 // POST /api/tags
 pub(super) async fn create_tag(
     State(pool): State<SqlitePool>,
-    ApiJson(req): ApiJson<CreateTag>,
-) -> Result<(StatusCode, ApiJson<TagRow>)> {
-    let name = clean_tag_name(&req.name)?;
+    ApiJson(req): ApiJson<CreateTagRequest>,
+) -> Result<(StatusCode, ApiJson<Tag>)> {
+    let name: TagName = req.name.parse()?;
+    let color = parse_optional_color(req.color.as_deref())?;
 
-    let color = validate_color(req.color.as_deref())?;
+    match Tag::create(&pool, &name, color.as_ref()).await? {
+        CreateOutcome::Created(tag) => Ok((StatusCode::CREATED, ApiJson(tag))),
+        CreateOutcome::Existing(tag) => Err(AppError::DuplicateTag {
+            existing_id: tag.id.get(),
+        }),
+    }
+}
 
-    let created = TagRow::create(&pool, name, color).await?;
+/// PATCH semantics: `color: null` clears, an absent field leaves it unchanged.
+#[derive(Debug, Deserialize)]
+pub(super) struct PatchTagRequest {
+    pub name: Option<String>,
+    #[serde(default)]
+    pub color: FieldPatch<String>,
+}
 
-    match created {
-        Inserted::New(tag) => Ok((StatusCode::CREATED, ApiJson(tag))),
-        Inserted::Existing(existing_id) => Err(AppError::DuplicateTag { existing_id }),
+impl PatchTagRequest {
+    /// Validate the raw payload into a [`TagPatch`]. A blank color string clears the color.
+    fn into_patch(self) -> Result<TagPatch> {
+        let name = self
+            .name
+            .as_deref()
+            .map(str::parse::<TagName>)
+            .transpose()?;
+
+        let color = match self.color {
+            FieldPatch::Unchanged => FieldPatch::Unchanged,
+            FieldPatch::Clear => FieldPatch::Clear,
+            FieldPatch::Set(raw) => {
+                parse_optional_color(Some(&raw))?.map_or(FieldPatch::Clear, FieldPatch::Set)
+            }
+        };
+
+        Ok(TagPatch { name, color })
     }
 }
 
 // PATCH /api/tags/{id}   (color: null clears, absent keeps)
 pub(super) async fn patch_tag(
     State(pool): State<SqlitePool>,
-    ApiPath(id): ApiPath<i64>,
-    ApiJson(req): ApiJson<PatchTag>,
-) -> Result<ApiJson<TagRow>> {
-    let name = req.name.as_deref().map(clean_tag_name).transpose()?;
-    let color = req
-        .color
-        .map(|v| validate_color(v.as_deref()))
-        .transpose()?;
-
-    let updated = crate::db::tags::PatchTag { name, color }
-        .patch(&pool, id)
-        .await?
-        .or_not_found("tag")?;
-
-    match updated {
-        Inserted::New(tag) => Ok(ApiJson(tag)),
-        Inserted::Existing(existing_id) => Err(AppError::DuplicateTag { existing_id }),
+    ApiPath(id): ApiPath<TagId>,
+    ApiJson(req): ApiJson<PatchTagRequest>,
+) -> Result<ApiJson<Tag>> {
+    match req.into_patch()?.apply(&pool, id).await? {
+        PatchOutcome::Updated(tag) => Ok(ApiJson(tag)),
+        PatchOutcome::NotFound => Err(AppError::NotFound("tag")),
+        PatchOutcome::NameTaken { existing_id } => Err(AppError::DuplicateTag {
+            existing_id: existing_id.get(),
+        }),
     }
 }
 
-// DELETE /api/tags/{id}   (url_tag / pending_tag rows cascade)
+// DELETE /api/tags/{id}   (page_tag / pending_tag rows cascade)
 pub(super) async fn delete_tag(
     State(pool): State<SqlitePool>,
-    ApiPath(id): ApiPath<i64>,
+    ApiPath(id): ApiPath<TagId>,
 ) -> Result<StatusCode> {
-    let n = TagRow::delete(&pool, id).await?;
-    if n == 0 {
+    if !Tag::delete(&pool, id).await? {
         return Err(AppError::NotFound("tag"));
     }
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub(super) struct MergeTagRequest {
+    /// The surviving tag. Serialized as `"into"` to keep the existing wire format.
+    #[serde(rename = "into")]
+    pub target: TagId,
+}
+
 // POST /api/tags/{id}/merge   { "into": <tag_id> }
 pub(super) async fn merge_tag(
     State(pool): State<SqlitePool>,
-    ApiPath(from): ApiPath<i64>,
-    ApiJson(MergeTag { into }): ApiJson<MergeTag>,
-) -> Result<ApiJson<TagRow>> {
-    let merge = Merge::new(from, into).map_err(|v| AppError::BadRequest(v.to_string()))?;
+    ApiPath(source): ApiPath<TagId>,
+    ApiJson(req): ApiJson<MergeTagRequest>,
+) -> Result<ApiJson<Tag>> {
+    let merge =
+        TagMerge::new(source, req.target).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    let Some(target) = TagRow::merge(&pool, merge).await? else {
-        return Err(AppError::NotFound("tag"));
-    };
-
+    let target = Tag::merge(&pool, merge).await?.or_not_found("tag")?;
     Ok(ApiJson(target))
 }

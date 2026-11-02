@@ -10,16 +10,18 @@ use sqlx::SqlitePool;
 
 use crate::{
     blob_store::BlobStore,
-    db::contents::ContentRow,
+    db::content::{Content, ContentHead},
     error::{AppError, OptionExt, Result},
     extract::ApiPath,
     hash::Blake3Hash,
     serve::{etag_for, serve_content},
 };
 
-// Content is immutable by hash. "private" because the API sits behind bearer auth;
-// switch to "public" if you serve it unauthenticated behind a CDN.
-const IMMUTABLE: &str = "private, max-age=31536000, immutable";
+const CONTENT: &str = "content";
+
+/// Content is immutable by hash. "private" because the API sits behind bearer auth;
+/// switch to "public" if you serve it unauthenticated behind a CDN.
+const IMMUTABLE_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
 
 // GET /api/content/{hash}
 pub(super) async fn get_content(
@@ -29,15 +31,19 @@ pub(super) async fn get_content(
     ApiPath(hash): ApiPath<String>,
 ) -> Result<Response> {
     let hash: Blake3Hash = hash.parse()?;
-    let row = ContentRow::get_from_hash(&pool, hash)
+    let content = Content::by_hash(&pool, &hash)
         .await?
-        .or_not_found("content")?;
+        .or_not_found(CONTENT)?;
 
-    let ct = row
-        .mime_type
-        .clone()
-        .unwrap_or_else(|| "application/octet-stream".into());
-    serve_content(&store, &headers, row, &ct, IMMUTABLE).await
+    let content_type = content.mime_type.clone();
+    serve_content(
+        &store,
+        &headers,
+        content,
+        &content_type,
+        IMMUTABLE_CACHE_CONTROL,
+    )
+    .await
 }
 
 // HEAD /api/content/{hash}   -> 200 if known, 404 otherwise (never loads the blob)
@@ -46,22 +52,20 @@ pub(super) async fn head_content(
     ApiPath(hash): ApiPath<String>,
 ) -> Result<Response> {
     let hash: Blake3Hash = hash.parse()?;
-    let (size, mime) = ContentRow::head(&pool, &hash)
+    let head = ContentHead::by_hash(&pool, &hash)
         .await?
-        .ok_or(AppError::NotFound("content"))?;
+        .ok_or(AppError::NotFound(CONTENT))?;
 
-    let mut h = HeaderMap::new();
-    h.insert(
-        ETAG,
-        HeaderValue::from_str(&etag_for(&hash)).map_err(|e| AppError::Internal(Box::new(e)))?,
-    );
-    h.insert(
-        CONTENT_LENGTH,
-        HeaderValue::from(u64::try_from(size).unwrap_or_default()),
-    );
-    h.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-    if let Some(m) = mime.and_then(|m| HeaderValue::from_str(&m).ok()) {
-        h.insert(CONTENT_TYPE, m);
+    let etag =
+        HeaderValue::from_str(&etag_for(&hash)).map_err(|e| AppError::Internal(Box::new(e)))?;
+    let length = u64::try_from(head.size_original).unwrap_or_default();
+
+    let mut headers = HeaderMap::new();
+    headers.insert(ETAG, etag);
+    headers.insert(CONTENT_LENGTH, HeaderValue::from(length));
+    headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    if let Ok(mime) = HeaderValue::from_str(head.mime_type.as_str()) {
+        headers.insert(CONTENT_TYPE, mime);
     }
-    Ok((StatusCode::OK, h).into_response())
+    Ok((StatusCode::OK, headers).into_response())
 }

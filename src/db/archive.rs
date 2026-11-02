@@ -3,13 +3,13 @@ use std::future::Future;
 use std::pin::Pin;
 
 use futures::{StreamExt, stream};
+use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::{
     blob_store::BlobStore,
     db::store::{insert_blob, prepare_blob},
     downloader,
-    dto::AssetSummary,
     error::Result,
     extractor::{css, html},
     hash::Blake3Hash,
@@ -23,6 +23,19 @@ const ASSET_CONCURRENCY: usize = 8;
 const MAX_ASSET_TOTAL_BYTES: usize = 128 * 1024 * 1024;
 /// `@import` chains deeper than this are left unrewritten.
 const MAX_CSS_DEPTH: u8 = 4;
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AssetSummary {
+    /// Asset rows written for this capture.
+    pub saved: usize,
+    /// Saved assets whose bytes already existed in `content`.
+    pub deduplicated: usize,
+    /// Fetch or storage failures (the archive still succeeds).
+    pub failed: usize,
+    /// Resources that were deliberately not fetched (empty, over the cap, ...).
+    pub skipped: usize,
+}
 
 /// A resource that has already been fetched and inserted into `content`.
 pub(crate) struct PreparedAsset {

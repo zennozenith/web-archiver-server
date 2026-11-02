@@ -2,12 +2,13 @@ use std::collections::HashMap;
 
 use crate::{
     db::{
-        self,
-        pages::PageRow,
+        capture::CaptureOverview,
+        helper::CursorPage,
+        page::{PageId, PageRecord, tags_by_page},
+        pending::PendingItem,
         stats::{self, Stats},
-        tags::TagRow,
+        tag::{Tag, TagSummary},
     },
-    dto,
     error::Result,
     limit::Limit,
     template::RenderHtml,
@@ -15,9 +16,9 @@ use crate::{
 };
 
 use super::{
-    pages::{CaptureView, PageCardTemplate, PageTag},
+    page::{CaptureView, PageCardTemplate},
     pending::PendingFragmentTemplate,
-    tags::TagView,
+    tag::TagView,
 };
 
 use askama::Template;
@@ -47,31 +48,31 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
 
     let stats = stats::stats(&pool).await?;
 
-    let dto::Page { items, .. } =
-        db::pending::list_pending(&pool, None, None, DEFAULT_PENDING_LIMIT).await?;
+    let CursorPage { items, .. } =
+        PendingItem::list(&pool, None, None, DEFAULT_PENDING_LIMIT).await?;
     let pendings = items
         .iter()
         .map(PendingFragmentTemplate::from)
         .collect::<Vec<_>>();
 
-    let rows = db::pages::list_pages(&pool, LIMIT).await?;
+    let rows = PageRecord::list_recent(&pool, LIMIT).await?;
     let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
-    let mut tags_by_page = db::pages::tags_for_pages(&pool, &ids).await?;
-    let mut captures_by_page = db::pages::captures_for_pages(&pool, &ids).await?;
+    let mut tags_by_page = tags_by_page(&pool, &ids).await?;
+    let mut captures_by_page = CaptureOverview::overviews_by_page(&pool, &ids).await?;
 
     let pages = rows
         .into_iter()
         .map(|row| page_card(row, &mut tags_by_page, &mut captures_by_page))
         .collect();
 
-    let tags = db::tags::list_tag_counts(&pool)
+    let tags = TagSummary::list(&pool)
         .await?
         .into_iter()
         .map(|tag| TagView {
             id: tag.id,
             name: tag.name,
-            pages: tag.pages,
-            pending: tag.pending,
+            pages: tag.page_count,
+            pending: tag.pending_count,
         })
         .collect();
 
@@ -80,7 +81,7 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
         stats,
         pages,
         tags,
-        app_script: crate::assets::vite_asset("src/app.ts").unwrap_or_default(),
+        app_script: crate::asset::vite_asset("src/app.ts").unwrap_or_default(),
     }
     .render_html()
 }
@@ -90,11 +91,11 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
     reason = "builds the complete view model for one page card"
 )]
 fn page_card(
-    row: PageRow,
-    tags_by_page: &mut HashMap<i64, Vec<TagRow>>,
-    captures_by_page: &mut HashMap<i64, Vec<db::captures::CaptureForPageRow>>,
+    row: PageRecord,
+    tags_by_page: &mut HashMap<PageId, Vec<Tag>>,
+    captures_by_page: &mut HashMap<PageId, Vec<CaptureOverview>>,
 ) -> PageCardTemplate {
-    let PageRow {
+    let PageRecord {
         id,
         url,
         host,
@@ -107,12 +108,7 @@ fn page_card(
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| url.clone());
 
-    let tags = tags_by_page
-        .remove(&id)
-        .unwrap_or_default()
-        .iter()
-        .map(PageTag::from)
-        .collect::<Vec<_>>();
+    let tags = tags_by_page.remove(&id).unwrap_or_default();
     let tag_names = tags
         .iter()
         .map(|tag| tag.name.as_str())
@@ -132,7 +128,7 @@ fn page_card(
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| format!("Version {version}"));
             CaptureView {
-                id: capture.id,
+                id: capture.id.get(),
                 version,
                 title: capture_title,
                 captured_at: ago_timestamp(capture.captured_at),
@@ -146,7 +142,7 @@ fn page_card(
         .collect();
 
     PageCardTemplate {
-        id,
+        id: id.get(),
         search: format!("{display_title} {url} {tag_names}").to_lowercase(),
         url,
         host,

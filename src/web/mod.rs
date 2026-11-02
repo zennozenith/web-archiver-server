@@ -7,9 +7,9 @@ use axum::{
 
 mod error;
 mod index;
-mod pages;
+mod page;
 mod pending;
-mod tags;
+mod tag;
 
 use error::negotiate_errors;
 
@@ -23,15 +23,12 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/pending/{id}", delete(pending::delete_pending))
         // Tags shown in the sidebar.
-        .route("/tags", post(tags::create_tag))
-        .route(
-            "/tags/{id}",
-            patch(tags::rename_tag).delete(tags::delete_tag),
-        )
+        .route("/tags", post(tag::create_tag))
+        .route("/tags/{id}", patch(tag::rename_tag).delete(tag::delete_tag))
         // Tags attached to an archived page.
-        .route("/pages/{id}", delete(pages::delete_page))
-        .route("/pages/{id}/tags", post(pages::add_page_tag))
-        .route("/pages/{id}/tags/{tag_id}", delete(pages::remove_page_tag))
+        .route("/pages/{id}", delete(page::delete_page))
+        .route("/pages/{id}/tags", post(page::add_page_tag))
+        .route("/pages/{id}/tags/{tag_id}", delete(page::remove_page_tag))
         .layer(axum::middleware::from_fn(negotiate_errors))
         .with_state(state)
 }

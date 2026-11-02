@@ -1,8 +1,21 @@
-use std::convert::TryFrom;
-use std::fmt;
-use std::fmt::Write as _;
-use std::ops::Deref;
-use std::str::FromStr;
+use sqlx::{
+    Decode, Encode, Sqlite, Type,
+    encode::IsNull,
+    error::BoxDynError,
+    sqlite::{SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef},
+};
+
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{self, Visitor},
+};
+
+use std::{
+    convert::TryFrom,
+    fmt::{self, Write as _},
+    ops::Deref,
+    str::FromStr,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Blake3Hash([u8; 32]);
@@ -35,12 +48,70 @@ impl fmt::Debug for Blake3Hash {
     }
 }
 
-// // Display: hex string
-// impl fmt::Display for Blake3Hash {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         f.write_str(&self.to_hex())
-//     }
-// }
+// Display: hex string
+impl fmt::Display for Blake3Hash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.to_hex())
+    }
+}
+
+impl Serialize for Blake3Hash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for Blake3Hash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct HashVisitor;
+
+        impl Visitor<'_> for HashVisitor {
+            type Value = Blake3Hash;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a 64-character hex string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                v.parse().map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(HashVisitor)
+    }
+}
+
+impl Type<Sqlite> for Blake3Hash {
+    fn type_info() -> SqliteTypeInfo {
+        <&[u8] as Type<Sqlite>>::type_info()
+    }
+
+    fn compatible(ty: &SqliteTypeInfo) -> bool {
+        <&[u8] as Type<Sqlite>>::compatible(ty)
+    }
+}
+
+impl Encode<'_, Sqlite> for Blake3Hash {
+    fn encode_by_ref(&self, args: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
+        <&[u8] as Encode<Sqlite>>::encode_by_ref(&self.0.as_slice(), args)
+    }
+}
+
+impl<'r> Decode<'r, Sqlite> for Blake3Hash {
+    fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
+        let bytes = <&[u8] as Decode<Sqlite>>::decode(value)?;
+        Ok(Self::try_from(bytes)?)
+    }
+}
 
 impl From<&[u8; 32]> for Blake3Hash {
     fn from(value: &[u8; 32]) -> Self {

@@ -9,19 +9,19 @@ use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _
 use crate::{blob_store::BlobStore, config::Settings};
 
 mod api;
-mod assets;
+mod asset;
 mod blob_store;
 mod compress;
 mod config;
 mod db;
 mod downloader;
-mod dto;
 mod error;
 mod extract;
 mod extractor;
 mod hash;
 mod htmx;
 mod limit;
+mod mime;
 mod serve;
 mod tag;
 mod template;
@@ -120,7 +120,7 @@ fn app(state: AppState) -> Router {
     Router::new()
         .nest("/api", api::router(state.clone()))
         .merge(web::router(state))
-        .merge(assets::serve_dir())
+        .merge(asset::serve_dir())
         .layer(TraceLayer::new_for_http())
 }
 

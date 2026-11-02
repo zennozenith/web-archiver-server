@@ -1,282 +1,258 @@
+//! Validated tag value types: names, palette colors, and merge requests.
+
+use std::{borrow::Borrow, collections::HashSet, fmt, str::FromStr};
+
 use serde::Serialize;
 
-use std::{borrow::Borrow, collections::HashSet, fmt, ops::Deref, str::FromStr};
+use crate::{db::helper::id_type, error::AppError};
 
-use crate::error::AppError;
+pub(crate) const MAX_NAME_LEN: usize = 64;
+pub(crate) const MAX_TAGS_PER_REQUEST: usize = 50;
 
-pub(crate) const MAX_TAG_LEN: usize = 64;
-pub(crate) const MAX_TAGS: usize = 50;
+// ───────────────────────────────────────────────────────────────────────────
+// TagId
+// ───────────────────────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type, Serialize)]
+id_type! {
+    /// Primary key of a tag. A distinct type so it cannot be mixed up with other
+    /// row ids (page ids, pending ids) or with plain integers such as counts.
+    pub(crate) struct TagId;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// TagName
+// ───────────────────────────────────────────────────────────────────────────
+
+/// A normalized tag name: lowercase alphanumerics separated by single `-`.
+///
+/// Construct via [`FromStr`] / [`TryFrom<&str>`]; the invariant is enforced there.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type, Serialize)]
 #[sqlx(transparent)]
-pub struct Name(String);
+pub struct TagName(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum InvalidName {
+pub enum InvalidTagName {
     #[error("tag name cannot be empty")]
     Empty,
     #[error("tag name exceeds {max} characters (got {len})")]
     TooLong { len: usize, max: usize },
 }
 
-impl Name {
-    /// Sanitize `raw` (trim, lowercase, collapse non-alphanumerics to `-`)
-    /// and validate the result.
-    pub fn new(raw: &str) -> Result<Self, InvalidName> {
-        Self::try_from(raw)
-    }
-
-    /// Sanitize without validating length/emptiness. Callers who only need
-    /// a normalized string (e.g. to feed a search index) can use this.
-    pub fn sanitize(input: &str) -> String {
+impl TagName {
+    /// Lowercase `input` and collapse every run of non-alphanumerics into a
+    /// single `-`, with no leading or trailing separator.
+    ///
+    /// Does not validate length or emptiness, so it is also usable for
+    /// normalizing search queries.
+    pub fn normalize(input: &str) -> String {
         let mut out = String::with_capacity(input.len());
-        let mut prev_hyphen = true; // trim leading hyphens
+        let mut pending_separator = false;
 
         for c in input.chars() {
-            if c.is_alphanumeric() {
-                out.extend(c.to_lowercase());
-                prev_hyphen = false;
-            } else if !prev_hyphen {
-                out.push('-');
-                prev_hyphen = true;
+            if !c.is_alphanumeric() {
+                pending_separator = true;
+                continue;
             }
-        }
-
-        if out.ends_with('-') {
-            out.pop();
+            if pending_separator && !out.is_empty() {
+                out.push('-');
+            }
+            pending_separator = false;
+            out.extend(c.to_lowercase());
         }
         out
     }
 
-    /// Borrow the sanitized name.
+    // pub fn normalize_slower(input: &str) -> String {
+    //     input
+    //         .split(|c: char| !c.is_alphanumeric())
+    //         .filter(|word| !word.is_empty())
+    //         .map(str::to_lowercase)
+    //         .collect::<Vec<_>>()
+    //         .join("-")
+    // }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
-
-    /// Consume into the underlying `String`.
-    pub fn into_inner(self) -> String {
-        self.0
-    }
 }
 
-pub(crate) fn clean_name(raw: &str) -> Result<Name, AppError> {
-    Name::new(raw).map_err(|e| AppError::invalid("invalid_tag", e.to_string()))
-}
+impl FromStr for TagName {
+    type Err = InvalidTagName;
 
-/// Trim, drop empties, de-duplicate case-insensitively, enforce limits.
-pub(crate) fn clean_names(raw: &[String]) -> Result<Vec<Name>, AppError> {
-    if raw.len() > MAX_TAGS {
-        return Err(AppError::invalid(
-            "too_many_tags",
-            format!("at most {MAX_TAGS} tags allowed"),
-        ));
-    }
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for r in raw {
-        if r.trim().is_empty() {
-            continue;
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        let name = Self::normalize(raw);
+        if name.is_empty() {
+            return Err(InvalidTagName::Empty);
         }
-        let name = clean_name(r)?;
-        if seen.insert(name.to_lowercase()) {
-            out.push(name);
+        let len = name.chars().count();
+        if len > MAX_NAME_LEN {
+            return Err(InvalidTagName::TooLong {
+                len,
+                max: MAX_NAME_LEN,
+            });
         }
+        Ok(Self(name))
     }
-    Ok(out)
 }
 
-impl AsRef<str> for Name {
+impl TryFrom<&str> for TagName {
+    type Error = InvalidTagName;
+
+    fn try_from(raw: &str) -> Result<Self, Self::Error> {
+        raw.parse()
+    }
+}
+
+impl AsRef<str> for TagName {
     fn as_ref(&self) -> &str {
         &self.0
     }
 }
 
-impl fmt::Display for Name {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl FromStr for Name {
-    type Err = InvalidName;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::try_from(s)
-    }
-}
-
-impl TryFrom<&str> for Name {
-    type Error = InvalidName;
-
-    fn try_from(raw: &str) -> Result<Self, Self::Error> {
-        let s = Self::sanitize(raw);
-        if s.is_empty() {
-            return Err(InvalidName::Empty);
-        }
-        let len = s.chars().count();
-        if len > MAX_TAG_LEN {
-            return Err(InvalidName::TooLong {
-                len,
-                max: MAX_TAG_LEN,
-            });
-        }
-        Ok(Self(s))
-    }
-}
-
-impl TryFrom<String> for Name {
-    type Error = InvalidName;
-
-    fn try_from(raw: String) -> Result<Self, Self::Error> {
-        Self::try_from(raw.as_str())
-    }
-}
-
-impl Deref for Name {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Borrow<str> for Name {
+impl Borrow<str> for TagName {
     fn borrow(&self) -> &str {
         &self.0
     }
 }
 
-impl From<Name> for String {
-    fn from(value: Name) -> Self {
-        value.0
-    }
-}
-
-impl PartialEq<str> for Name {
-    fn eq(&self, other: &str) -> bool {
-        self.0 == other
-    }
-}
-
-impl PartialEq<&str> for Name {
-    fn eq(&self, other: &&str) -> bool {
-        self.0 == *other
-    }
-}
-
-impl PartialEq<String> for Name {
-    fn eq(&self, other: &String) -> bool {
-        &self.0 == other
-    }
-}
-
-/// Colors are palette keys like "red" or "deep-blue", never hex values.
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type, Serialize)]
-#[sqlx(transparent)]
-pub(crate) struct Color(String);
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("color must be a palette key: lowercase letters, digits and '-' (max 32), got {0}")]
-pub(crate) struct InvalidColor(String);
-
-impl Color {
-    /// Max length of a palette key.
-    pub(crate) const MAX_LEN: usize = 32;
-
-    /// Construct a `Color` from a palette key, validating the format.
-    pub(crate) fn new(s: impl Into<String>) -> Result<Self, InvalidColor> {
-        let s = s.into();
-        let ok = !s.is_empty()
-            && s.len() <= Self::MAX_LEN
-            && s.bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-        if ok {
-            Ok(Self(s))
-        } else {
-            Err(InvalidColor(s))
-        }
-    }
-
-    // /// Borrow the underlying palette key.
-    // pub(crate) fn as_str(&self) -> &str {
-    //     &self.0
-    // }
-
-    // /// Consume into the underlying `String`.
-    // pub(crate) fn into_inner(self) -> String {
-    //     self.0
-    // }
-}
-
-/// Colors are palette keys like "red" or "deep-blue", never hex values.
-pub(crate) fn validate_color(color: Option<&str>) -> Result<Option<Color>, AppError> {
-    color.map(str::trim).filter(|c| !c.is_empty()).map_or_else(
-        || Ok(None),
-        |c| {
-            Color::new(c)
-                .map(Some)
-                .map_err(|e| AppError::invalid("invalid_color", e.to_string()))
-        },
-    )
-}
-
-impl AsRef<str> for Color {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for Color {
+impl fmt::Display for TagName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl FromStr for Color {
-    type Err = InvalidColor;
+impl From<TagName> for String {
+    fn from(name: TagName) -> Self {
+        name.0
+    }
+}
+
+impl From<InvalidTagName> for AppError {
+    fn from(err: InvalidTagName) -> Self {
+        Self::invalid("invalid_tag", err.to_string())
+    }
+}
+
+/// Parse a batch of raw names: skips blank entries, de-duplicates by
+/// normalized form (first occurrence wins), and enforces the batch limit.
+pub(crate) fn parse_names(raw: &[String]) -> Result<Vec<TagName>, AppError> {
+    if raw.len() > MAX_TAGS_PER_REQUEST {
+        return Err(AppError::invalid(
+            "too_many_tags",
+            format!("at most {MAX_TAGS_PER_REQUEST} tags allowed"),
+        ));
+    }
+
+    let mut seen = HashSet::new();
+    let mut names = Vec::with_capacity(raw.len());
+    for entry in raw.iter().filter(|s| !s.trim().is_empty()) {
+        let name: TagName = entry.parse()?;
+        if seen.insert(name.clone()) {
+            names.push(name);
+        }
+    }
+    Ok(names)
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// TagColor
+// ───────────────────────────────────────────────────────────────────────────
+
+/// A palette key such as `"red"` or `"deep-blue"` — never a hex value.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type, Serialize)]
+#[sqlx(transparent)]
+pub(crate) struct TagColor(String);
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("color must be a palette key: lowercase letters, digits and '-' (max {max}), got {0:?}", max = TagColor::MAX_LEN)]
+pub(crate) struct InvalidTagColor(String);
+
+impl TagColor {
+    pub(crate) const MAX_LEN: usize = 32;
+}
+
+impl FromStr for TagColor {
+    type Err = InvalidTagColor;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::new(s)
+        let is_valid = !s.is_empty()
+            && s.len() <= Self::MAX_LEN
+            && s.bytes()
+                .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-'));
+
+        if is_valid {
+            Ok(Self(s.to_owned()))
+        } else {
+            Err(InvalidTagColor(s.to_owned()))
+        }
     }
 }
 
-impl TryFrom<String> for Color {
-    type Error = InvalidColor;
-
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        Self::new(s)
-    }
-}
-
-impl TryFrom<&str> for Color {
-    type Error = InvalidColor;
+impl TryFrom<&str> for TagColor {
+    type Error = InvalidTagColor;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
-        Self::new(s)
+        s.parse()
     }
 }
 
-pub(crate) struct Merge {
-    from: i64,
-    into: i64,
+impl AsRef<str> for TagColor {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
 }
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+
+impl fmt::Display for TagColor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<InvalidTagColor> for AppError {
+    fn from(err: InvalidTagColor) -> Self {
+        Self::invalid("invalid_color", err.to_string())
+    }
+}
+
+/// Parse an optional color; `None` and blank strings both mean "no color".
+pub(crate) fn parse_optional_color(raw: Option<&str>) -> Result<Option<TagColor>, AppError> {
+    raw.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::parse)
+        .transpose()
+        .map_err(AppError::from)
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// TagMerge
+// ───────────────────────────────────────────────────────────────────────────
+
+/// A request to fold `source` into `target`. The two ids are guaranteed distinct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TagMerge {
+    source: TagId,
+    target: TagId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("cannot merge a tag into itself")]
-pub(crate) struct InvalidMerge;
+pub(crate) struct SelfMerge;
 
-impl Merge {
-    pub(crate) const fn new(from: i64, into: i64) -> Result<Self, InvalidMerge> {
-        if from == into {
-            return Err(InvalidMerge);
+impl TagMerge {
+    pub(crate) const fn new(source: TagId, target: TagId) -> Result<Self, SelfMerge> {
+        if source.0 == target.0 {
+            return Err(SelfMerge);
         }
-        Ok(Self { from, into })
+        Ok(Self { source, target })
     }
 
-    pub(crate) const fn from(&self) -> i64 {
-        self.from
+    /// The tag that is absorbed and deleted.
+    pub(crate) const fn source(self) -> TagId {
+        self.source
     }
 
-    pub(crate) const fn into_(&self) -> i64 {
-        self.into
+    /// The tag that survives and receives the source's associations.
+    pub(crate) const fn target(self) -> TagId {
+        self.target
     }
 }

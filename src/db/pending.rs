@@ -1,15 +1,33 @@
-use serde::{Deserialize, Serialize};
-use sqlx::{AssertSqlSafe, FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqlitePool};
 use std::collections::HashMap;
 
-use crate::db::helpers::Inserted;
-use crate::db::tags::{TagRow, get_or_create_tag};
-use crate::dto::{self, PendingDto};
-use crate::limit::Limit;
-use crate::tag::Name;
-use crate::url_canon::CanonicalUrl;
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqliteExecutor, SqlitePool};
 
-const PENDING_COLS: &str = "id, url, title, status, attempts, last_error, created_at";
+use crate::{
+    db::{
+        helper::{CreateOutcome, Cursor, CursorPage, FieldPatch, id_type},
+        tag::Tag,
+    },
+    limit::Limit,
+    tag::TagName,
+    url_canon::CanonicalUrl,
+};
+
+/// Column list shared by every query that materializes a [`PendingRecord`].
+macro_rules! pending_columns {
+    () => {
+        "id, url, title, status, attempts, last_error, created_at"
+    };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Types
+// ───────────────────────────────────────────────────────────────────────────
+
+id_type! {
+    /// Primary key of a pending item.
+    pub(crate) struct PendingId;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, strum::Display)]
 #[sqlx(rename_all = "snake_case")]
@@ -21,9 +39,11 @@ pub(crate) enum PendingStatus {
     Failed,
 }
 
-#[derive(Debug, FromRow)]
-pub(crate) struct PendingRow {
-    pub id: i64,
+/// A row of the `pending` table.
+#[derive(Debug, FromRow, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingRecord {
+    pub id: PendingId,
     pub url: String,
     pub title: Option<String>,
     pub status: PendingStatus,
@@ -32,294 +52,349 @@ pub(crate) struct PendingRow {
     pub created_at: i64,
 }
 
-pub(crate) async fn replace_pending_tags(
-    conn: &mut SqliteConnection,
-    pending_id: i64,
-    names: &[Name],
-) -> Result<()> {
-    sqlx::query("DELETE FROM pending_tag WHERE pending_id = ?")
-        .bind(pending_id)
-        .execute(&mut *conn)
-        .await?;
-    for name in names {
-        let tag_id = get_or_create_tag(&mut *conn, name).await?;
-        sqlx::query("INSERT OR IGNORE INTO pending_tag (pending_id, tag_id) VALUES (?, ?)")
-            .bind(pending_id)
-            .bind(tag_id)
-            .execute(&mut *conn)
-            .await?;
-    }
-    Ok(())
+/// A pending record together with its tags. This is the API representation.
+#[derive(Debug, Serialize)]
+pub(crate) struct PendingItem {
+    #[serde(flatten)]
+    pub record: PendingRecord,
+    pub tags: Vec<Tag>,
 }
 
-pub(crate) async fn missing_pending_or(pool: &SqlitePool, id: i64) -> Result<Option<i64>> {
-    sqlx::query_scalar("SELECT id FROM pending WHERE id = ?")
+/// Trims `title`; a blank result means "no title".
+fn normalize_title(title: &str) -> Option<&str> {
+    Some(title.trim()).filter(|t| !t.is_empty())
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Single-record operations
+// ───────────────────────────────────────────────────────────────────────────
+
+impl PendingRecord {
+    pub(crate) async fn load<'e>(
+        executor: impl SqliteExecutor<'e>,
+        id: PendingId,
+    ) -> Result<Option<Self>> {
+        sqlx::query_as(concat!(
+            "SELECT ",
+            pending_columns!(),
+            " FROM pending WHERE id = ?"
+        ))
         .bind(id)
-        .fetch_optional(pool)
+        .fetch_optional(executor)
         .await
-}
+    }
 
-pub(crate) async fn pending_url_title_optional(
-    pool: &SqlitePool,
-    id: i64,
-) -> Result<Option<(String, Option<String>)>> {
-    let row = sqlx::query_as("SELECT url, title FROM pending WHERE id = ?")
-        .bind(id)
-        .fetch_optional(pool)
+    pub(crate) async fn exists<'e>(
+        executor: impl SqliteExecutor<'e>,
+        id: PendingId,
+    ) -> Result<bool> {
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pending WHERE id = ?)")
+            .bind(id)
+            .fetch_one(executor)
+            .await
+    }
+
+    /// Current status, or `None` if the item does not exist.
+    pub(crate) async fn status_of<'e>(
+        executor: impl SqliteExecutor<'e>,
+        id: PendingId,
+    ) -> Result<Option<PendingStatus>> {
+        sqlx::query_scalar("SELECT status FROM pending WHERE id = ?")
+            .bind(id)
+            .fetch_optional(executor)
+            .await
+    }
+
+    /// Queues `url`, or reports the existing item if the URL is already known.
+    ///
+    /// Tags are attached only when the item is new.
+    /// Shared by the single and bulk create endpoints.
+    pub(crate) async fn enqueue(
+        conn: &mut SqliteConnection,
+        url: &CanonicalUrl,
+        title: Option<&str>,
+        tags: &[TagName],
+    ) -> Result<CreateOutcome<PendingId>> {
+        let inserted: Option<PendingId> = sqlx::query_scalar(
+            "INSERT INTO pending (url, title) VALUES (?, ?)
+             ON CONFLICT(url) DO NOTHING
+             RETURNING id",
+        )
+        .bind(&url.url)
+        .bind(title.and_then(normalize_title))
+        .fetch_optional(&mut *conn)
         .await?;
 
-    Ok(row)
-}
+        if let Some(id) = inserted {
+            Self::replace_tags(&mut *conn, id, tags).await?;
+            return Ok(CreateOutcome::Created(id));
+        }
 
-/// Shared by create + bulk. Tags are only attached when the row is new.
-pub(crate) async fn insert_pending(
-    conn: &mut SqliteConnection,
-    url: &CanonicalUrl,
-    title: Option<&str>,
-    tags: &[Name],
-) -> Result<Inserted<i64>> {
-    let title = title.map(str::trim).filter(|t| !t.is_empty());
-
-    let new_id: Option<i64> = sqlx::query_scalar(
-        "INSERT INTO pending (url, title) VALUES (?, ?)
-         ON CONFLICT(url) DO NOTHING RETURNING id",
-    )
-    .bind(&url.url)
-    .bind(title)
-    .fetch_optional(&mut *conn)
-    .await?;
-
-    let Some(id) = new_id else {
-        let existing: i64 = sqlx::query_scalar("SELECT id FROM pending WHERE url = ?")
+        // TODO: merge the requested tags into the existing item.
+        let id = sqlx::query_scalar("SELECT id FROM pending WHERE url = ?")
             .bind(&url.url)
             .fetch_one(&mut *conn)
             .await?;
+        Ok(CreateOutcome::Existing(id))
+    }
 
-        // TODO: Update tags
-        return Ok(Inserted::Existing(existing));
-    };
-
-    replace_pending_tags(&mut *conn, id, tags).await?;
-    Ok(Inserted::New(id))
-}
-
-/// Call once at startup: anything left `in_progress` belongs to a dead worker.
-#[expect(
-    dead_code,
-    reason = "startup recovery hook for deployments with external workers"
-)]
-pub(crate) async fn reset_in_progress(pool: &SqlitePool) -> Result<u64> {
-    Ok(
-        sqlx::query("UPDATE pending SET status = 'queued' WHERE status = 'in_progress'")
-            .execute(pool)
-            .await?
-            .rows_affected(),
-    )
-}
-
-/// TODO: docs
-pub(crate) async fn pending_status(
-    tx: &mut SqliteConnection,
-    id: i64,
-) -> Result<Option<PendingStatus>> {
-    sqlx::query_scalar("SELECT status FROM pending WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await
-}
-
-/// TODO: docs
-pub(crate) async fn update_pending(
-    tx: &mut SqliteConnection,
-    id: i64,
-    title: Option<&str>,
-    status: Option<PendingStatus>,
-    tags: Option<&Vec<Name>>,
-) -> Result<()> {
-    if let Some(title) = title {
-        let title = Some(title.trim()).filter(|t| !t.is_empty()); // "" clears the title
-        sqlx::query("UPDATE pending SET title = ? WHERE id = ?")
-            .bind(title)
+    /// Replaces the item's tag set with `names`, creating missing tags.
+    pub(crate) async fn replace_tags(
+        conn: &mut SqliteConnection,
+        id: PendingId,
+        names: &[TagName],
+    ) -> Result<()> {
+        sqlx::query("DELETE FROM pending_tag WHERE pending_id = ?")
             .bind(id)
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await?;
+
+        for name in names {
+            let tag_id = Tag::get_or_create_id(&mut *conn, name).await?;
+            sqlx::query("INSERT OR IGNORE INTO pending_tag (pending_id, tag_id) VALUES (?, ?)")
+                .bind(id)
+                .bind(tag_id)
+                .execute(&mut *conn)
+                .await?;
+        }
+        Ok(())
     }
-    if let Some(status) = status {
-        sqlx::query(
-            "UPDATE pending SET status = ?,
-                    last_error = CASE WHEN ? = 'queued' THEN NULL ELSE last_error END
-             WHERE id = ?",
+
+    /// Atomically takes the oldest queued item and marks it `in_progress`.
+    ///
+    /// A single `UPDATE ... RETURNING` guarantees two workers never claim the same row.
+    pub(crate) async fn claim_next<'e>(
+        executor: impl SqliteExecutor<'e>,
+    ) -> Result<Option<PendingId>> {
+        sqlx::query_scalar(
+            "UPDATE pending SET status = 'in_progress'
+             WHERE id = (SELECT id FROM pending WHERE status = 'queued'
+                         ORDER BY created_at, id LIMIT 1)
+             RETURNING id",
         )
-        .bind(status)
-        .bind(status)
+        .fetch_optional(executor)
+        .await
+    }
+
+    /// Moves a `failed` item back to `queued`. Returns `false` if it was not failed.
+    pub(crate) async fn retry<'e>(
+        executor: impl SqliteExecutor<'e>,
+        id: PendingId,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE pending SET status = 'queued', last_error = NULL
+             WHERE id = ? AND status = 'failed'",
+        )
         .bind(id)
-        .execute(&mut *tx)
+        .execute(executor)
         .await?;
-    }
-    if let Some(tags) = tags {
-        replace_pending_tags(&mut *tx, id, tags).await?;
+        Ok(result.rows_affected() > 0)
     }
 
-    Ok(())
-}
-
-/// TODO: docs
-pub(crate) async fn claim_pending(pool: &SqlitePool) -> Result<Option<i64>> {
-    let id: Option<i64> = sqlx::query_scalar(
-        "UPDATE pending SET status = 'in_progress'
-         WHERE id = (SELECT id FROM pending WHERE status = 'queued'
-                     ORDER BY created_at, id LIMIT 1)
-         RETURNING id",
-    )
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(id)
-}
-
-/// TODO: docs
-pub(crate) async fn retry_pending(pool: &SqlitePool, id: i64) -> Result<u64> {
-    let n = sqlx::query(
-        "UPDATE pending SET status = 'queued', last_error = NULL WHERE id = ? AND status = 'failed'",
-    )
-    .bind(id)
-    .execute(pool)
-    .await?
-    .rows_affected();
-
-    Ok(n)
-}
-
-/// TODO: docs
-pub(crate) async fn fail_pending(pool: &SqlitePool, id: i64, error: &str) -> Result<u64> {
-    let n = sqlx::query(
-        "UPDATE pending SET status = 'failed', attempts = attempts + 1, last_error = ?
-         WHERE id = ? AND status = 'in_progress'",
-    )
-    .bind(error)
-    .bind(id)
-    .execute(pool)
-    .await?
-    .rows_affected();
-
-    Ok(n)
-}
-
-/// TODO: docs
-pub(crate) async fn delete_pending(pool: &SqlitePool, id: i64) -> Result<u64> {
-    let n = sqlx::query("DELETE FROM pending WHERE id = ? AND status != 'in_progress'")
+    /// Marks an `in_progress` item as failed. Returns `false` if it was not in progress.
+    pub(crate) async fn mark_failed<'e>(
+        executor: impl SqliteExecutor<'e>,
+        id: PendingId,
+        error: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE pending SET status = 'failed', attempts = attempts + 1, last_error = ?
+             WHERE id = ? AND status = 'in_progress'",
+        )
+        .bind(error)
         .bind(id)
-        .execute(pool)
-        .await?
-        .rows_affected();
+        .execute(executor)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
 
-    Ok(n)
+    /// Deletes an item unless a worker is processing it. Returns `true` if deleted.
+    pub(crate) async fn delete<'e>(
+        executor: impl SqliteExecutor<'e>,
+        id: PendingId,
+    ) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM pending WHERE id = ? AND status != 'in_progress'")
+            .bind(id)
+            .execute(executor)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Deletes every item with `status`; returns how many were removed.
+    pub(crate) async fn delete_all_with_status<'e>(
+        executor: impl SqliteExecutor<'e>,
+        status: PendingStatus,
+    ) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM pending WHERE status = ?")
+            .bind(status)
+            .execute(executor)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Call once at startup: anything left `in_progress` belongs to a dead worker.
+    #[expect(
+        dead_code,
+        reason = "startup recovery hook for deployments with external workers"
+    )]
+    pub(crate) async fn requeue_stalled<'e>(executor: impl SqliteExecutor<'e>) -> Result<u64> {
+        let result =
+            sqlx::query("UPDATE pending SET status = 'queued' WHERE status = 'in_progress'")
+                .execute(executor)
+                .await?;
+        Ok(result.rows_affected())
+    }
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Partial update
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Fields to change on a pending item; unset fields are left untouched.
+#[derive(Debug, Default)]
+pub(crate) struct PendingUpdate<'a> {
+    /// `Clear` removes the title; a blank `Set` is treated the same way.
+    pub title: FieldPatch<&'a str>,
+    /// Moving back to `queued` also clears `last_error`.
+    pub status: Option<PendingStatus>,
+    pub tags: Option<&'a [TagName]>,
+}
+
+impl PendingUpdate<'_> {
+    pub(crate) async fn apply(self, conn: &mut SqliteConnection, id: PendingId) -> Result<()> {
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("UPDATE pending SET ");
+        let mut sets = qb.separated(", ");
+        let mut has_sets = false;
+
+        match self.title {
+            FieldPatch::Unchanged => {}
+            FieldPatch::Clear => {
+                sets.push("title = NULL");
+                has_sets = true;
+            }
+            FieldPatch::Set(title) => {
+                sets.push("title = ")
+                    .push_bind_unseparated(normalize_title(title));
+                has_sets = true;
+            }
+        }
+        if let Some(status) = self.status {
+            sets.push("status = ").push_bind_unseparated(status);
+            if status == PendingStatus::Queued {
+                sets.push("last_error = NULL");
+            }
+            has_sets = true;
+        }
+
+        if has_sets {
+            qb.push(" WHERE id = ").push_bind(id);
+            qb.build().execute(&mut *conn).await?;
+        }
+
+        if let Some(tags) = self.tags {
+            PendingRecord::replace_tags(&mut *conn, id, tags).await?;
+        }
+        Ok(())
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Hydrated items and listing
+// ───────────────────────────────────────────────────────────────────────────
 
 #[derive(FromRow)]
-struct PendingTagRow {
-    pending_id: i64,
+struct PendingTagJoin {
+    pending_id: PendingId,
     #[sqlx(flatten)]
-    tag: TagRow, // id, name, color, created_at
+    tag: Tag,
 }
 
-pub(crate) async fn load_pending(pool: &SqlitePool, id: i64) -> Result<Option<PendingDto>> {
-    // Aduit
-    if let Some(row) = sqlx::query_as(AssertSqlSafe(format!(
-        "SELECT {PENDING_COLS} FROM pending WHERE id = ?"
-    )))
-    .bind(id)
-    .fetch_optional(pool)
-    .await?
-    {
-        let mut dtos: Vec<PendingDto> = hydrate_pending(pool, vec![row]).await?;
-        // TODO: dtos will have atleast one element here, else remove will panic
-        return Ok(Some(dtos.remove(0)));
+impl PendingItem {
+    pub(crate) async fn load(pool: &SqlitePool, id: PendingId) -> Result<Option<Self>> {
+        let Some(record) = PendingRecord::load(pool, id).await? else {
+            return Ok(None);
+        };
+        Ok(Self::hydrate(pool, vec![record]).await?.pop())
     }
 
-    Ok(None)
-}
+    /// Attaches tags to many records using a single extra query.
+    pub(crate) async fn hydrate<'e>(
+        executor: impl SqliteExecutor<'e>,
+        records: Vec<PendingRecord>,
+    ) -> Result<Vec<Self>> {
+        if records.is_empty() {
+            return Ok(Vec::new());
+        }
 
-/// Attach tags to many pending rows with a single extra query.
-pub(crate) async fn hydrate_pending(
-    pool: &SqlitePool,
-    rows: Vec<PendingRow>,
-) -> Result<Vec<PendingDto>> {
-    if rows.is_empty() {
-        return Ok(Vec::new());
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+            "SELECT pt.pending_id, t.id, t.name, t.color, t.created_at
+             FROM pending_tag pt
+             JOIN tag t ON t.id = pt.tag_id
+             WHERE pt.pending_id IN (",
+        );
+        let mut ids = qb.separated(", ");
+        for record in &records {
+            ids.push_bind(record.id);
+        }
+        ids.push_unseparated(") ORDER BY t.name COLLATE NOCASE");
+
+        let joins: Vec<PendingTagJoin> = qb.build_query_as().fetch_all(executor).await?;
+
+        let mut tags_by_id: HashMap<PendingId, Vec<Tag>> = HashMap::new();
+        for join in joins {
+            tags_by_id
+                .entry(join.pending_id)
+                .or_default()
+                .push(join.tag);
+        }
+
+        Ok(records
+            .into_iter()
+            .map(|record| Self {
+                tags: tags_by_id.remove(&record.id).unwrap_or_default(),
+                record,
+            })
+            .collect())
     }
 
-    let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
-        "SELECT pt.pending_id, t.id, t.name, t.color, t.created_at
-         FROM pending_tag pt
-         JOIN tag t ON t.id = pt.tag_id
-         WHERE pt.pending_id IN (",
-    );
-    let mut sep = qb.separated(", ");
-    for r in &rows {
-        sep.push_bind(r.id);
-    }
-    sep.push_unseparated(") ORDER BY t.name COLLATE NOCASE");
+    /// Newest-first keyset pagination for `GET /api/pending`.
+    ///
+    /// `after` is the cursor returned with the previous page.
+    pub(crate) async fn list(
+        pool: &SqlitePool,
+        status: Option<PendingStatus>,
+        after: Option<Cursor>,
+        limit: Limit,
+    ) -> Result<CursorPage<Self>> {
+        let limit = i64::from(limit.get());
 
-    let tag_rows: Vec<PendingTagRow> = qb.build_query_as().fetch_all(pool).await?;
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(concat!(
+            "SELECT ",
+            pending_columns!(),
+            " FROM pending WHERE 1 = 1"
+        ));
+        if let Some(after) = after {
+            qb.push(" AND id < ").push_bind(after.get());
+        }
+        if let Some(status) = status {
+            qb.push(" AND status = ").push_bind(status);
+        }
+        // Fetch one extra row to detect whether another page exists.
+        qb.push(" ORDER BY id DESC LIMIT ")
+            .push_bind(limit.saturating_add(1));
 
-    let mut by_pending: HashMap<i64, Vec<TagRow>> = HashMap::new();
-    for t in tag_rows {
-        by_pending.entry(t.pending_id).or_default().push(t.tag);
-    }
+        let records: Vec<PendingRecord> = qb.build_query_as().fetch_all(pool).await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|r| PendingDto {
-            tags: by_pending.remove(&r.id).unwrap_or_default(),
-            id: r.id,
-            url: r.url,
-            title: r.title,
-            status: r.status,
-            attempts: r.attempts,
-            last_error: r.last_error,
-            created_at: r.created_at,
+        let page = CursorPage::from_overfetched(
+            records,
+            usize::try_from(limit).unwrap_or(usize::MAX),
+            |record| Cursor::new(record.id.get()),
+        );
+        let items = Self::hydrate(pool, page.items).await?;
+
+        Ok(CursorPage {
+            items,
+            next_cursor: page.next_cursor,
         })
-        .collect())
-}
-
-// TODO: order by ascending/descending
-/// For GET /api/pending (keyset pagination on id, new first)
-pub(crate) async fn list_pending(
-    pool: &SqlitePool,
-    status: Option<PendingStatus>,
-    after_id: Option<i64>,
-    limit: Limit,
-) -> Result<dto::Page<PendingDto>> {
-    let limit = i64::from(limit.get());
-
-    let mut qb: QueryBuilder<Sqlite> =
-        QueryBuilder::new(format!("SELECT {PENDING_COLS} FROM pending WHERE id > "));
-    qb.push_bind(after_id.unwrap_or(0));
-    if let Some(s) = status {
-        qb.push(" AND status = ").push_bind(s);
     }
-    qb.push(" ORDER BY id DESC LIMIT ")
-        .push_bind(limit.saturating_add(1)); // fetch one extra to detect "has more"
-
-    let mut rows: Vec<PendingRow> = qb.build_query_as().fetch_all(pool).await?;
-    let has_more = i64::try_from(rows.len()).map_or(true, |len| len > limit);
-    rows.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
-    let next_cursor = has_more
-        .then(|| rows.last().map(|r| r.id.to_string()))
-        .flatten();
-
-    Ok(crate::dto::Page {
-        items: hydrate_pending(pool, rows).await?,
-        next_cursor,
-    })
-}
-
-pub(crate) async fn clear_pending(pool: &SqlitePool, status: PendingStatus) -> Result<u64> {
-    let n = sqlx::query("DELETE FROM pending WHERE status = ?")
-        .bind(status)
-        .execute(pool)
-        .await?
-        .rows_affected();
-    Ok(n)
 }

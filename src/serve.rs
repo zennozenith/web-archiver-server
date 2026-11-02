@@ -16,11 +16,11 @@ use tokio_util::io::ReaderStream;
 
 use crate::{
     blob_store::BlobStore,
-    compress,
-    compress::Compression,
-    db::contents::ContentRow,
+    compress::{self, Compression},
+    db::content::Content,
     error::{AppError, Result, join_err},
     hash::Blake3Hash,
+    mime::MimeType,
 };
 
 /// Archived content is untrusted: no scripts, no framing tricks, no sniffing.
@@ -111,8 +111,8 @@ fn body_plan(comp: Compression, accept: &str) -> (Option<&'static str>, BodyPlan
 pub(crate) async fn serve_content(
     store: &BlobStore,
     req: &HeaderMap,
-    row: ContentRow,
-    content_type: &str,
+    row: Content,
+    content_type: &MimeType,
     cache_control: &'static str,
 ) -> Result<Response> {
     serve_content_with_csp(store, req, row, content_type, cache_control, CSP).await
@@ -129,15 +129,15 @@ pub(crate) async fn serve_content(
 pub(crate) async fn serve_content_with_csp(
     store: &BlobStore,
     req: &HeaderMap,
-    row: ContentRow,
-    content_type: &str,
+    row: Content,
+    content_type: &MimeType,
     cache_control: &'static str,
     csp: &'static str,
 ) -> Result<Response> {
-    let ContentRow {
+    let Content {
         hash,
         size_stored,
-        compression_id: comp,
+        compression,
         data,
         storage_ref,
         ..
@@ -153,7 +153,7 @@ pub(crate) async fn serve_content_with_csp(
 
     // Prefer the representation we already have. If the client cannot take it,
     // transcode to gzip when possible instead of sending the bytes uncompressed.
-    let (encoding, plan) = body_plan(comp, accept);
+    let (encoding, plan) = body_plan(compression, accept);
 
     // Strong ETag per representation (identity vs br vs gzip differ byte-wise).
     let etag = encoding.map_or_else(|| etag_for(&hash), |e| format!("\"{}-{e}\"", hash.to_hex()));
@@ -171,7 +171,7 @@ pub(crate) async fn serve_content_with_csp(
 
     h.insert(
         CONTENT_TYPE,
-        HeaderValue::from_str(content_type)
+        HeaderValue::from_str(content_type.as_str())
             .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
     );
     h.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
@@ -187,9 +187,9 @@ pub(crate) async fn serve_content_with_csp(
     let body = match (data, storage_ref) {
         (Some(data), _) => Body::from(match plan {
             BodyPlan::Stored => data,
-            BodyPlan::Decode => decompress_blocking(data, comp).await?,
+            BodyPlan::Decode => decompress_blocking(data, compression).await?,
             BodyPlan::Transcode(target) => {
-                let decoded = decompress_blocking(data, comp).await?;
+                let decoded = decompress_blocking(data, compression).await?;
                 compress_blocking(decoded, target).await?
             }
         }),
@@ -206,7 +206,7 @@ pub(crate) async fn serve_content_with_csp(
         // and (if requested) re-encode.
         (None, Some(r)) => {
             let raw = store.read(&r).await?;
-            let decoded = decompress_blocking(raw, comp).await?;
+            let decoded = decompress_blocking(raw, compression).await?;
             Body::from(match plan {
                 BodyPlan::Decode | BodyPlan::Stored => decoded,
                 BodyPlan::Transcode(target) => compress_blocking(decoded, target).await?,

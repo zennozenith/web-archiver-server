@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use askama::Template;
 use axum::{
     Form,
@@ -8,19 +10,19 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        helpers::Inserted,
-        tags::{TagRow, list_tag_counts},
+        helper::CreateOutcome,
+        tag::{Tag, TagSummary},
     },
     error::{AppError, Result},
     htmx::{HtmxResponse, PartialSwap},
-    tag,
+    tag::{TagId, TagName, parse_optional_color},
     template::FeedbackTemplate,
 };
 
 #[derive(Clone)]
 pub(super) struct TagView {
-    pub id: i64,
-    pub name: String,
+    pub id: TagId,
+    pub name: TagName,
     pub pages: i64,
     pub pending: i64,
 }
@@ -43,14 +45,14 @@ pub(super) struct RenameTagForm {
 }
 
 async fn tags_response(pool: &SqlitePool, message: &'static str) -> Result<HtmxResponse> {
-    let tags = list_tag_counts(pool)
+    let tags = TagSummary::list(pool)
         .await?
         .into_iter()
-        .map(|t| TagView {
-            id: t.id,
-            name: t.name,
-            pages: t.pages,
-            pending: t.pending,
+        .map(|tag| TagView {
+            id: tag.id,
+            name: tag.name,
+            pages: tag.page_count,
+            pending: tag.pending_count,
         })
         .collect();
 
@@ -64,11 +66,14 @@ pub(super) async fn create_tag(
     State(pool): State<SqlitePool>,
     Form(form): Form<CreateTagForm>,
 ) -> Result<HtmxResponse> {
-    let name = tag::clean_name(&form.name)?;
-    let color = tag::validate_color(form.color.as_deref())?;
+    let name = TagName::from_str(&form.name)?;
+    let color = parse_optional_color(form.color.as_deref())?;
 
-    if let Inserted::Existing(existing_id) = TagRow::create(&pool, name, color).await? {
-        return Err(AppError::DuplicateTag { existing_id });
+    if let CreateOutcome::Existing(existing_tag) = Tag::create(&pool, &name, color.as_ref()).await?
+    {
+        return Err(AppError::DuplicateTag {
+            existing_id: existing_tag.id.get(),
+        });
     }
 
     tags_response(&pool, "Tag added").await
@@ -79,12 +84,14 @@ pub(super) async fn rename_tag(
     Path(id): Path<i64>,
     Form(form): Form<RenameTagForm>,
 ) -> Result<HtmxResponse> {
-    let name = tag::clean_name(&form.name)?;
+    let name = TagName::from_str(&form.name)?;
 
-    if let Some(existing_id) = TagRow::exists(&pool, &name, Some(id)).await? {
-        return Err(AppError::DuplicateTag { existing_id });
+    if let Some(existing_id) = Tag::find_id_by_name(&pool, &name, Some(id.into())).await? {
+        return Err(AppError::DuplicateTag {
+            existing_id: existing_id.get(),
+        });
     }
-    if TagRow::rename(&pool, id, &name).await?.is_none() {
+    if Tag::rename(&pool, id.into(), &name).await?.is_none() {
         return Err(AppError::NotFound("tag"));
     }
 
@@ -95,7 +102,7 @@ pub(super) async fn delete_tag(
     State(pool): State<SqlitePool>,
     Path(id): Path<i64>,
 ) -> Result<HtmxResponse> {
-    if TagRow::delete(&pool, id).await? == 0 {
+    if !Tag::delete(&pool, id.into()).await? {
         return Err(AppError::NotFound("tag"));
     }
     tags_response(&pool, "Tag deleted").await

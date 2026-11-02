@@ -60,13 +60,15 @@
 //!   GET    /api/health
 
 mod archive;
-mod assets;
-mod captures;
+mod asset;
+mod capture;
 mod content;
 mod misc;
-mod pages;
+mod page;
 mod pending;
 mod tag;
+
+pub(crate) use pending::CreatePendingRequest;
 
 use axum::{
     Router,
@@ -79,23 +81,26 @@ use http::header::AUTHORIZATION;
 
 use crate::{
     AppState,
+    api::{
+        capture::{
+            get_capture_html, get_capture_original_html, get_capture_screenshot,
+            redirect_latest_html, redirect_latest_original_html, redirect_latest_screenshot,
+        },
+        pending::list_pending,
+    },
     error::{AppError, Result},
 };
 use archive::archive;
-use assets::{capture_asset, capture_assets, latest_assets};
-use captures::{
-    capture_html, capture_original_html, capture_screenshot, delete_capture, get_capture,
-    latest_html, latest_original_html, latest_screenshot,
-};
+use asset::{capture_asset, capture_assets, latest_assets};
+use capture::{delete_capture, get_capture};
 use content::{get_content, head_content};
 use misc::{gc_content, health, stats};
-use pages::{
-    add_page_tag, delete_page, get_page, list_captures, list_pages, lookup_page, put_page_tags,
-    remove_page_tag,
+use page::{
+    add_page_tag, delete_page, get_page, list_pages, lookup_page, put_page_tags, remove_page_tag,
 };
 use pending::{
     bulk_create_pending, claim_pending, clear_pending, create_pending, delete_pending,
-    fail_pending, get_pending, list_pending_handler, patch_pending, retry_pending,
+    fail_pending, get_pending, patch_pending, retry_pending,
 };
 use tag::{create_tag, delete_tag, list_tags, merge_tag, patch_tag};
 
@@ -126,12 +131,17 @@ pub(crate) fn router(state: AppState) -> Router {
             "/archive",
             post(archive).layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
         )
+        // tags
+        .route("/tags", get(list_tags).post(create_tag))
+        .route(
+            "/tags/{id}",
+            axum::routing::patch(patch_tag).delete(delete_tag),
+        )
+        .route("/tags/{id}/merge", post(merge_tag))
         // pending
         .route(
             "/pending",
-            get(list_pending_handler)
-                .post(create_pending)
-                .delete(clear_pending),
+            get(list_pending).post(create_pending).delete(clear_pending),
         )
         .route("/pending/bulk", post(bulk_create_pending))
         .route("/pending/claim", post(claim_pending))
@@ -145,36 +155,35 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/pages", get(list_pages))
         .route("/pages/lookup", get(lookup_page))
         .route("/pages/{id}", get(get_page).delete(delete_page))
-        .route("/pages/{id}/captures", get(list_captures))
+        .route("/pages/{id}/captures", get(get_capture))
         .route("/pages/{id}/tags", post(add_page_tag).put(put_page_tags))
         .route("/pages/{id}/tags/{tag_id}", delete(remove_page_tag))
-        .route("/pages/{id}/latest/html", get(latest_html))
+        .route("/pages/{id}/latest/html", get(redirect_latest_html))
         .route(
             "/pages/{id}/latest/html/original",
-            get(latest_original_html),
+            get(redirect_latest_original_html),
         )
-        .route("/pages/{id}/latest/screenshot", get(latest_screenshot))
+        .route(
+            "/pages/{id}/latest/screenshot",
+            get(redirect_latest_screenshot),
+        )
         // captures
         .route("/captures/{id}", get(get_capture).delete(delete_capture))
-        .route("/captures/{id}/html", get(capture_html))
-        .route("/captures/{id}/html/original", get(capture_original_html))
-        .route("/captures/{id}/screenshot", get(capture_screenshot))
+        .route("/captures/{id}/html", get(get_capture_html))
+        .route(
+            "/captures/{id}/html/original",
+            get(get_capture_original_html),
+        )
+        .route("/captures/{id}/screenshot", get(get_capture_screenshot))
         .route("/captures/{id}/assets", get(capture_assets))
         .route("/captures/{id}/assets/{content_id}", get(capture_asset))
         .route("/pages/{id}/latest/assets", get(latest_assets))
         // content (explicit HEAD handler avoids loading the blob)
         .route("/content/{hash}", get(get_content).head(head_content))
-        // tags
-        .route("/tags", get(list_tags).post(create_tag))
-        .route(
-            "/tags/{id}",
-            axum::routing::patch(patch_tag).delete(delete_tag),
-        )
-        .route("/tags/{id}/merge", post(merge_tag))
         // misc
         .route("/stats", get(stats))
         .route("/maintenance/gc", post(gc_content));
-    // .layer(from_fn_with_state(state.clone(), require_auth));
+    // // .layer(from_fn_with_state(state.clone(), require_auth));
 
     Router::new()
         .route("/api/health", get(health))

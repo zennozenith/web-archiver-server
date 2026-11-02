@@ -273,7 +273,7 @@ gen(rn, url_i, cont_i, redir_i, shot_i, crawl_i, title_i, ns, oe, age, ehex) AS 
            substr(hex(randomblob(8)), 1, 10)
     FROM i
 )
-INSERT INTO capture(url_id, content_id, captured_at, title, status_code, redirect_url_id,
+INSERT INTO capture(page_id, content_id, captured_at, title, status_code, redirect_page_id,
                     content_type, metadata, original_encoding, request_headers, response_headers,
                     crawl_id, error, screenshot_content_id)
 SELECT
@@ -326,7 +326,7 @@ end
 
 function sql_url_tags
     set -l nu (math "floor($n_urls * 3 / 5)")
-    printf '%s\n' "INSERT OR IGNORE INTO url_tag(url_id, tag_id)
+    printf '%s\n' "INSERT OR IGNORE INTO url_tag(page_id, tag_id)
 SELECT u.id, t.id
 FROM (SELECT id FROM url ORDER BY random() LIMIT $nu) AS u,
      (SELECT id FROM tag ORDER BY random() LIMIT 2 + ($nu % 5)) AS t
@@ -415,7 +415,7 @@ end
 
 function sql_demo_caps
     printf '%s\n' "INSERT OR IGNORE INTO
- capture(id, url_id, content_id, captured_at, title, status_code, redirect_url_id,
+ capture(id, page_id, content_id, captured_at, title, status_code, redirect_page_id,
          content_type, metadata, original_encoding, request_headers, response_headers,
          crawl_id, error, screenshot_content_id) VALUES
  (1,  1,  1,  unixepoch() - 2500000, 'Example Domain', 200, NULL, 'text/html; charset=utf-8',
@@ -488,7 +488,7 @@ function sql_demo_tags
 end
 
 function sql_demo_url_tags
-    printf '%s\n' "INSERT OR IGNORE INTO url_tag(url_id, tag_id) VALUES
+    printf '%s\n' "INSERT OR IGNORE INTO url_tag(page_id, tag_id) VALUES
  (1, 4), (2, 6), (2, 8), (3, 3), (3, 6), (4, 1), (5, 1), (6, 1), (6, 7),
  (7, 7), (8, 4), (9, 8), (10, 7), (11, 1), (12, 8), (16, 5);"
 end

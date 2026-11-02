@@ -2,24 +2,85 @@ use std::collections::HashMap;
 
 use axum::extract::{Multipart, State, multipart::MultipartRejection};
 use http::StatusCode;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::SqlitePool;
 
 use crate::{
     blob_store::BlobStore,
     db::{
-        archive::collect_assets,
-        pages::{add_page_tags, get_or_create_url},
-        pending::pending_url_title_optional,
+        archive::{AssetSummary, collect_assets},
+        page,
+        pending::{PendingId, PendingRecord},
         store::{insert_blob, prepare_blob},
     },
-    dto::{ArchiveResponse, ArchiveUpload, AssetSummary, Dedup, ScreenshotFormat},
     error::{AppError, Result},
     extract::ApiJson,
     extractor::html,
     tag,
     url_canon::canonicalize_url,
 };
+
+// ── Requests ────────────────────────────────────────────────────────────────
+
+/// Parsed from the multipart fields of POST /api/archive
+#[derive(Debug, Default)]
+struct ArchiveUpload {
+    pub html: Vec<u8>,
+    pub screenshot: Option<(Vec<u8>, ScreenshotFormat)>,
+    pub metadata: Option<serde_json::Value>,
+    pub url: Option<String>,
+    pub title: Option<String>,
+    pub tags: Vec<String>,
+    pub pending_id: Option<PendingId>,
+    /// `save-assets=false` skips fetching sub-resources. Defaults to true.
+    pub save_assets: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ScreenshotFormat {
+    Png,
+    Jpeg,
+}
+
+impl ScreenshotFormat {
+    const fn mime(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+        }
+    }
+    /// Verify claimed format against magic bytes.
+    fn matches(self, bytes: &[u8]) -> bool {
+        match self {
+            Self::Png => bytes.starts_with(&[0x89, b'P', b'N', b'G']),
+            Self::Jpeg => bytes.starts_with(&[0xFF, 0xD8, 0xFF]),
+        }
+    }
+}
+
+// ── Responses ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ArchiveResponse {
+    pub capture_id: i64,
+    pub page_id: i64,
+    pub version: i64,
+    pub deduplicated: Dedup,
+    pub assets: AssetSummary,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Dedup {
+    /// The served (rewritten) HTML blob already existed.
+    pub html: bool,
+    /// The exact uploaded HTML blob already existed.
+    pub original_html: bool,
+    pub screenshot: Option<bool>,
+}
 
 fn unprocessable(code: &'static str, message: impl Into<String>) -> AppError {
     AppError::Unprocessable {
@@ -83,10 +144,15 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
             "screenshot" => shot = Some(field.bytes().await?.to_vec()),
             "screenshot-format" => shot_fmt = Some(parse_format(&field.text().await?)?),
             "pending_id" => {
-                upload.pending_id =
-                    Some(field.text().await?.trim().parse().map_err(|_| {
-                        AppError::BadRequest("pending_id must be an integer".into())
-                    })?);
+                upload.pending_id = Some(
+                    field
+                        .text()
+                        .await?
+                        .trim()
+                        .parse::<i64>()
+                        .map_err(|_| AppError::BadRequest("pending_id must be an integer".into()))?
+                        .into(),
+                );
             }
             "metadata" => {
                 let t = field.text().await?;
@@ -148,8 +214,8 @@ pub(super) async fn archive(
     let upload = parse_multipart(multipart?).await?;
 
     // Pending row (optional) can supply url/title. A missing row is tolerated.
-    let pending: Option<(String, Option<String>)> = match upload.pending_id {
-        Some(pid) => pending_url_title_optional(&pool, pid).await?,
+    let pending = match upload.pending_id {
+        Some(pid) => PendingRecord::load(&pool, pid).await?,
         None => None,
     };
 
@@ -158,7 +224,7 @@ pub(super) async fn archive(
         .url
         .clone()
         .or_else(|| meta_str(upload.metadata.as_ref(), "url"))
-        .or_else(|| pending.as_ref().map(|p| p.0.clone()))
+        .or_else(|| pending.as_ref().map(|p| p.url.clone()))
         .ok_or_else(|| {
             AppError::BadRequest("url is required (field, metadata.url, or pending_id)".into())
         })?;
@@ -171,11 +237,11 @@ pub(super) async fn archive(
         .or_else(|| {
             pending
                 .as_ref()
-                .and_then(|p| p.1.clone())
+                .and_then(|p| p.title.clone())
                 .and_then(|s| non_empty(&s))
         });
 
-    let tags = tag::clean_names(&upload.tags)?;
+    let tags = tag::parse_names(&upload.tags)?;
     let metadata_text = upload.metadata.as_ref().map(Value::to_string);
 
     // Split out sub-resource URLs before the HTML bytes are moved into the blob.
@@ -214,7 +280,7 @@ pub(super) async fn archive(
 
     let mut tx = pool.begin().await?;
 
-    let url_id = get_or_create_url(&mut tx, &canon).await?;
+    let page_id = page::get_or_create_id(&mut *tx, &canon).await?;
     let original_id = insert_blob(&mut tx, &original_blob).await?;
     let html_id = match &served_blob {
         Some(b) => insert_blob(&mut tx, b).await?,
@@ -226,12 +292,12 @@ pub(super) async fn archive(
     };
 
     let capture_id: i64 = sqlx::query_scalar(
-        "INSERT INTO capture (url_id, content_id, original_content_id, screenshot_content_id,
+        "INSERT INTO capture (page_id, content_id, original_content_id, screenshot_content_id,
                               captured_at, content_type, metadata, title)
          VALUES (?, ?, ?, ?, unixepoch(), 'text/html', ?, ?)
          RETURNING id",
     )
-    .bind(url_id)
+    .bind(page_id)
     .bind(html_id)
     .bind(original_id)
     .bind(shot_id)
@@ -254,21 +320,21 @@ pub(super) async fn archive(
         .await?;
     }
 
-    let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capture WHERE url_id = ?")
-        .bind(url_id)
+    let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capture WHERE page_id = ?")
+        .bind(page_id)
         .fetch_one(&mut *tx)
         .await?;
 
     // Tags are unioned; a re-archive can never remove tags.
-    add_page_tags(&mut tx, url_id, &tags).await?;
+    page::add_tags(&mut tx, page_id, &tags).await?;
 
     // Merge tags from the pending row (by id, or any queued row with the same URL) and dequeue.
     sqlx::query(
-        "INSERT OR IGNORE INTO url_tag (url_id, tag_id)
+        "INSERT OR IGNORE INTO url_tag (page_id, tag_id)
          SELECT ?, pt.tag_id FROM pending_tag pt JOIN pending p ON p.id = pt.pending_id
          WHERE p.url = ? OR p.id = ?",
     )
-    .bind(url_id)
+    .bind(page_id)
     .bind(&canon.url)
     .bind(upload.pending_id)
     .execute(&mut *tx)
@@ -285,7 +351,7 @@ pub(super) async fn archive(
         StatusCode::CREATED,
         ApiJson(ArchiveResponse {
             capture_id,
-            page_id: url_id,
+            page_id: page_id.get(),
             version,
             deduplicated: Dedup {
                 html: served_blob

@@ -48,7 +48,7 @@ pub(crate) async fn prepare_blob(
     .map_err(join_err)?;
 
     let existed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content WHERE hash = ?)")
-        .bind(hash.as_slice())
+        .bind(hash)
         .fetch_one(pool)
         .await?;
 
@@ -97,7 +97,7 @@ pub(crate) async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -
              VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(hash) DO NOTHING",
         )
-        .bind(b.hash.as_slice())
+        .bind(b.hash)
         .bind(&b.mime)
         .bind(b.size_original)
         .bind(p.size_stored)
@@ -109,7 +109,7 @@ pub(crate) async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -
     }
 
     sqlx::query_scalar("SELECT id FROM content WHERE hash = ?")
-        .bind(b.hash.as_slice())
+        .bind(b.hash)
         .fetch_optional(&mut *conn)
         .await?
         // existed at prepare time but was garbage-collected before we got here

@@ -77,7 +77,7 @@ impl BlobStore {
         let dest = self.resolve(&rel)?;
         let tmp = self.root.join("tmp").join(format!(
             "{}.{}.{}",
-            hash.to_hex(),
+            hash,
             std::process::id(),
             TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));

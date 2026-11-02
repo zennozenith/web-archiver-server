@@ -1,5 +1,33 @@
 PRAGMA foreign_keys = ON;
 
+-- Tags: global, shared across all pages and versions
+CREATE TABLE tag (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,   -- 'Recipes' and 'recipes' are the same tag
+    color       TEXT,                                  -- optional palette key, e.g. 'red', 'teal'; NULL = frontend decides
+    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- Queue of pages waiting to be archived
+CREATE TABLE pending (
+    id          INTEGER PRIMARY KEY,
+    url         TEXT NOT NULL UNIQUE,      -- raw/canonicalized text, not page_id (not archived yet)
+    title       TEXT,                      -- optional, user-provided hint
+    status      TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued','in_progress','failed')),
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    last_error  TEXT,
+    created_at    INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX idx_pending_status ON pending(status, created_at);
+
+-- Tags chosen for a pending item
+CREATE TABLE pending_tag (
+    pending_id  INTEGER NOT NULL REFERENCES pending(id) ON DELETE CASCADE,
+    tag_id      INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
+    PRIMARY KEY (pending_id, tag_id)
+);
+
 -- Compression algorithms: adding a new one is just an INSERT
 CREATE TABLE compression (
     id    INTEGER PRIMARY KEY,
@@ -11,7 +39,7 @@ INSERT INTO compression (id, name) VALUES (0,'none'), (1,'gzip'), (2,'brotli');
 CREATE TABLE content (
     id              INTEGER PRIMARY KEY,
     hash            BLOB NOT NULL UNIQUE CHECK (length(hash) = 32),  -- blake3 of ORIGINAL (uncompressed) bytes
-    mime_type       TEXT,                      -- sniffed type, e.g. 'text/html'
+    mime_type       TEXT NOT NULL,                      -- sniffed type, e.g. 'text/html'
     size_original   INTEGER NOT NULL,
     size_stored     INTEGER NOT NULL,
     compression_id  INTEGER NOT NULL DEFAULT 0 REFERENCES compression(id),
@@ -27,8 +55,7 @@ CREATE TABLE content (
 CREATE INDEX idx_content_ref_count ON content(ref_count);
 
 -- Normalized URLs
--- TODO: Rename to page
-CREATE TABLE url (
+CREATE TABLE page (
     id          INTEGER PRIMARY KEY,
     url         TEXT NOT NULL UNIQUE,          -- canonicalized
     scheme      TEXT NOT NULL,
@@ -36,19 +63,19 @@ CREATE TABLE url (
     path        TEXT NOT NULL,
     query       TEXT
 );
-CREATE INDEX idx_url_host ON url(host);
+CREATE INDEX idx_page_host ON page(host);
 
--- Each time a URL was fetched
+-- Each time a page was fetched
 CREATE TABLE capture (
     id              INTEGER PRIMARY KEY,
-    url_id          INTEGER NOT NULL REFERENCES url(id),
+    page_id         INTEGER NOT NULL REFERENCES page(id),
     content_id      INTEGER REFERENCES content(id),   -- rewritten HTML served to clients (NULL for redirects / empty / errors)
     original_content_id INTEGER REFERENCES content(id), -- exact bytes uploaded to POST /api/archive
     captured_at     INTEGER NOT NULL,                 -- unix epoch
     title           TEXT NOT NULL,                    -- Title can change between versions, so store it per capture  
     status_code     INTEGER,
-    redirect_url_id INTEGER REFERENCES url(id),
-    content_type    TEXT,                             -- header as served (may differ from sniffed)
+    redirect_page_id INTEGER REFERENCES page(id),
+    content_type    TEXT NOT NULL,                             -- header as served (may differ from sniffed)
     screenshot_content_id INTEGER REFERENCES content(id),
     metadata TEXT,   -- JSON from the extension
     original_encoding TEXT,                           -- Content-Encoding the server sent
@@ -57,7 +84,7 @@ CREATE TABLE capture (
     crawl_id        INTEGER REFERENCES crawl(id),
     error           TEXT
 );
-CREATE INDEX idx_capture_url_time ON capture(url_id, captured_at DESC);
+CREATE INDEX idx_capture_page_time ON capture(page_id, captured_at DESC);
 CREATE INDEX idx_capture_content  ON capture(content_id);
 CREATE INDEX idx_capture_orignal_content  ON capture(original_content_id);
 CREATE INDEX idx_capture_crawl    ON capture(crawl_id);
@@ -83,41 +110,13 @@ CREATE TABLE capture_asset (
 );
 CREATE INDEX idx_capture_asset_content ON capture_asset(content_id);
 
--- Tags: global, shared across all pages and versions
-CREATE TABLE tag (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,   -- 'Recipes' and 'recipes' are the same tag
-    color       TEXT,                                  -- optional palette key, e.g. 'red', 'teal'; NULL = frontend decides
-    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
-);
-
 -- Tags attached to a page (all versions share these)
-CREATE TABLE url_tag (
-    url_id  INTEGER NOT NULL REFERENCES url(id) ON DELETE CASCADE,
+CREATE TABLE page_tag (
+    page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
     tag_id  INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
-    PRIMARY KEY (url_id, tag_id)
+    PRIMARY KEY (page_id, tag_id)
 );
-CREATE INDEX idx_url_tag_tag ON url_tag(tag_id);   -- "all pages with tag X"
-
--- Queue of pages waiting to be archived
-CREATE TABLE pending (
-    id          INTEGER PRIMARY KEY,
-    url         TEXT NOT NULL UNIQUE,      -- raw/canonicalized text, not url_id (not archived yet)
-    title       TEXT,                      -- optional, user-provided hint
-    status      TEXT NOT NULL DEFAULT 'queued'
-                CHECK (status IN ('queued','in_progress','failed')),
-    attempts    INTEGER NOT NULL DEFAULT 0,
-    last_error  TEXT,
-    created_at    INTEGER NOT NULL DEFAULT (unixepoch())
-);
-CREATE INDEX idx_pending_status ON pending(status, created_at);
-
--- Tags chosen for a pending item
-CREATE TABLE pending_tag (
-    pending_id  INTEGER NOT NULL REFERENCES pending(id) ON DELETE CASCADE,
-    tag_id      INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
-    PRIMARY KEY (pending_id, tag_id)
-);
+CREATE INDEX idx_page_tag_tag ON page_tag(tag_id);   -- "all pages with tag X"
 
 -- ── content.ref_count maintenance ───────────────────────────────────────────
 -- Kept in SQL rather than in every Rust call site, so deleting a page/capture
