@@ -15,18 +15,19 @@ use crate::{
     dto::{CreatePending, FailPending, Page, PatchPending, PendingDto},
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath, ApiQuery},
+    limit::Limit,
     tag,
     url_canon::canonicalize_url,
 };
 
-const DEFAULT_PENDING_LIMIT: u32 = 50;
+const DEFAULT_PENDING_LIMIT: Limit = Limit::from_const(50);
 
 // ── GET /api/pending ────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ListPendingQuery {
     pub status: Option<PendingStatus>,
-    pub limit: Option<u32>,
+    pub limit: Option<Limit>,
     pub cursor: Option<String>,
 }
 

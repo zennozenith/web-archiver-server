@@ -21,6 +21,7 @@ mod extract;
 mod extractor;
 mod hash;
 mod htmx;
+mod limit;
 mod serve;
 mod tag;
 mod template;

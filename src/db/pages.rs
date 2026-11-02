@@ -15,6 +15,7 @@ use crate::{
         tags::{TagRow, get_or_create_tag},
     },
     dto::{Cursor, MatchMode, Page},
+    limit::Limit,
     tag::Name,
     url_canon::CanonicalUrl,
 };
@@ -90,8 +91,11 @@ pub(crate) async fn add_page_tags(
 }
 
 /// Newest captures first. The FULL list is loaded so the UI can show versions.
-pub(crate) async fn list_pages(pool: &SqlitePool, limit: u32) -> Result<Vec<PageRow>, sqlx::Error> {
-    let limit = i64::from(limit.clamp(1, 200));
+pub(crate) async fn list_pages(
+    pool: &SqlitePool,
+    limit: Limit,
+) -> Result<Vec<PageRow>, sqlx::Error> {
+    let limit = i64::from(limit.get());
     sqlx::query_as(AssertSqlSafe(format!(
         "SELECT * FROM ({PAGE_SELECT}) ORDER BY last_captured_at DESC, id DESC LIMIT ?"
     )))
@@ -290,7 +294,7 @@ pub(crate) struct QueryFilter {
     pub q: Option<String>,
     pub tag_names: Vec<Name>,
     pub match_mode: MatchMode,
-    pub limit: u32,
+    pub limit: Limit,
     pub cursor: Option<Cursor>,
 }
 
@@ -355,11 +359,11 @@ pub(crate) async fn list_pages_dynamic_filter(
     }
 
     qb.push(" ORDER BY last_captured_at DESC, id DESC LIMIT ")
-        .push_bind(filter.limit.saturating_add(1));
+        .push_bind(filter.limit.get().saturating_add(1));
 
     let mut rows: Vec<PageRow> = qb.build_query_as().fetch_all(pool).await?;
-    let has_more = i64::try_from(rows.len()).map_or(true, |len| len > filter.limit.into());
-    rows.truncate(usize::try_from(filter.limit).unwrap_or(usize::MAX));
+    let has_more = i64::try_from(rows.len()).map_or(true, |len| len > filter.limit.get().into());
+    rows.truncate(usize::from(filter.limit));
     let next_cursor = has_more
         .then(|| {
             rows.last()

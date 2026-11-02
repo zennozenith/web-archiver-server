@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crate::db::helpers::Inserted;
 use crate::db::tags::{TagRow, get_or_create_tag};
 use crate::dto::{self, PendingDto};
+use crate::limit::Limit;
 use crate::tag::Name;
 use crate::url_canon::CanonicalUrl;
 
@@ -288,9 +289,9 @@ pub(crate) async fn list_pending(
     pool: &SqlitePool,
     status: Option<PendingStatus>,
     after_id: Option<i64>,
-    limit: u32,
+    limit: Limit,
 ) -> Result<dto::Page<PendingDto>> {
-    let limit = i64::from(limit.clamp(1, 200));
+    let limit = i64::from(limit.get());
 
     let mut qb: QueryBuilder<Sqlite> =
         QueryBuilder::new(format!("SELECT {PENDING_COLS} FROM pending WHERE id > "));

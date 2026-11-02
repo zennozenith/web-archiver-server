@@ -7,6 +7,7 @@ use crate::{
     dto,
     error::{AppError, OptionExt, Result},
     htmx::{HtmxResponse, PartialSwap},
+    limit::Limit,
     tag,
     template::FeedbackTemplate,
     time::ago_timestamp,
@@ -20,6 +21,8 @@ use axum::{
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;
+
+const DEFAULT_PENDING_LIMIT: Limit = Limit::from_const(10);
 
 #[derive(Template)]
 #[template(path = "fragments/pending-card.html")]
@@ -105,7 +108,7 @@ pub(super) async fn create_pending(
 
 #[derive(Deserialize)]
 pub(super) struct QueryPending {
-    limit: Option<u32>,
+    limit: Option<Limit>,
     status: Option<PendingStatus>,
     after_id: Option<i64>,
 }
@@ -120,7 +123,7 @@ pub(super) async fn get_pending(
         after_id,
     } = query;
     // TODO: hardcoded limit
-    let limit = limit.unwrap_or(5);
+    let limit = limit.unwrap_or(DEFAULT_PENDING_LIMIT);
     Ok(Json(
         db::pending::list_pending(&pool, status, after_id, limit).await?,
     ))

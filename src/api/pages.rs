@@ -14,16 +14,14 @@ use crate::{
     dto::{Cursor, Page, PageQuery},
     error::{AppError, OptionExt, Result},
     extract::{ApiJson, ApiPath, ApiQuery},
+    limit::Limit,
     tag,
     url_canon::canonicalize_url,
 };
 
-// todo: Limit struct
-// todo: Cursor struct and how they work
+const DEFAULT_PAGES_LIMIT: Limit = Limit::from_const(50);
 
-fn clamp_limit(limit: Option<u32>) -> u32 {
-    limit.unwrap_or(50).clamp(1, 200)
-}
+// TODO: Cursor struct and how they work
 
 // ── GET /api/pages ──────────────────────────────────────────────────────────
 // Sorted by most recently archived. In PageQuery, rename the field for the documented param:
@@ -31,7 +29,7 @@ pub(super) async fn list_pages(
     State(pool): State<SqlitePool>,
     ApiQuery(q): ApiQuery<PageQuery>,
 ) -> Result<ApiJson<Page<PageDto>>> {
-    let limit = clamp_limit(q.limit);
+    let limit = q.limit.unwrap_or(DEFAULT_PAGES_LIMIT);
     let tag_names = tag::clean_names(&q.tag)?;
 
     let cursor = match q.cursor.as_deref() {
@@ -111,7 +109,7 @@ pub(super) async fn delete_page(
 
 #[derive(Debug, Deserialize)]
 pub(super) struct CapturesQuery {
-    limit: Option<u32>,
+    limit: Option<Limit>,
     cursor: Option<i64>, // last version seen
 }
 
@@ -126,7 +124,7 @@ pub(super) async fn list_captures(
         return Err(AppError::NotFound("page"));
     }
 
-    let limit = clamp_limit(q.limit);
+    let limit = q.limit.unwrap_or(DEFAULT_PAGES_LIMIT);
 
     let page = CaptureSummary::list(&pool, id, q.cursor, limit).await?;
 

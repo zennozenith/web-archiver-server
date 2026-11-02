@@ -1,6 +1,7 @@
 use crate::{
     db::{pending::PendingStatus, tags::TagRow},
     extract::comma_separated_or_seq,
+    limit::Limit,
 };
 use serde::{Deserialize, Serialize};
 
@@ -34,7 +35,7 @@ pub(crate) struct PageQuery {
     pub match_mode: MatchMode,
     pub host: Option<String>,
     pub q: Option<String>,
-    pub limit: Option<u32>,
+    pub limit: Option<Limit>,
     pub cursor: Option<String>,
 }
 

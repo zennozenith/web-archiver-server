@@ -1,7 +1,7 @@
 use serde::Serialize;
 use sqlx::{AssertSqlSafe, Result, SqlitePool, prelude::FromRow};
 
-use crate::{db::contents::ContentRow, dto::Page};
+use crate::{db::contents::ContentRow, dto::Page, limit::Limit};
 
 pub(crate) const COLS: &str = "ct.id, ct.hash, ct.mime_type, ct.size_original, ct.size_stored, \
                         ct.compression_id, ct.data, ct.storage_ref, ct.ref_count, ct.created_at";
@@ -222,19 +222,19 @@ impl CaptureSummary {
         pool: &SqlitePool,
         page_id: i64,
         cursor: Option<i64>,
-        limit: u32,
+        limit: Limit,
     ) -> Result<Page<Self>> {
         let mut items: Vec<Self> = sqlx::query_as(AssertSqlSafe(format!(
             "SELECT * FROM ({CAPTURE_SUMMARY_SQL}) WHERE version < ? ORDER BY version DESC LIMIT ?"
         )))
         .bind(page_id)
         .bind(cursor.unwrap_or(i64::MAX))
-        .bind(limit.saturating_add(1))
+        .bind(limit.get().saturating_add(1))
         .fetch_all(pool)
         .await?;
 
-        let has_more = i64::try_from(items.len()).map_or(true, |len| len > limit.into());
-        items.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+        let has_more = i64::try_from(items.len()).map_or(true, |len| len > limit.get().into());
+        items.truncate(usize::from(limit));
         let next_cursor = has_more
             .then(|| items.last().map(|c| c.version.to_string()))
             .flatten();

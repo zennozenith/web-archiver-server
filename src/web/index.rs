@@ -9,6 +9,7 @@ use crate::{
     },
     dto,
     error::Result,
+    limit::Limit,
     template::RenderHtml,
     time::ago_timestamp,
 };
@@ -39,12 +40,15 @@ struct ViteCounter<'a> {
     title: &'a str,
 }
 
+const DEFAULT_PENDING_LIMIT: Limit = Limit::from_const(10);
+
 pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
-    const LIMIT: u32 = 50;
+    const LIMIT: Limit = Limit::from_const(50);
 
     let stats = stats::stats(&pool).await?;
 
-    let dto::Page { items, .. } = db::pending::list_pending(&pool, None, None, 10).await?;
+    let dto::Page { items, .. } =
+        db::pending::list_pending(&pool, None, None, DEFAULT_PENDING_LIMIT).await?;
     let pendings = items
         .iter()
         .map(PendingFragmentTemplate::from)
