@@ -6,7 +6,8 @@
       <div class="dropdown dropdown-end">
         <button tabindex="0" class="btn btn-ghost btn-xs">⋯</button>
         <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-300 rounded-box z-10 w-40 shadow">
-          <li><a hx-post="/links/{{ link.id }}/pin" hx-swap="none">{% if link.pinned %}📌 Unpin{% else %}📌 Pin{% endif %}</a></li>
+          <li><a hx-post="/links/{{ link.id }}/pin" hx-swap="none"
+              hx-on:htmx:after:request="location.reload()">{% if link.pinned %}📌 Unpin{% else %}📌 Pin{% endif %}</a></li>
           <li><a href="/links/{{ link.id }}?edit=1">✏️ Edit</a></li>
           <li><a class="text-error" hx-delete="/links/{{ link.id }}" hx-confirm="Delete this link?" hx-target="closest .link-card" hx-swap="outerHTML">🗑 Delete</a></li>
         </ul>

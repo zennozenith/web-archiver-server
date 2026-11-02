@@ -1,7 +1,7 @@
 {% extends "base_new.html" %}
 {% block title %}{{ link.title }}{% endblock %}
 {% block content %}
-<div x-data="{ panel: true, mode: 'view', format: 'readable', size: 18, sel: null }" class="flex gap-4 -m-4 lg:-m-6">
+<div x-data="{ panel: true, mode: '{% if edit %}edit{% else %}view{% endif %}', format: 'readable', size: 18, sel: null, lastSel: null }" class="flex gap-4 -m-4 lg:-m-6">
   <article class="flex-1 min-w-0">
     <div class="flex items-center gap-2 p-3 border-b border-base-300 sticky top-0 bg-base-100 z-10">
       <a href="/links" class="btn btn-ghost btn-sm">‹</a>
@@ -20,7 +20,7 @@
       <button class="btn btn-sm" @click="panel=!panel">ℹ️ Details</button>
     </div>
     <div id="content" class="reader max-w-3xl mx-auto px-6 py-10" :style="`font-size:${size}px`"
-      @mouseup="sel = window.getSelection().toString() ? window.getSelection().toString() : null">
+      @mouseup="sel = window.getSelection().toString() || null; if (sel) lastSel = sel">
       <h1 class="text-4xl font-bold mb-3">{{ link.title }}</h1>
       <p class="text-sm opacity-70 !mb-1">🔗 {{ link.domain }}</p>
       <p class="text-sm opacity-70 border-b border-base-300 pb-4">📅 {{ link.date }}</p>
@@ -29,16 +29,18 @@
       <div class="mt-6">
         <h2 class="text-xl font-bold mb-2">Your highlights</h2>
         {% for highlight in link.highlights %}
-        <p><mark class="{% if highlight.color == " green" %}g{% else %}y{% endif %}">{{ highlight.text }}</mark></p>
+        <p><mark class="{% if highlight.color == "green" %}g{% else %}y{% endif %}">{{ highlight.text }}</mark></p>
         {% endfor %}
       </div>
       {% endif %}
     </div>
     <div x-show="sel" x-transition class="fixed bottom-6 left-1/2 -translate-x-1/2 join shadow-xl z-20">
       <button class="btn btn-sm join-item bg-yellow-600/70" hx-post="/links/{{ link.id }}/highlights"
-        hx-vals='{"color":"yellow"}' hx-swap="none" @click="sel=null">Yellow</button>
+        :hx-vals='JSON.stringify({ color: "yellow", text: lastSel || "Highlighted passage" })' hx-swap="none"
+        hx-on:htmx:after:request="location.reload()" @click="sel=null">Yellow</button>
       <button class="btn btn-sm join-item bg-green-600/70" hx-post="/links/{{ link.id }}/highlights"
-        hx-vals='{"color":"green"}' hx-swap="none" @click="sel=null">Green</button>
+        :hx-vals='JSON.stringify({ color: "green", text: lastSel || "Highlighted passage" })' hx-swap="none"
+        hx-on:htmx:after:request="location.reload()" @click="sel=null">Green</button>
       <button class="btn btn-sm join-item" @click="sel=null">✕</button>
     </div>
   </article>
@@ -54,10 +56,12 @@
       <div class="absolute top-3 right-3 dropdown dropdown-end">
         <button tabindex="0" class="btn btn-circle btn-sm">⋯</button>
         <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-300 rounded-box w-44 z-10 shadow">
-          <li><a hx-post="/links/{{ link.id }}/pin" hx-swap="none">📌 Pin</a></li>
+          <li><a hx-post="/links/{{ link.id }}/pin" hx-swap="none"
+              hx-on:htmx:after:request="location.reload()">📌 Pin</a></li>
           <li><a hx-post="/links/{{ link.id }}/refetch" hx-target="#formats" hx-swap="outerHTML">🔄 Refresh formats</a>
           </li>
-          <li><a class="text-error" hx-delete="/links/{{ link.id }}" hx-confirm="Delete this link?">🗑 Delete</a></li>
+          <li><a class="text-error" hx-delete="/links/{{ link.id }}" hx-confirm="Delete this link?" hx-swap="none"
+              hx-on:htmx:after:request="window.location='/links'">🗑 Delete</a></li>
         </ul>
       </div>
     </div>
@@ -94,7 +98,7 @@
       </div>
     </div>
     <form x-show="mode=='edit'" class="p-4 space-y-3" hx-put="/links/{{ link.id }}" hx-swap="none"
-      @htmx:after:request="mode='view'">
+      @htmx:after:request="if ($event.detail.ctx.response.status < 400) { mode='view'; location.reload() }">
       <label class="form-control"><span class="label-text">Name</span><input name="name" value="{{ link.title }}"
           class="input input-bordered input-sm"></label>
       <label class="form-control"><span class="label-text">Collection</span><select name="collection_id"

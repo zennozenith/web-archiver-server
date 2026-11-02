@@ -26,9 +26,4 @@
       {% endfor %}
     </ul>
   </div>
-  <div class="flex items-center gap-2 pt-2 border-t border-base-300">
-    <div class="avatar placeholder"><div class="bg-neutral text-neutral-content w-8 rounded-full"><span>{{ page.user.initial }}</span></div></div>
-    <a href="/settings" class="flex-1 text-sm">{{ page.user.name }}</a>
-    <form method="post" action="/logout"><button class="btn btn-ghost btn-xs">Log out</button></form>
-  </div>
 </div>

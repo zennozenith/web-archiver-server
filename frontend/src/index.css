@@ -195,7 +195,7 @@ h2,
 }
 
 .link-card:hover {
-  border-color: oklch(var(--p));
+  border-color: var(--color-primary);
 }
 
 .thumb {

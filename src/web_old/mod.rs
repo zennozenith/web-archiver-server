@@ -5,7 +5,7 @@ use axum::{
     routing::{delete, get, patch, post},
 };
 
-mod error;
+pub(crate) mod error;
 mod index;
 mod page;
 mod pending;

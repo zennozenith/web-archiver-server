@@ -76,7 +76,7 @@ pub(super) async fn add_page_tag(
 
     let mut tx = pool.begin().await?;
     let tag_id = Tag::get_or_create_id(&mut *tx, &name).await?;
-    sqlx::query("INSERT OR IGNORE INTO url_tag (page_id, tag_id) VALUES (?, ?)")
+    sqlx::query("INSERT OR IGNORE INTO page_tag (page_id, tag_id) VALUES (?, ?)")
         .bind(id)
         .bind(tag_id)
         .execute(&mut *tx)
@@ -95,7 +95,7 @@ pub(super) async fn remove_page_tag(
     State(pool): State<SqlitePool>,
     Path((id, tag_id)): Path<(i64, i64)>,
 ) -> Result<HtmxResponse> {
-    sqlx::query("DELETE FROM url_tag WHERE page_id = ? AND tag_id = ?")
+    sqlx::query("DELETE FROM page_tag WHERE page_id = ? AND tag_id = ?")
         .bind(id)
         .bind(tag_id)
         .execute(&pool)

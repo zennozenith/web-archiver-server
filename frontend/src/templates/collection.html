@@ -12,21 +12,17 @@
           class="badge badge-ghost mt-2">Sub-collection</a>{% endif %}
       </div>
       <div class="flex items-center gap-2">
-        <div class="avatar-group -space-x-3 cursor-pointer" @click="share=true">
-          {% for member in collection.members %}
-          <div class="avatar">
-            <div class="w-8"><img src="{{ member.avatar }}" alt="{{ member.name }}"></div>
-          </div>
-          {% endfor %}
-        </div>
-        <button class="btn btn-sm" @click="share=true">👥 Share</button>
+        <span class="badge badge-ghost">{{ collection.link_count }} links</span>
+        {% if collection.public %}<span class="badge badge-success badge-sm">Public</span>{% endif %}
+        <button class="btn btn-sm" @click="share=true">🔗 Share</button>
         <div class="dropdown dropdown-end">
           <button tabindex="0" class="btn btn-sm btn-square btn-ghost">⋯</button>
           <ul tabindex="0" class="dropdown-content menu menu-sm bg-base-300 rounded-box w-48 z-10 shadow">
             <li><a href="/collections/{{ collection.id }}/edit">✏️ Edit collection</a></li>
             <li><a href="/collections/new?parent={{ collection.id }}">📂 Create sub-collection</a></li>
             <li><a class="text-error" hx-delete="/collections/{{ collection.id }}"
-                hx-confirm="Delete this collection and its links?">🗑 Delete</a></li>
+                hx-confirm="Delete this collection and its links?" hx-swap="none"
+                hx-on:htmx:after:request="window.location='/collections'">🗑 Delete</a></li>
           </ul>
         </div>
       </div>

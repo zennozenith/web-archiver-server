@@ -56,6 +56,18 @@ impl TagSummary {
         .fetch_all(pool)
         .await
     }
+
+    pub(crate) async fn find_by_name(pool: &SqlitePool, name: &TagName) -> Result<Option<Self>> {
+        sqlx::query_as(
+            "SELECT t.id, t.name, t.color, t.created_at,
+                    (SELECT COUNT(*) FROM page_tag pgt    WHERE pgt.tag_id = t.id) AS page_count,
+                    (SELECT COUNT(*) FROM pending_tag pt WHERE pt.tag_id = t.id) AS pending_count
+             FROM tag t WHERE t.name = ?",
+        )
+        .bind(name)
+        .fetch_optional(pool)
+        .await
+    }
 }
 
 impl Tag {

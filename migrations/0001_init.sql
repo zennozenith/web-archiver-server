@@ -54,16 +54,47 @@ CREATE TABLE content (
 );
 CREATE INDEX idx_content_ref_count ON content(ref_count);
 
--- Normalized URLs
-CREATE TABLE page (
+-- Collections: user-organised folders of links. Collections may be nested.
+CREATE TABLE collection (
     id          INTEGER PRIMARY KEY,
-    url         TEXT NOT NULL UNIQUE,          -- canonicalized
-    scheme      TEXT NOT NULL,
-    host        TEXT NOT NULL,
-    path        TEXT NOT NULL,
-    query       TEXT
+    name        TEXT NOT NULL,
+    emoji       TEXT NOT NULL DEFAULT '📁',
+    description TEXT NOT NULL DEFAULT '',
+    color       TEXT NOT NULL DEFAULT '#6d5dfc',
+    parent_id   INTEGER REFERENCES collection(id) ON DELETE SET NULL,
+    public      INTEGER NOT NULL DEFAULT 0 CHECK (public IN (0, 1)),
+    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX idx_collection_parent ON collection(parent_id);
+CREATE INDEX idx_collection_public ON collection(public);
+
+CREATE TABLE page (
+    id              INTEGER PRIMARY KEY,
+    url             TEXT NOT NULL UNIQUE,          -- canonicalized
+    scheme          TEXT NOT NULL,
+    host            TEXT NOT NULL,
+    path            TEXT NOT NULL,
+    query           TEXT,
+    title           TEXT,                          -- user-editable link title
+    description     TEXT NOT NULL DEFAULT '',      -- user-editable notes
+    collection_id   INTEGER REFERENCES collection(id) ON DELETE SET NULL,
+    pinned          INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+    thumbnail_url   TEXT,
+    created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX idx_page_host ON page(host);
+CREATE INDEX idx_page_collection ON page(collection_id);
+CREATE INDEX idx_page_pinned ON page(pinned, created_at DESC);
+
+-- A highlighted passage inside a saved link.
+CREATE TABLE highlight (
+    id          INTEGER PRIMARY KEY,
+    page_id     INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+    text        TEXT NOT NULL,
+    color       TEXT NOT NULL DEFAULT 'yellow',
+    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX idx_highlight_page ON highlight(page_id, created_at);
 
 -- Each time a page was fetched
 CREATE TABLE capture (

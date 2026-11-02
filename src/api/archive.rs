@@ -330,7 +330,7 @@ pub(super) async fn archive(
 
     // Merge tags from the pending row (by id, or any queued row with the same URL) and dequeue.
     sqlx::query(
-        "INSERT OR IGNORE INTO url_tag (page_id, tag_id)
+        "INSERT OR IGNORE INTO page_tag (page_id, tag_id)
          SELECT ?, pt.tag_id FROM pending_tag pt JOIN pending p ON p.id = pt.pending_id
          WHERE p.url = ? OR p.id = ?",
     )

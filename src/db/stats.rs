@@ -49,7 +49,7 @@ pub(crate) struct Stats {
 pub(crate) async fn stats(pool: &SqlitePool) -> Result<Stats> {
     let t: Totals = sqlx::query_as(
         "SELECT
-           (SELECT COUNT(*) FROM url)     AS pages,
+           (SELECT COUNT(*) FROM page)    AS pages,
            (SELECT COUNT(*) FROM capture) AS captures,
            (SELECT COUNT(*) FROM content) AS content_items,
            (SELECT COUNT(*) FROM capture_asset) AS assets,

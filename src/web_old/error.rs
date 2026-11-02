@@ -75,7 +75,7 @@ fn prefers_html(headers: &HeaderMap) -> bool {
     }
 }
 
-pub(super) async fn negotiate_errors(req: Request, next: Next) -> Response {
+pub(crate) async fn negotiate_errors(req: Request, next: Next) -> Response {
     let wants = wants(req.uri(), req.headers());
     let mut res = next.run(req).await;
 

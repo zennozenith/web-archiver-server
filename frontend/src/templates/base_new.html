@@ -14,7 +14,6 @@
   <script src="/static/vite/vendored/htmx-4.0.0.min.js" defer></script>
 
   <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="/static/app.css">
 </head>
 
 <body class="bg-base-100" hx-headers:inherited='{"X-CSRF-Token": "{{ page.csrf_token }}"}'
@@ -23,6 +22,7 @@
     <input id="nav" type="checkbox" class="drawer-toggle" x-model="drawer">
     <main class="drawer-content p-4 lg:p-6 min-w-0">
       <label for="nav" class="btn btn-ghost btn-sm lg:hidden mb-2">☰ Menu</label>
+      <div id="error-container" aria-live="polite"></div>
       {% block content %}{% endblock %}
     </main>
     <aside class="drawer-side z-30">

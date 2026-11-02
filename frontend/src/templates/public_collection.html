@@ -3,7 +3,7 @@
 {% block content %}
 <div class="mb-5">
   <h1 class="text-3xl">{{ collection.emoji }} {{ collection.name }}</h1>
-  <p class="opacity-70">Shared by @{{ page.user.username }} · {{ collection.link_count }} links</p>
+  <p class="opacity-70">Public collection · {{ collection.link_count }} links</p>
 </div>
 <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">{% for link in links %}{% include
   "partials/link_card.html" %}{% endfor %}</div>

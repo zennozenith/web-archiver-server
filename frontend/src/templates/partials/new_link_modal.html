@@ -1,16 +1,12 @@
 <dialog class="modal" :class="{'modal-open': newLink}" @keydown.escape.window="newLink=false">
-  <div class="modal-box" x-data="{ tab: 'link' }">
+  <div class="modal-box">
     <h3 class="font-bold text-lg mb-3">New Link</h3>
-    <div role="tablist" class="tabs tabs-boxed mb-3">
-      <a role="tab" class="tab" :class="tab=='link'&&'tab-active'" @click="tab='link'">Link</a>
-      <a role="tab" class="tab" :class="tab=='file'&&'tab-active'" @click="tab='file'">File</a>
-    </div>
     <form hx-post="/links" hx-target="#results" hx-swap="prepend" hx-encoding="multipart/form-data"
-          hx-indicator="#nl-spin" @htmx:after:request="newLink=false; $el.reset()" class="space-y-3">
-      <label class="form-control" x-show="tab=='link'"><span class="label-text">Link</span>
-        <input name="url" type="url" placeholder="https://example.com" class="input input-bordered"></label>
-      <label class="form-control" x-show="tab=='file'"><span class="label-text">File (PDF, PNG, JPG)</span>
-        <input name="file" type="file" class="file-input file-input-bordered"></label>
+          hx-indicator="#nl-spin"
+          @htmx:after:request="if ($event.detail.ctx.response.status < 400) { newLink=false; $el.reset() }"
+          class="space-y-3">
+      <label class="form-control"><span class="label-text">Link</span>
+        <input name="url" type="url" required placeholder="https://example.com" class="input input-bordered"></label>
       <label class="form-control"><span class="label-text">Name (auto-filled if empty)</span>
         <input name="name" class="input input-bordered"></label>
       <label class="form-control"><span class="label-text">Collection</span>
