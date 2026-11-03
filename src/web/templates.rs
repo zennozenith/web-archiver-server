@@ -1,10 +1,8 @@
-//! Askama template contexts used by the Linkwarden-style UI.
-
 use askama::Template;
 
 use crate::{
-    db::link::LinkStats,
-    web::view::{CollectionOption, CollectionView, FormatView, LinkView, Page, Section, TagView},
+    db::page::{PageCursor, PageStats},
+    web::view::{CollectionOption, CollectionView, FormatView, Page, PageView, Section, TagView},
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -15,24 +13,23 @@ use crate::{
 #[template(path = "dashboard.html")]
 pub(crate) struct DashboardTemplate {
     pub page: Page,
-    pub stats: LinkStats,
+    pub stats: PageStats,
     pub sections: Vec<Section>,
 }
 
 #[derive(Template)]
 #[template(path = "links.html")]
-pub(crate) struct LinksTemplate {
+pub(crate) struct PagesTemplate {
     pub page: Page,
-    pub links: Vec<LinkView>,
-    pub has_more: bool,
-    pub next_page: usize,
+    pub links: Vec<PageView>,
+    pub next_cursor: Option<PageCursor>,
 }
 
 #[derive(Template)]
 #[template(path = "pinned.html")]
 pub(crate) struct PinnedTemplate {
     pub page: Page,
-    pub links: Vec<LinkView>,
+    pub links: Vec<PageView>,
 }
 
 #[derive(Template)]
@@ -47,7 +44,7 @@ pub(crate) struct CollectionsTemplate {
 pub(crate) struct CollectionTemplate {
     pub page: Page,
     pub collection: CollectionView,
-    pub links: Vec<LinkView>,
+    pub links: Vec<PageView>,
 }
 
 #[derive(Template)]
@@ -66,9 +63,9 @@ pub(crate) struct CollectionFormTemplate {
 
 #[derive(Template)]
 #[template(path = "link_detail.html")]
-pub(crate) struct LinkDetailTemplate {
+pub(crate) struct PageDetailTemplate {
     pub page: Page,
-    pub link: LinkView,
+    pub link: PageView,
     pub collections: Vec<CollectionOption>,
     pub edit: bool,
 }
@@ -85,7 +82,7 @@ pub(crate) struct TagsTemplate {
 pub(crate) struct TagTemplate {
     pub page: Page,
     pub tag: TagView,
-    pub links: Vec<LinkView>,
+    pub links: Vec<PageView>,
 }
 
 #[derive(Template)]
@@ -93,14 +90,14 @@ pub(crate) struct TagTemplate {
 pub(crate) struct PublicCollectionTemplate {
     pub page: Page,
     pub collection: CollectionView,
-    pub links: Vec<LinkView>,
+    pub links: Vec<PageView>,
 }
 
 #[derive(Template)]
 #[template(path = "archive.html")]
 pub(crate) struct ArchiveTemplate {
     pub page: Page,
-    pub link: LinkView,
+    pub link: PageView,
     pub format: FormatView,
 }
 
@@ -110,20 +107,20 @@ pub(crate) struct ArchiveTemplate {
 
 #[derive(Template)]
 #[template(path = "partials/link_grid.html")]
-pub(crate) struct LinkGridTemplate {
-    pub links: Vec<LinkView>,
+pub(crate) struct PageGridTemplate {
+    pub links: Vec<PageView>,
 }
 
 #[derive(Template)]
 #[template(path = "partials/link_card.html")]
-pub(crate) struct LinkCardTemplate {
-    pub link: LinkView,
+pub(crate) struct PageCardTemplate {
+    pub link: PageView,
 }
 
 #[derive(Template)]
 #[template(path = "partials/link_content.html")]
-pub(crate) struct LinkContentTemplate {
-    pub link: LinkView,
+pub(crate) struct PageContentTemplate {
+    pub link: PageView,
     pub format: FormatView,
     pub readable: bool,
 }
@@ -131,7 +128,7 @@ pub(crate) struct LinkContentTemplate {
 #[derive(Template)]
 #[template(path = "partials/formats.html")]
 pub(crate) struct FormatsTemplate {
-    pub link: LinkView,
+    pub link: PageView,
 }
 
 #[derive(Template)]

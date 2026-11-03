@@ -228,12 +228,11 @@ impl From<InvalidTagColor> for AppError {
 }
 
 /// Parse an optional color; `None` and blank strings both mean "no color".
-pub(crate) fn parse_optional_color(raw: Option<&str>) -> Result<Option<TagColor>, AppError> {
+pub(crate) fn parse_optional_color(raw: Option<&str>) -> Result<Option<TagColor>, InvalidTagColor> {
     raw.map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::parse)
         .transpose()
-        .map_err(AppError::from)
 }
 
 // ───────────────────────────────────────────────────────────────────────────

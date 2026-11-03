@@ -1,31 +1,69 @@
-<dialog class="modal" :class="{'modal-open': newLink}" @keydown.escape.window="newLink=false">
-  <div class="modal-box">
-    <h3 class="font-bold text-lg mb-3">New Link</h3>
+<dialog class="modal modal-bottom sm:modal-middle" :class="{'modal-open': newLink}"
+  x-effect="if (newLink) $nextTick(() => $refs.url.focus())" @keydown.escape.window="newLink = false">
+
+  <div class="modal-box max-w-lg">
+    <!-- Header -->
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <h3 class="text-lg font-bold">New link</h3>
+        <p class="text-sm text-base-content/60">Save a page to your library.</p>
+      </div>
+      <button type="button" class="btn btn-sm btn-circle btn-ghost" @click="newLink = false"
+        aria-label="Close">✕</button>
+    </div>
+
     <form hx-post="/links" hx-target="#results" hx-swap="prepend" hx-encoding="multipart/form-data"
-          hx-indicator="#nl-spin"
-          @htmx:after:request="if ($event.detail.ctx.response.status < 400) { newLink=false; $el.reset() }"
-          class="space-y-3">
-      <label class="form-control"><span class="label-text">Link</span>
-        <input name="url" type="url" required placeholder="https://example.com" class="input input-bordered"></label>
-      <label class="form-control"><span class="label-text">Name (auto-filled if empty)</span>
-        <input name="name" class="input input-bordered"></label>
-      <label class="form-control"><span class="label-text">Collection</span>
-        <select name="collection_id" class="select select-bordered">
-          <option value="">Unorganized</option>
-          {% for collection in page.all_collections %}
-          <option value="{{ collection.id }}">{{ collection.emoji }} {{ collection.name }}</option>
-          {% endfor %}
-        </select></label>
-      <label class="form-control"><span class="label-text">Tags</span>
-        <input name="tags" placeholder="comma, separated" class="input input-bordered"></label>
-      <label class="form-control"><span class="label-text">Description</span>
-        <textarea name="description" class="textarea textarea-bordered" rows="2"></textarea></label>
-      <div class="modal-action">
-        <span id="nl-spin" class="loading loading-spinner htmx-indicator"></span>
-        <button type="button" class="btn btn-ghost" @click="newLink=false">Cancel</button>
-        <button class="btn btn-primary">Save link</button>
+      hx-indicator="#nl-spin"
+      @htmx:after:request="if ($event.detail.ctx.response.status < 400) { newLink = false; $el.reset() }"
+      class="flex flex-col gap-4">
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">URL</legend>
+        <input x-ref="url" name="url" type="url" required placeholder="https://example.com"
+          class="input validator w-full">
+        <p class="validator-hint hidden">Enter a valid URL</p>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Title</legend>
+        <input name="title" type="text" required placeholder="Page title" class="input validator w-full">
+        <p class="validator-hint hidden">Title is required</p>
+      </fieldset>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Collection</legend>
+          <select name="collection_id" class="select w-full">
+            <option value="">Unorganized</option>
+            {% for collection in page.all_collections %}
+            <option value="{{ collection.id }}">{{ collection.emoji }} {{ collection.name }}</option>
+            {% endfor %}
+          </select>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Tags</legend>
+          <input name="tags" type="text" placeholder="design, reading, tools" class="input w-full">
+          <p class="label">Comma separated</p>
+        </fieldset>
+      </div>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Description <span class="text-base-content/50 font-normal">(optional)</span>
+        </legend>
+        <textarea name="description" rows="3" class="textarea w-full resize-none"
+          placeholder="What is this link about?"></textarea>
+      </fieldset>
+
+      <div class="modal-action mt-2">
+        <button type="button" class="btn btn-ghost" @click="newLink = false">Cancel</button>
+        <button type="submit" class="btn btn-primary">
+          <span id="nl-spin" class="loading loading-spinner loading-xs htmx-indicator"></span>
+          Save link
+        </button>
       </div>
     </form>
   </div>
-  <div class="modal-backdrop" @click="newLink=false"></div>
+
+  <div class="modal-backdrop bg-black/40" @click="newLink = false"></div>
 </dialog>

@@ -1,5 +1,3 @@
-//! Full-page handlers for the Linkwarden-style UI.
-
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -12,8 +10,8 @@ use sqlx::SqlitePool;
 use crate::{
     db::{
         collection::{CollectionId, CollectionRecord},
-        link::{HighlightRecord, LinkFilter, LinkItem, LinkSort, LinkStats},
-        page::PageId,
+        helper::CursorPage,
+        page::{HighlightRecord, PageCursor, PageFilter, PageId, PageItem, PageSort, PageStats},
         tag::TagSummary,
     },
     error::{AppError, OptionExt, Result},
@@ -23,10 +21,10 @@ use crate::{
     web::{
         templates::{
             ArchiveTemplate, CollectionFormTemplate, CollectionTemplate, CollectionsTemplate,
-            DashboardTemplate, LinkDetailTemplate, LinkGridTemplate, LinksTemplate, PinnedTemplate,
+            DashboardTemplate, PageDetailTemplate, PageGridTemplate, PagesTemplate, PinnedTemplate,
             PublicCollectionTemplate, TagTemplate, TagsTemplate,
         },
-        view::{CollectionOption, CollectionView, FormatView, LinkView, Page, Section, TagView},
+        view::{CollectionOption, CollectionView, FormatView, Page, PageView, Section, TagView},
     },
 };
 
@@ -35,7 +33,7 @@ const ALL_LINKS: Limit = Limit::MAX;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PageQuery {
-    page: Option<usize>,
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,10 +46,10 @@ pub(crate) struct EditQuery {
     edit: Option<String>,
 }
 
-fn link_views(items: &[LinkItem]) -> Vec<LinkView> {
+fn link_views(items: &[PageItem]) -> Vec<PageView> {
     items
         .iter()
-        .map(|item| LinkView::from_item(item, &[]))
+        .map(|item| PageView::from_item(item, &[]))
         .collect()
 }
 
@@ -72,13 +70,13 @@ fn collection_options(
 // ───────────────────────────────────────────────────────────────────────────
 
 pub(crate) async fn dashboard(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
-    let stats: LinkStats = crate::db::link::stats(&pool).await?;
+    let stats: PageStats = crate::db::page::stats(&pool).await?;
 
-    let (recent, _) = LinkItem::list(
+    let CursorPage { items: recent, .. } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             limit: Limit::from_const(5),
-            ..LinkFilter::default()
+            ..PageFilter::default()
         },
     )
     .await?;
@@ -90,12 +88,12 @@ pub(crate) async fn dashboard(State(pool): State<SqlitePool>) -> Result<impl Int
     }];
 
     for collection in CollectionRecord::list(&pool).await? {
-        let (items, _) = LinkItem::list(
+        let CursorPage { items, .. } = PageItem::list(
             &pool,
-            &LinkFilter {
+            &PageFilter {
                 collection_id: Some(collection.id),
                 limit: Limit::from_const(5),
-                ..LinkFilter::default()
+                ..PageFilter::default()
             },
         )
         .await?;
@@ -117,53 +115,49 @@ pub(crate) async fn dashboard(State(pool): State<SqlitePool>) -> Result<impl Int
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Links
+// Pages
 // ───────────────────────────────────────────────────────────────────────────
 
 pub(crate) async fn links(
     State(pool): State<SqlitePool>,
     Query(query): Query<PageQuery>,
 ) -> Result<Response> {
-    let page_no = query.page.unwrap_or(1).max(1);
-    let offset = page_no
-        .saturating_sub(1)
-        .saturating_mul(PER_PAGE.as_usize());
+    let cursor = query.cursor.map(PageCursor::try_from).transpose()?;
 
-    let (items, has_more) = LinkItem::list(
+    let CursorPage { items, next_cursor } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             limit: PER_PAGE,
-            offset,
-            sort: LinkSort::Newest,
-            ..LinkFilter::default()
+            cursor,
+            sort: PageSort::Newest,
+            ..PageFilter::default()
         },
     )
     .await?;
     let links = link_views(&items);
 
     // Infinite scroll asks for page 2+ and only wants the cards.
-    if page_no > 1 {
-        return Ok(LinkGridTemplate { links }.render_html()?.into_response());
+    if next_cursor.is_some() {
+        return Ok(PageGridTemplate { links }.render_html()?.into_response());
     }
 
     let page = Page::load(&pool, "links").await?;
-    Ok(LinksTemplate {
+    Ok(PagesTemplate {
         page,
         links,
-        has_more,
-        next_page: page_no.saturating_add(1),
+        next_cursor,
     }
     .render_html()?
     .into_response())
 }
 
 pub(crate) async fn pinned(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
-    let (items, _) = LinkItem::list(
+    let CursorPage { items, .. } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             pinned_only: true,
             limit: ALL_LINKS,
-            ..LinkFilter::default()
+            ..PageFilter::default()
         },
     )
     .await?;
@@ -180,15 +174,15 @@ pub(crate) async fn link_detail(
     Path(id): Path<PageId>,
     Query(query): Query<EditQuery>,
 ) -> Result<impl IntoResponse> {
-    let item = LinkItem::load(&pool, id).await?.or_not_found("link")?;
+    let item = PageItem::load(&pool, id).await?.or_not_found("link")?;
     let highlights = HighlightRecord::list(&pool, id).await?;
-    let link = LinkView::from_item(&item, &highlights);
+    let link = PageView::from_item(&item, &highlights);
     let selected = link.collection_id;
     let collections = collection_options(&CollectionRecord::list(&pool).await?, selected);
     let page = Page::load(&pool, "links").await?;
     let edit = query.edit.is_some();
 
-    LinkDetailTemplate {
+    PageDetailTemplate {
         page,
         link,
         collections,
@@ -201,7 +195,7 @@ pub(crate) async fn archive(
     State(pool): State<SqlitePool>,
     Path((id, format)): Path<(PageId, String)>,
 ) -> Result<Response> {
-    let item = LinkItem::load(&pool, id).await?.or_not_found("link")?;
+    let item = PageItem::load(&pool, id).await?.or_not_found("link")?;
 
     let target = match format.as_str() {
         "readable" => Some(format!("/links/{id}")),
@@ -216,7 +210,7 @@ pub(crate) async fn archive(
         return Ok(Redirect::temporary(&target).into_response());
     }
 
-    let link = LinkView::from_item(&item, &[]);
+    let link = PageView::from_item(&item, &[]);
     let format = link
         .formats
         .iter()
@@ -256,12 +250,12 @@ pub(crate) async fn collection(
     let record = CollectionRecord::load(&pool, id)
         .await?
         .or_not_found("collection")?;
-    let (items, _) = LinkItem::list(
+    let CursorPage { items, .. } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             collection_id: Some(id),
             limit: ALL_LINKS,
-            ..LinkFilter::default()
+            ..PageFilter::default()
         },
     )
     .await?;
@@ -331,12 +325,12 @@ pub(crate) async fn public_collection(
         return Err(AppError::NotFound("public collection"));
     }
 
-    let (items, _) = LinkItem::list(
+    let CursorPage { items, .. } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             collection_id: Some(id),
             limit: ALL_LINKS,
-            ..LinkFilter::default()
+            ..PageFilter::default()
         },
     )
     .await?;
@@ -375,12 +369,12 @@ pub(crate) async fn tag(
         .or_not_found("tag")?;
     let tag = TagView::from_summary(&summary);
 
-    let (items, _) = LinkItem::list(
+    let CursorPage { items, .. } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             tag_id: Some(summary.id),
             limit: ALL_LINKS,
-            ..LinkFilter::default()
+            ..PageFilter::default()
         },
     )
     .await?;
@@ -400,11 +394,11 @@ pub(crate) async fn tag(
 
 pub(crate) async fn export(State(pool): State<SqlitePool>) -> Result<Json<serde_json::Value>> {
     let collections = CollectionRecord::list(&pool).await?;
-    let (items, _) = LinkItem::list(
+    let CursorPage { items, .. } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             limit: ALL_LINKS,
-            ..LinkFilter::default()
+            ..PageFilter::default()
         },
     )
     .await?;

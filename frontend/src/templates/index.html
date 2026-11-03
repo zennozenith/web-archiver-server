@@ -53,7 +53,7 @@
     </div>
     {% endif %}
 
-    {% for PageCardTemplate { id, url, host, title, search, last_captured, capture_count, version_label, tags, captures,
+    {% for PageCardTemplate { id, title, url, host, search, last_captured, capture_count, version_label, tags, captures,
     .. } in pages %}
     {% include "fragments/page-card.html" %}
     {% endfor %}
@@ -78,7 +78,6 @@
         <form hx-post="/pending" hx-swap="none" hx-on:htmx:after:request="this.reset()"
           class="flex flex-col gap-2 mt-3 mb-3">
           <input type="url" name="url" required class="input input-sm w-full" placeholder="https://example.com/page" />
-          <input type="text" name="title" class="input input-sm w-full" placeholder="Title (optional)" />
           <input type="text" name="tags" class="input input-sm w-full" placeholder="Comma separated tags" />
           <button class="btn btn-primary btn-sm w-full rounded-md" type="submit">Add to queue</button>
         </form>
@@ -88,7 +87,7 @@
 
         <!-- The list of pending cards -->
         <div id="pending-list" class="flex flex-col gap-2">
-          {% for PendingFragmentTemplate { id, url, title, status, tags, created_at, .. } in pendings %}
+          {% for PendingFragmentTemplate { id, url, status, tags, created_at, .. } in pendings %}
           {% include "fragments/pending-card.html" %}
           {% endfor %}
         </div>

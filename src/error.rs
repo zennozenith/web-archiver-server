@@ -67,11 +67,8 @@ pub enum AppError {
     NotFound(&'static str),
 
     // 409
-    #[error("url is already in the pending queue")]
-    DuplicatePending { existing_id: i64 },
-    #[error("a tag with that name already exists")]
-    DuplicateTag { existing_id: i64 },
-
+    #[error("{msg}. Existing id: {existing_id}")]
+    Duplicate { existing_id: i64, msg: &'static str },
     #[error("{0}")]
     Conflict(String),
 
@@ -103,8 +100,8 @@ pub enum AppError {
 impl AppError {
     fn parts(&self) -> (StatusCode, &'static str, Option<Value>) {
         use AppError::{
-            BadRequest, Conflict, Database, DuplicatePending, DuplicateTag, Internal, InvalidUrl,
-            NotFound, PayloadTooLarge, Render, Unauthorized, Unprocessable,
+            BadRequest, Conflict, Database, Duplicate, Internal, InvalidUrl, NotFound,
+            PayloadTooLarge, Render, Unauthorized, Unprocessable,
         };
         match self {
             InvalidUrl(_) => (StatusCode::BAD_REQUEST, "invalid_url", None),
@@ -112,15 +109,10 @@ impl AppError {
             BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", None),
             Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             NotFound(_) => (StatusCode::NOT_FOUND, "not_found", None),
-            DuplicatePending { existing_id } => (
+            Duplicate { existing_id, msg } => (
                 StatusCode::CONFLICT,
-                "duplicate_pending",
-                Some(json!({ "existing_id": existing_id })),
-            ),
-            DuplicateTag { existing_id } => (
-                StatusCode::CONFLICT,
-                "duplicate_tag",
-                Some(json!({ "existing_id": existing_id })),
+                "duplicate",
+                Some(json!({ "existing_id": existing_id, "error": msg })),
             ),
             Conflict(_) => (StatusCode::CONFLICT, "conflict", None),
             PayloadTooLarge { limit } => (

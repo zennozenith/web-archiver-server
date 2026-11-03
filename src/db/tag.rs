@@ -94,6 +94,7 @@ impl Tag {
             .await
     }
 
+    // CHECKED:
     /// Creates the tag, or returns the existing one if the name is taken.
     ///
     /// On [`CreateOutcome::Existing`] the stored row is returned as-is: the

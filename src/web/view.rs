@@ -6,7 +6,7 @@ use sqlx::{Result, SqlitePool};
 use crate::{
     db::{
         collection::{CollectionId, CollectionRecord},
-        link::{HighlightRecord, LinkItem, LinkRecord},
+        page::{HighlightRecord, PageItem, PageRecord},
         tag::{Tag, TagSummary},
     },
     tag::TagId,
@@ -77,7 +77,7 @@ pub(crate) struct FormatView {
     pub icon: String,
 }
 
-pub(crate) struct LinkView {
+pub(crate) struct PageView {
     pub id: crate::db::page::PageId,
     pub title: String,
     pub url: String,
@@ -99,7 +99,7 @@ pub(crate) struct LinkView {
 pub(crate) struct Section {
     pub title: String,
     pub href: String,
-    pub links: Vec<LinkView>,
+    pub links: Vec<PageView>,
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -197,8 +197,8 @@ impl HighlightView {
     }
 }
 
-impl LinkView {
-    pub(crate) fn from_item(item: &LinkItem, highlights: &[HighlightRecord]) -> Self {
+impl PageView {
+    pub(crate) fn from_item(item: &PageItem, highlights: &[HighlightRecord]) -> Self {
         let record = &item.record;
 
         let (collection_name, collection_emoji, collection_href) =
@@ -225,10 +225,10 @@ impl LinkView {
                 },
             );
 
-        let thumb = match record.thumbnail_id.as_deref() {
-            Some(url) if !url.trim().is_empty() => url.to_owned(),
+        let thumb = match record.thumbnail_content_id {
+            Some(content_id) => format!("/api/page/{content_id}/thumbnail"),
             _ if record.has_screenshot => {
-                format!("/api/pages/{}/latest/screenshot", record.id)
+                format!("/api/page/{}/latest/screenshot", record.id)
             }
             _ => PLACEHOLDER_THUMB.to_owned(),
         };
@@ -262,7 +262,7 @@ impl LinkView {
     }
 }
 
-fn domain_of(record: &LinkRecord) -> String {
+fn domain_of(record: &PageRecord) -> String {
     record
         .host
         .strip_prefix("www.")
@@ -270,7 +270,7 @@ fn domain_of(record: &LinkRecord) -> String {
         .to_owned()
 }
 
-fn formats_of(record: &LinkRecord) -> Vec<FormatView> {
+fn formats_of(record: &PageRecord) -> Vec<FormatView> {
     let readable = FormatView {
         key: "readable".to_owned(),
         label: "Readable".to_owned(),

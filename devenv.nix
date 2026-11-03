@@ -88,7 +88,7 @@
   scripts.watcher = {
     packages = [pkgs.watchexec];
     exec = ''
-      watchexec -q -c -w src/ -w templates/ -w frontend/ -r --stop-signal SIGKILL "cargo run"
+      watchexec -q -c -w src/ -w frontend/ -r --stop-signal SIGKILL "cargo run"
     '';
   };
 

@@ -4,7 +4,7 @@ use crate::{
     db::{
         capture::CaptureOverview,
         helper::CursorPage,
-        page::{PageId, PageRecord, tags_by_page},
+        page::{PageId, PageItem, PageRecord, PageSort, tags_by_page},
         pending::PendingItem,
         stats::{self, Stats},
         tag::{Tag, TagSummary},
@@ -41,11 +41,9 @@ struct ViteCounter<'a> {
     title: &'a str,
 }
 
-const DEFAULT_PENDING_LIMIT: Limit = Limit::from_const(10);
+const DEFAULT_PENDING_LIMIT: Limit = Limit::from_const(50);
 
 pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
-    const LIMIT: Limit = Limit::from_const(50);
-
     let stats = stats::stats(&pool).await?;
 
     let CursorPage { items, .. } =
@@ -55,14 +53,26 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
         .map(PendingFragmentTemplate::from)
         .collect::<Vec<_>>();
 
-    let rows = PageRecord::list_recent(&pool, LIMIT).await?;
-    let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
+    let page_item = PageItem::list(
+        &pool,
+        &crate::db::page::PageFilter {
+            sort: PageSort::Newest,
+            ..Default::default()
+        },
+    )
+    .await?;
+    let ids = page_item
+        .items
+        .iter()
+        .map(|row| row.record.id)
+        .collect::<Vec<_>>();
     let mut tags_by_page = tags_by_page(&pool, &ids).await?;
     let mut captures_by_page = CaptureOverview::overviews_by_page(&pool, &ids).await?;
 
-    let pages = rows
+    let pages = page_item
+        .items
         .into_iter()
-        .map(|row| page_card(row, &mut tags_by_page, &mut captures_by_page))
+        .map(|row| page_card(row.record, &mut tags_by_page, &mut captures_by_page))
         .collect();
 
     let tags = TagSummary::list(&pool)
@@ -86,10 +96,6 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
     .render_html()
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "builds the complete view model for one page card"
-)]
 fn page_card(
     row: PageRecord,
     tags_by_page: &mut HashMap<PageId, Vec<Tag>>,
@@ -97,16 +103,13 @@ fn page_card(
 ) -> PageCardTemplate {
     let PageRecord {
         id,
+        display_title,
         url,
         host,
         last_captured_at,
         capture_count,
-        title,
+        ..
     } = row;
-
-    let display_title = title
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| url.clone());
 
     let tags = tags_by_page.remove(&id).unwrap_or_default();
     let tag_names = tags

@@ -30,7 +30,7 @@ struct BlobRoute {
     blob: CaptureBlob,
     /// Human-readable name used in 404 messages.
     label: &'static str,
-    /// Path segment under `/api/captures/{id}/`.
+    /// Path segment under `/api/capture/{id}/`.
     url_suffix: &'static str,
     /// Overrides the stored MIME type when set.
     content_type: Option<&'static str>,
@@ -131,7 +131,7 @@ async fn redirect_to_latest(
         .or_not_found(route.label)?;
 
     // 307, fine for GET.
-    let target = format!("/api/captures/{capture_id}/{}", route.url_suffix);
+    let target = format!("/api/capture/{capture_id}/{}", route.url_suffix);
     Ok(Redirect::temporary(&target).into_response())
 }
 
@@ -242,7 +242,7 @@ impl From<CaptureDetail> for CaptureDetailResponse {
 
 // ── Handlers ────────────────────────────────────────────────────────────────
 
-// GET /pages/{id}/thumbnail
+// GET /page/{id}/thumbnail
 pub(super) async fn get_thumbnail(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
@@ -252,7 +252,7 @@ pub(super) async fn get_thumbnail(
     serve_thumbnail(&pool, &store, &headers, id).await
 }
 
-// GET /api/captures/{id}
+// GET /api/capture/{id}
 pub(super) async fn get_capture(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<CaptureId>,
@@ -263,7 +263,7 @@ pub(super) async fn get_capture(
     Ok(ApiJson(detail.into()))
 }
 
-// DELETE /api/captures/{id}   (content rows are collected by the GC endpoint)
+// DELETE /api/capture/{id}   (content rows are collected by the GC endpoint)
 pub(super) async fn delete_capture(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<CaptureId>,
@@ -274,7 +274,7 @@ pub(super) async fn delete_capture(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// GET /api/captures/{id}/html   (rewritten: resource URLs point at /api/content)
+// GET /api/capture/{id}/html   (rewritten: resource URLs point at /api/content)
 pub(super) async fn get_capture_html(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
@@ -284,7 +284,7 @@ pub(super) async fn get_capture_html(
     serve_blob(&pool, &store, &headers, id, &HTML).await
 }
 
-// GET /api/captures/{id}/html/original   (exact bytes uploaded to /api/archive)
+// GET /api/capture/{id}/html/original   (exact bytes uploaded to /api/archive)
 pub(super) async fn get_capture_original_html(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
@@ -294,7 +294,7 @@ pub(super) async fn get_capture_original_html(
     serve_blob(&pool, &store, &headers, id, &ORIGINAL_HTML).await
 }
 
-// GET /api/captures/{id}/screenshot
+// GET /api/capture/{id}/screenshot
 pub(super) async fn get_capture_screenshot(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
@@ -304,7 +304,7 @@ pub(super) async fn get_capture_screenshot(
     serve_blob(&pool, &store, &headers, id, &SCREENSHOT).await
 }
 
-// GET /api/pages/{id}/latest/html
+// GET /api/page/{id}/latest/html
 pub(super) async fn redirect_latest_html(
     State(pool): State<SqlitePool>,
     ApiPath(page_id): ApiPath<PageId>,
@@ -312,7 +312,7 @@ pub(super) async fn redirect_latest_html(
     redirect_to_latest(&pool, page_id, &HTML).await
 }
 
-// GET /api/pages/{id}/latest/html/original
+// GET /api/page/{id}/latest/html/original
 pub(super) async fn redirect_latest_original_html(
     State(pool): State<SqlitePool>,
     ApiPath(page_id): ApiPath<PageId>,
@@ -320,7 +320,7 @@ pub(super) async fn redirect_latest_original_html(
     redirect_to_latest(&pool, page_id, &ORIGINAL_HTML).await
 }
 
-// GET /api/pages/{id}/latest/screenshot
+// GET /api/page/{id}/latest/screenshot
 pub(super) async fn redirect_latest_screenshot(
     State(pool): State<SqlitePool>,
     ApiPath(page_id): ApiPath<PageId>,

@@ -5,12 +5,16 @@ use sqlx::SqlitePool;
 use crate::{
     api::tag::CreateTagRequest,
     db::{
-        helper::{CursorPage, MatchMode},
-        page::{self, PageCursor, PageDetail, PageFilter, PageId, PageItem},
+        collection::CollectionId,
+        helper::CursorPage,
+        page::{
+            self, DeletePage, PageCursor, PageDetail, PageField, PageFilter, PageId, PageItem,
+            PageSort,
+        },
         tag::Tag,
     },
     error::{AppError, OptionExt, Result},
-    extract::{ApiJson, ApiPath, ApiQuery, comma_separated_or_seq},
+    extract::{ApiJson, ApiPath, ApiQuery},
     limit::Limit,
     tag::{TagId, TagName, parse_names},
     url_canon::canonicalize_url,
@@ -29,18 +33,19 @@ async fn load_detail(pool: &SqlitePool, id: PageId) -> Result<ApiJson<PageDetail
     Ok(ApiJson(detail))
 }
 
-// ── GET /api/pages ──────────────────────────────────────────────────────────
+// ── GET /api/page ───────────────────────────────────────────────────────────
 // Most recently archived first; `cursor` comes from the previous page's `nextCursor`.
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PageQuery {
-    #[serde(default, deserialize_with = "comma_separated_or_seq")]
-    pub tag: Vec<String>, // needs axum-extra's Query for repeated keys
-    #[serde(default, rename = "match")]
-    pub match_mode: MatchMode,
-    pub host: Option<String>,
-    pub q: Option<String>,
+    pub text: Option<String>,
+    pub field: Option<PageField>,
+    pub sort: Option<PageSort>,
+    pub pinned_only: Option<bool>,
+    pub collection_id: Option<CollectionId>,
     pub limit: Option<Limit>,
+    pub tag_id: Option<TagId>,
     pub cursor: Option<String>,
 }
 
@@ -49,18 +54,20 @@ pub(super) async fn list_pages(
     ApiQuery(query): ApiQuery<PageQuery>,
 ) -> Result<ApiJson<CursorPage<PageItem, PageCursor>>> {
     let filter = PageFilter {
-        host: query.host,
-        text: query.q,
-        tags: parse_names(&query.tag)?,
-        tag_match: query.match_mode,
+        text: query.text,
+        field: query.field.unwrap_or_default(),
+        sort: query.sort.unwrap_or_default(),
+        collection_id: query.collection_id,
+        tag_id: query.tag_id,
+        pinned_only: query.pinned_only.unwrap_or_default(),
         limit: query.limit.unwrap_or(DEFAULT_LIMIT),
         cursor: query.cursor.map(PageCursor::try_from).transpose()?,
     };
 
-    Ok(ApiJson(PageItem::search(&pool, &filter).await?))
+    Ok(ApiJson(PageItem::list(&pool, &filter).await?))
 }
 
-// ── GET /api/pages/lookup?url=... ───────────────────────────────────────────
+// ── GET /api/page/lookup?url=... ────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub(super) struct LookupPageQuery {
@@ -78,7 +85,7 @@ pub(super) async fn lookup_page(
     Ok(ApiJson(detail))
 }
 
-// ── GET /api/pages/{id} ─────────────────────────────────────────────────────
+// ── GET /api/page/{id} ──────────────────────────────────────────────────────
 
 pub(super) async fn get_page(
     State(pool): State<SqlitePool>,
@@ -87,20 +94,20 @@ pub(super) async fn get_page(
     load_detail(&pool, id).await
 }
 
-// ── DELETE /api/pages/{id} ──────────────────────────────────────────────────
+// ── DELETE /api/page/{id} ───────────────────────────────────────────────────
 // Orphaned content rows are left for POST /api/maintenance/gc.
 
 pub(super) async fn delete_page(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PageId>,
 ) -> Result<StatusCode> {
-    if !page::delete(&pool, id).await? {
+    if !DeletePage::execute(&pool, id).await? {
         return Err(AppError::NotFound(PAGE));
     }
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ── GET /api/pages/{id}/captures ────────────────────────────────────────────
+// ── GET /api/page/{id}/captures ─────────────────────────────────────────────
 
 // #[derive(Debug, Deserialize)]
 // pub(super) struct ListCapturesQuery {
@@ -125,7 +132,7 @@ pub(super) async fn delete_page(
 
 // ── Tags on a page ──────────────────────────────────────────────────────────
 
-// PUT /api/pages/{id}/tags   { "tags": [{ "name": "..." }, ...] }  replaces the full set
+// PUT /api/page/{id}/tags   { "tags": [{ "name": "..." }, ...] }  replaces the full set
 pub(super) async fn put_page_tags(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PageId>,
@@ -146,7 +153,7 @@ pub(super) struct AddPageTagRequest {
     name: String,
 }
 
-// POST /api/pages/{id}/tags   { "name": "..." }  get-or-create + attach
+// POST /api/page/{id}/tag   { "name": "..." }  get-or-create + attach
 pub(super) async fn add_page_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PageId>,
@@ -158,7 +165,7 @@ pub(super) async fn add_page_tag(
     Ok(ApiJson(tag))
 }
 
-// DELETE /api/pages/{id}/tags/{tag_id}
+// DELETE /api/page/{id}/tag/{tag_id}
 pub(super) async fn remove_page_tag(
     State(pool): State<SqlitePool>,
     ApiPath((page_id, tag_id)): ApiPath<(PageId, TagId)>,

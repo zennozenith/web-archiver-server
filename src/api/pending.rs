@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        helper::{CreateOutcome, Cursor, CursorPage, FieldPatch},
+        helper::{CreateOutcome, Cursor, CursorPage},
         pending::{PendingId, PendingItem, PendingRecord, PendingStatus, PendingUpdate},
     },
     error::{AppError, OptionExt, Result},
@@ -27,7 +27,6 @@ const MAX_ERROR_CHARS: usize = 2000;
 #[derive(Debug, Deserialize)]
 pub(crate) struct CreatePendingRequest {
     pub url: String,
-    pub title: Option<String>,
     /// Accepts either `["a", "b"]` or `"a,b"`.
     #[serde(default, deserialize_with = "comma_separated_or_seq")]
     pub tags: Vec<String>,
@@ -36,9 +35,6 @@ pub(crate) struct CreatePendingRequest {
 /// Body of `PATCH /api/pending/{id}`. Absent fields are left unchanged.
 #[derive(Debug, Deserialize)]
 pub(super) struct PatchPendingRequest {
-    /// Absent: unchanged. `null`: clear. A string: set it (blank also clears).
-    #[serde(default)]
-    pub title: FieldPatch<String>,
     /// Replaces the whole tag set when present.
     #[serde(default, deserialize_with = "opt_comma_separated_or_seq")]
     pub tags: Option<Vec<String>>,
@@ -53,11 +49,13 @@ pub(super) struct FailPendingRequest {
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
+// CHECKED:
 async fn load_item(pool: &SqlitePool, id: PendingId) -> Result<ApiJson<PendingItem>> {
     let item = PendingItem::load(pool, id).await?.or_not_found(ITEM)?;
     Ok(ApiJson(item))
 }
 
+// CHECKED:
 /// After a guarded update touched no rows: 409 if the item exists (wrong
 /// state), 404 if it does not.
 async fn conflict_or_not_found(
@@ -85,6 +83,7 @@ pub(super) struct ListPendingQuery {
     pub cursor: Option<Cursor>,
 }
 
+// CHECKED:
 pub(super) async fn list_pending(
     State(pool): State<SqlitePool>,
     ApiQuery(query): ApiQuery<ListPendingQuery>,
@@ -100,7 +99,6 @@ pub(super) async fn list_pending(
 }
 
 // ── POST /api/pending ───────────────────────────────────────────────────────
-
 pub(super) async fn create_pending(
     State(pool): State<SqlitePool>,
     ApiJson(req): ApiJson<CreatePendingRequest>,
@@ -108,11 +106,12 @@ pub(super) async fn create_pending(
     let (url, tags) = parse_new_item(&req)?;
 
     let mut tx = pool.begin().await?;
-    let id = match PendingRecord::enqueue(&mut tx, &url, req.title.as_deref(), &tags).await? {
+    let id = match PendingRecord::enqueue(&mut tx, &url, &tags).await? {
         CreateOutcome::Created(id) => id,
         CreateOutcome::Existing(existing_id) => {
-            return Err(AppError::DuplicatePending {
+            return Err(AppError::Duplicate {
                 existing_id: existing_id.get(),
+                msg: "url is already in the pending queue",
             });
         }
     };
@@ -122,7 +121,6 @@ pub(super) async fn create_pending(
 }
 
 // ── POST /api/pending/bulk ──────────────────────────────────────────────────
-
 #[derive(Debug, Deserialize)]
 pub(super) struct BulkCreateRequest {
     pub items: Vec<CreatePendingRequest>,
@@ -211,8 +209,7 @@ pub(super) async fn bulk_create_pending(
         let result = match parse_new_item(&item) {
             Err(error) => BulkItemResult::invalid(item.url, &error),
             Ok((url, tags)) => {
-                let outcome =
-                    PendingRecord::enqueue(&mut tx, &url, item.title.as_deref(), &tags).await?;
+                let outcome = PendingRecord::enqueue(&mut tx, &url, &tags).await?;
                 BulkItemResult::from_outcome(url.url, outcome)
             }
         };
@@ -260,7 +257,6 @@ pub(super) async fn patch_pending(
     }
 
     PendingUpdate {
-        title: req.title.as_deref(),
         status: req.status,
         tags: tags.as_deref(),
     }

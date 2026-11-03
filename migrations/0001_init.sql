@@ -12,7 +12,6 @@ CREATE TABLE tag (
 CREATE TABLE pending (
     id          INTEGER PRIMARY KEY,
     url         TEXT NOT NULL UNIQUE,      -- raw/canonicalized text, not page_id (not archived yet)
-    title       TEXT,                      -- optional, user-provided hint
     status      TEXT NOT NULL DEFAULT 'queued'
                 CHECK (status IN ('queued','in_progress','failed')),
     attempts    INTEGER NOT NULL DEFAULT 0,
@@ -78,7 +77,8 @@ CREATE TABLE page (
     host            TEXT NOT NULL,
     path            TEXT NOT NULL,
     query           TEXT,
-    title           TEXT,                          -- user-editable link title
+
+    title           TEXT NOT NULL DEFAULT '',      -- user-editable link title
     description     TEXT NOT NULL DEFAULT '',      -- user-editable notes
     collection_id   INTEGER REFERENCES collection(id) ON DELETE SET NULL,
     pinned          INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
@@ -109,7 +109,7 @@ CREATE TABLE capture (
     title           TEXT NOT NULL,                    -- Title can change between versions, so store it per capture  
     status_code     INTEGER,
     redirect_page_id INTEGER REFERENCES page(id),
-    content_type    TEXT NOT NULL,                             -- header as served (may differ from sniffed)
+    content_type    TEXT NOT NULL,                    -- header as served (may differ from sniffed)
     screenshot_content_id INTEGER REFERENCES content(id),
     metadata TEXT,   -- JSON from the extension
     original_encoding TEXT,                           -- Content-Encoding the server sent

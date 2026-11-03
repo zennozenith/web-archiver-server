@@ -100,6 +100,7 @@ pub(crate) enum FieldPatch<T> {
 
 impl<T: Deref> FieldPatch<T> {
     /// Borrow the contained value as its deref target (`FieldPatch<String>` -> `FieldPatch<&str>`).
+    #[expect(dead_code, reason = "Might be needed later")]
     pub(crate) fn as_deref(&self) -> FieldPatch<&T::Target> {
         match self {
             Self::Unchanged => FieldPatch::Unchanged,
@@ -234,13 +235,13 @@ pub(crate) fn group_by<K: Hash + Eq, V>(
     groups
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Matching
-// ───────────────────────────────────────────────────────────────────────────
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum MatchMode {
-    #[default]
-    All,
-    Any,
-}
+// // ───────────────────────────────────────────────────────────────────────────
+// // Matching
+// // ───────────────────────────────────────────────────────────────────────────
+// #[derive(Debug, Default, Deserialize)]
+// #[serde(rename_all = "lowercase")]
+// pub(crate) enum MatchMode {
+//     #[default]
+//     All,
+//     Any,
+// }

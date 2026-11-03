@@ -5,6 +5,7 @@
 /examples/archives/*
 /examples/db.sqlite
 !example/archives/.gitkeep
+mprocs.log
 
 /static/vite/*
 /static/vendored/**/*.br

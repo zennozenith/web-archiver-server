@@ -1,7 +1,6 @@
-//! ── Archive (create a new version) ──────────────────────────────────────────
-//!   POST   /api/archive                  multipart/form-data: html, screenshot, screenshot-format
-//!                                        ("png"|"jpeg"), metadata (JSON), + optional url, title,
-//!                                        tags (JSON array of names), `pending_id`, save-assets
+//! ── Archive (create a new capture) ──────────────────────────────────────────
+//!   POST   /api/page/:id/capture         multipart/form-data: html, screenshot,
+//!                                        metadata (JSON), title, `pending_id`, save-assets
 //!                                        (default true; fetch and store the document's
 //!                                        stylesheets/scripts/images/... as content blobs)
 //!                                        → 201 { `capture_id`, `page_id`, version,
@@ -21,38 +20,38 @@
 //!
 //! ── Pages (a URL and all its versions) ──────────────────────────────────────
 //!   GET    /api/pages                    ?tag=a&tag=b &match=all|any &host &q &sort=recent|title &limit &cursor
-//!   GET    /api/pages/lookup             ?url=...  (is this URL archived? returns page + latest capture)
-//!   GET    /api/pages/:id                url, tags, capture count, latest capture
-//!   DELETE /api/pages/:id                removes page, captures, tag links (orphan content GC'd)
-//!   GET    /api/pages/:id/captures       version history, newest first
-//!   PUT    /api/pages/:id/tags           JSON { tags: [names] } replace the full set
-//!   POST   /api/pages/:id/tags           JSON { name } add one (get-or-create)
-//!   DELETE /api/pages/`:id`/tags/`:tag_id`
+//!   GET    /api/page/lookup              ?url=...  (is this URL archived? returns page + latest capture)
+//!   GET    /api/page/:id                 url, tags, capture count, latest capture
+//!   DELETE /api/page/:id                 removes page, captures, tag links (orphan content GC'd)
+//!   GET    /api/page/:id/capture         version history, newest first
+//!   PUT    /api/page/:id/tag             JSON { tags: [names] } replace the full set
+//!   POST   /api/page/:id/tag             JSON { name } add one (get-or-create)
+//!   DELETE /api/page/`:id`/tag/`:tag_id`
 //!
 //! ── Captures (a single version) ─────────────────────────────────────────────
-//!   GET    /api/captures/:id             metadata, headers, sizes, title, version number
-//!   DELETE /api/captures/:id
-//!   GET    /api/captures/:id/html        archived document with resource URLs rewritten
+//!   GET    /api/capture/:id              metadata, headers, sizes, title, version number
+//!   DELETE /api/capture/:id
+//!   GET    /api/capture/:id/html         archived document with resource URLs rewritten
 //!                                        to /api/content/:hash
-//!   GET    /api/captures/:id/html/original  exact bytes uploaded to /api/archive
-//!   GET    /api/captures/:id/screenshot  image with the stored format's Content-Type
-//!   GET    /api/captures/:id/assets      sub-resources saved with this capture
-//!   GET    /api/captures/`:id`/assets/`:content_id`
-//!   GET    /api/pages/:id/latest/html    302 → latest capture's html
-//!   GET    /api/pages/:id/latest/html/original  302 → latest capture's original html
-//!   GET    /api/pages/:id/latest/screenshot
-//!   GET    /api/pages/:id/latest/assets
+//!   GET    /api/capture/:id/html/original  exact bytes uploaded to /api/archive
+//!   GET    /api/capture/:id/screenshot   image with the stored format's Content-Type
+//!   GET    /api/capture/:id/asset        sub-resources saved with this capture
+//!   GET    /api/capture/`:id`/asset/`:content_id`
+//!   GET    /api/page/:id/latest/html     302 → latest capture's html
+//!   GET    /api/page/:id/latest/html/original  302 → latest capture's original html
+//!   GET    /api/page/:id/latest/screenshot
+//!   GET    /api/page/:id/latest/asset
 //!
 //! ── Content (raw deduplicated blobs) ────────────────────────────────────────
 //!   GET    /api/content/:hash            hex blake3; immutable
 //!   HEAD   /api/content/:hash            exists? (lets clients skip uploading known files)
 //!
 //! ── Tags ────────────────────────────────────────────────────────────────────
-//!   GET    /api/tags                     with page counts
-//!   POST   /api/tags                     JSON { name, color? }
-//!   PATCH  /api/tags/:id                 JSON { name?, color? }
-//!   DELETE /api/tags/:id
-//!   POST   /api/tags/:id/merge           JSON { into: `tag_id` }
+//!   GET    /api/tag                      with page counts
+//!   POST   /api/tag                      JSON { name, color? }
+//!   PATCH  /api/tag/:id                  JSON { name?, color? }
+//!   DELETE /api/tag/:id
+//!   POST   /api/tag/:id/merge            JSON { into: `tag_id` }
 //!
 //! ── Misc ────────────────────────────────────────────────────────────────────
 //!   GET    /api/search                   ?q= (FTS5, later)
@@ -67,8 +66,6 @@ mod misc;
 mod page;
 mod pending;
 mod tag;
-
-pub(crate) use pending::CreatePendingRequest;
 
 use axum::{
     Router,
@@ -126,18 +123,13 @@ async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -
 
 pub(crate) fn router(state: AppState) -> Router {
     let api = Router::new()
-        // archive
-        .route(
-            "/archive",
-            post(archive).layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
-        )
         // tags
-        .route("/tags", get(list_tags).post(create_tag))
+        .route("/tag", get(list_tags).post(create_tag))
         .route(
-            "/tags/{id}",
+            "/tag/{id}",
             axum::routing::patch(patch_tag).delete(delete_tag),
         )
-        .route("/tags/{id}/merge", post(merge_tag))
+        .route("/tag/{id}/merge", post(merge_tag))
         // pending
         .route(
             "/pending",
@@ -152,33 +144,38 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/pending/{id}/retry", post(retry_pending))
         .route("/pending/{id}/fail", post(fail_pending))
         // pages
-        .route("/pages", get(list_pages))
-        .route("/pages/lookup", get(lookup_page))
-        .route("/pages/{id}", get(get_page).delete(delete_page))
-        .route("/pages/{id}/thumbnail", get(get_thumbnail))
-        .route("/pages/{id}/captures", get(get_capture))
-        .route("/pages/{id}/tags", post(add_page_tag).put(put_page_tags))
-        .route("/pages/{id}/tags/{tag_id}", delete(remove_page_tag))
-        .route("/pages/{id}/latest/html", get(redirect_latest_html))
+        .route("/page", get(list_pages)) // For creating use POST /page instead of POST /api/page
+        .route("/page/lookup", get(lookup_page))
+        .route("/page/{id}", get(get_page).delete(delete_page))
+        .route("/page/{id}/thumbnail", get(get_thumbnail)) // TODO:
         .route(
-            "/pages/{id}/latest/html/original",
+            "/page/{id}/capture",
+            get(get_capture)
+                .post(archive)
+                .layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
+        )
+        .route("/page/{id}/tag", post(add_page_tag).put(put_page_tags))
+        .route("/page/{id}/tag/{tag_id}", delete(remove_page_tag))
+        .route("/page/{id}/latest/html", get(redirect_latest_html))
+        .route(
+            "/page/{id}/latest/html/original",
             get(redirect_latest_original_html),
         )
         .route(
-            "/pages/{id}/latest/screenshot",
+            "/page/{id}/latest/screenshot",
             get(redirect_latest_screenshot),
         )
-        // captures
-        .route("/captures/{id}", get(get_capture).delete(delete_capture))
-        .route("/captures/{id}/html", get(get_capture_html))
+        // capture
+        .route("/capture/{id}", get(get_capture).delete(delete_capture))
+        .route("/capture/{id}/html", get(get_capture_html))
         .route(
-            "/captures/{id}/html/original",
+            "/capture/{id}/html/original",
             get(get_capture_original_html),
         )
-        .route("/captures/{id}/screenshot", get(get_capture_screenshot))
-        .route("/captures/{id}/assets", get(capture_assets))
-        .route("/captures/{id}/assets/{content_id}", get(capture_asset))
-        .route("/pages/{id}/latest/assets", get(latest_assets))
+        .route("/capture/{id}/screenshot", get(get_capture_screenshot))
+        .route("/capture/{id}/asset", get(capture_assets))
+        .route("/capture/{id}/asset/{content_id}", get(capture_asset))
+        .route("/page/{id}/latest/asset", get(latest_assets))
         // content (explicit HEAD handler avoids loading the blob)
         .route("/content/{hash}", get(get_content).head(head_content))
         // misc

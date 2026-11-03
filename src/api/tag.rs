@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use axum::{extract::State, http::StatusCode};
 use serde::Deserialize;
 use sqlx::SqlitePool;
@@ -12,7 +14,8 @@ use crate::{
     tag::{TagId, TagMerge, TagName, parse_optional_color},
 };
 
-// GET /api/tags
+// CHECKED:
+/// GET /api/tag
 pub(super) async fn list_tags(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<TagSummary>>> {
     let tags = TagSummary::list(&pool).await?;
     Ok(ApiJson(tags))
@@ -24,18 +27,20 @@ pub(super) struct CreateTagRequest {
     pub color: Option<String>,
 }
 
-// POST /api/tags
+// CHECKED:
+/// POST /api/tag
 pub(super) async fn create_tag(
     State(pool): State<SqlitePool>,
     ApiJson(req): ApiJson<CreateTagRequest>,
 ) -> Result<(StatusCode, ApiJson<Tag>)> {
-    let name: TagName = req.name.parse()?;
+    let name = TagName::from_str(&req.name)?;
     let color = parse_optional_color(req.color.as_deref())?;
 
     match Tag::create(&pool, &name, color.as_ref()).await? {
         CreateOutcome::Created(tag) => Ok((StatusCode::CREATED, ApiJson(tag))),
-        CreateOutcome::Existing(tag) => Err(AppError::DuplicateTag {
+        CreateOutcome::Existing(tag) => Err(AppError::Duplicate {
             existing_id: tag.id.get(),
+            msg: "a tag with that name already exists",
         }),
     }
 }
@@ -69,7 +74,8 @@ impl PatchTagRequest {
     }
 }
 
-// PATCH /api/tags/{id}   (color: null clears, absent keeps)
+// CHECKED:
+// PATCH /api/tag/{id}   (color: null clears, absent keeps)
 pub(super) async fn patch_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<TagId>,
@@ -78,13 +84,15 @@ pub(super) async fn patch_tag(
     match req.into_patch()?.apply(&pool, id).await? {
         PatchOutcome::Updated(tag) => Ok(ApiJson(tag)),
         PatchOutcome::NotFound => Err(AppError::NotFound("tag")),
-        PatchOutcome::NameTaken { existing_id } => Err(AppError::DuplicateTag {
+        PatchOutcome::NameTaken { existing_id } => Err(AppError::Duplicate {
             existing_id: existing_id.get(),
+            msg: "a tag with that name already exists",
         }),
     }
 }
 
-// DELETE /api/tags/{id}   (page_tag / pending_tag rows cascade)
+// CHECKED:
+// DELETE /api/tag/{id}   (page_tag / pending_tag rows cascade)
 pub(super) async fn delete_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<TagId>,
@@ -102,7 +110,8 @@ pub(super) struct MergeTagRequest {
     pub target: TagId,
 }
 
-// POST /api/tags/{id}/merge   { "into": <tag_id> }
+// CHECKED:
+// POST /api/tag/{id}/merge   { "into": <tag_id> }
 pub(super) async fn merge_tag(
     State(pool): State<SqlitePool>,
     ApiPath(source): ApiPath<TagId>,

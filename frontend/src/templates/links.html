@@ -30,8 +30,8 @@
     :class="view=='grid' ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4' : 'grid-cols-1'">
     {% for link in links %}{% include "partials/link_card.html" %}{% endfor %}
   </div>
-  {% if has_more %}
-  <div hx-get="/links?page={{ next_page }}" hx-trigger="intersect once" hx-target="#results" hx-swap="append"
+  {% if let Some(cursor) = next_cursor %}
+  <div hx-get="/links?cursor={{ cursor.to_string() }}" hx-trigger="intersect once" hx-target="#results" hx-swap="append"
     class="text-center py-6">
     <span class="loading loading-dots"></span>
   </div>

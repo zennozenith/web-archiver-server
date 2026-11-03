@@ -13,18 +13,17 @@ use crate::{
     blob_store::BlobStore,
     db::{
         collection::{CollectionId, CollectionInput, CollectionRecord},
-        link::{self, HighlightRecord, LinkItem},
-        page::PageId,
+        page::{self, CreatePage, DeletePage, HighlightRecord, PageId, PageItem, UptatePage},
         tag::Tag,
     },
     error::{AppError, OptionExt, Result},
-    helper::{non_empty, parse_bool},
+    helper::{NonEmptyString, parse_bool},
     htmx::HtmxRequest,
     image::{Image, ImageFormat},
     tag::{TagId, TagName, comma_separated_tags},
     template::RenderHtml,
     url_canon::canonicalize_url,
-    web::{templates::LinkCardTemplate, view::LinkView},
+    web::{templates::PageCardTemplate, view::PageView},
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -64,14 +63,14 @@ async fn non_empty_parent(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Links
+// Pages
 // ───────────────────────────────────────────────────────────────────────────
 
 /// Parsed from the multipart fields of POST /links
 #[derive(Debug, Default)]
-struct LinkUpload {
+struct PageUpload {
     pub url: Option<String>,
-    pub title: Option<String>,
+    pub title: Option<NonEmptyString>,
     pub description: Option<String>,
     pub collection_id: Option<String>, // i64 string
     pub pinned: bool,
@@ -79,20 +78,20 @@ struct LinkUpload {
     pub thumbnail: Option<Image>,
 }
 
-async fn parse_multipart(mut mp: Multipart) -> Result<LinkUpload> {
-    let mut upload = LinkUpload::default();
+async fn parse_multipart(mut mp: Multipart) -> Result<PageUpload> {
+    let mut upload = PageUpload::default();
     let mut thumbnail: Option<Vec<u8>> = None;
 
     while let Some(field) = mp.next_field().await? {
         let name = field.name().unwrap_or("");
         match name {
             "url" => {
-                let raw_url = non_empty(&field.text().await?);
+                let raw_url = NonEmptyString::non_empty(&field.text().await?);
                 upload.url = raw_url;
             }
-            "title" => upload.title = non_empty(&field.text().await?),
-            "description" => upload.description = non_empty(&field.text().await?),
-            "collection_id" => upload.collection_id = non_empty(&field.text().await?),
+            "title" => upload.title = Some(NonEmptyString::trimmed(&field.text().await?)?),
+            "description" => upload.description = NonEmptyString::non_empty(&field.text().await?),
+            "collection_id" => upload.collection_id = Some(field.text().await?),
             "pinned" => upload.pinned = parse_bool(&field.text().await?)?,
             "tags" => {
                 let t = field.text().await?;
@@ -134,21 +133,20 @@ pub(crate) async fn create_link(
     let pinned = upload.pinned;
     let thumbnail = upload.thumbnail;
 
-    let item = link::create(
-        &pool,
-        &store,
-        &url,
-        title.as_str(),
-        description.as_str(),
+    let item = CreatePage {
+        url,
+        title,
+        description,
         collection_id,
         pinned,
-        &tags,
+        tags,
         thumbnail,
-    )
+    }
+    .execute(&pool, &store)
     .await?;
-    let link = LinkView::from_item(&item, &[]);
+    let link = PageView::from_item(&item, &[]);
 
-    Ok(LinkCardTemplate { link }.render_html()?.into_response())
+    Ok(PageCardTemplate { link }.render_html()?.into_response())
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,7 +166,7 @@ pub(crate) async fn update_link(
     let collection_id = non_empty_parent(&pool, collection_id, None).await?;
     let tags = comma_separated_tags(form.tags.as_ref())?;
 
-    let updated = link::update(
+    let updated = UptatePage::execute(
         &pool,
         id,
         form.name.as_deref(),
@@ -189,7 +187,7 @@ pub(crate) async fn delete_link(
     State(pool): State<SqlitePool>,
     Path(id): Path<PageId>,
 ) -> Result<Response> {
-    if link::delete(&pool, id).await? {
+    if DeletePage::execute(&pool, id).await? {
         // A 200 with an empty body makes htmx remove the card via outerHTML.
         Ok(StatusCode::OK.into_response())
     } else {
@@ -201,7 +199,7 @@ pub(crate) async fn toggle_pin(
     State(pool): State<SqlitePool>,
     Path(id): Path<PageId>,
 ) -> Result<Response> {
-    match link::toggle_pinned(&pool, id).await? {
+    match page::toggle_pinned(&pool, id).await? {
         Some(_) => Ok(StatusCode::NO_CONTENT.into_response()),
         None => Err(AppError::NotFound("link")),
     }
@@ -225,7 +223,7 @@ pub(crate) async fn add_highlight(
         .filter(|text| !text.is_empty())
         .unwrap_or_else(|| "Highlighted passage".to_owned());
 
-    if LinkItem::load(&pool, id).await?.is_none() {
+    if PageItem::load(&pool, id).await?.is_none() {
         return Err(AppError::NotFound("link"));
     }
 
@@ -368,8 +366,9 @@ pub(crate) async fn rename_tag(
     let name: TagName = form.name.parse()?;
 
     if let Some(existing_id) = Tag::find_id_by_name(&pool, &name, Some(id)).await? {
-        return Err(AppError::DuplicateTag {
+        return Err(AppError::Duplicate {
             existing_id: existing_id.get(),
+            msg: "Tag already exist",
         });
     }
 

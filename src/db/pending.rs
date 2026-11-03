@@ -5,7 +5,7 @@ use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqliteExecut
 
 use crate::{
     db::{
-        helper::{CreateOutcome, Cursor, CursorPage, FieldPatch, id_type},
+        helper::{CreateOutcome, Cursor, CursorPage, id_type},
         tag::Tag,
     },
     limit::Limit,
@@ -16,7 +16,7 @@ use crate::{
 /// Column list shared by every query that materializes a [`PendingRecord`].
 macro_rules! pending_columns {
     () => {
-        "id, url, title, status, attempts, last_error, created_at"
+        "id, url, status, attempts, last_error, created_at"
     };
 }
 
@@ -45,7 +45,6 @@ pub(crate) enum PendingStatus {
 pub(crate) struct PendingRecord {
     pub id: PendingId,
     pub url: String,
-    pub title: Option<String>,
     pub status: PendingStatus,
     pub attempts: i64,
     pub last_error: Option<String>,
@@ -58,11 +57,6 @@ pub(crate) struct PendingItem {
     #[serde(flatten)]
     pub record: PendingRecord,
     pub tags: Vec<Tag>,
-}
-
-/// Trims `title`; a blank result means "no title".
-fn normalize_title(title: &str) -> Option<&str> {
-    Some(title.trim()).filter(|t| !t.is_empty())
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -112,16 +106,14 @@ impl PendingRecord {
     pub(crate) async fn enqueue(
         conn: &mut SqliteConnection,
         url: &CanonicalUrl,
-        title: Option<&str>,
         tags: &[TagName],
     ) -> Result<CreateOutcome<PendingId>> {
         let inserted: Option<PendingId> = sqlx::query_scalar(
-            "INSERT INTO pending (url, title) VALUES (?, ?)
+            "INSERT INTO pending (url) VALUES (?, ?)
              ON CONFLICT(url) DO NOTHING
              RETURNING id",
         )
         .bind(&url.url)
-        .bind(title.and_then(normalize_title))
         .fetch_optional(&mut *conn)
         .await?;
 
@@ -253,8 +245,6 @@ impl PendingRecord {
 /// Fields to change on a pending item; unset fields are left untouched.
 #[derive(Debug, Default)]
 pub(crate) struct PendingUpdate<'a> {
-    /// `Clear` removes the title; a blank `Set` is treated the same way.
-    pub title: FieldPatch<&'a str>,
     /// Moving back to `queued` also clears `last_error`.
     pub status: Option<PendingStatus>,
     pub tags: Option<&'a [TagName]>,
@@ -264,27 +254,13 @@ impl PendingUpdate<'_> {
     pub(crate) async fn apply(self, conn: &mut SqliteConnection, id: PendingId) -> Result<()> {
         let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("UPDATE pending SET ");
         let mut sets = qb.separated(", ");
-        let mut has_sets = false;
-
-        match self.title {
-            FieldPatch::Unchanged => {}
-            FieldPatch::Clear => {
-                sets.push("title = NULL");
-                has_sets = true;
-            }
-            FieldPatch::Set(title) => {
-                sets.push("title = ")
-                    .push_bind_unseparated(normalize_title(title));
-                has_sets = true;
-            }
-        }
-        if let Some(status) = self.status {
+        let has_sets = self.status.is_some_and(|status| {
             sets.push("status = ").push_bind_unseparated(status);
             if status == PendingStatus::Queued {
                 sets.push("last_error = NULL");
             }
-            has_sets = true;
-        }
+            true
+        });
 
         if has_sets {
             qb.push(" WHERE id = ").push_bind(id);

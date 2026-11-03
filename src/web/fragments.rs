@@ -6,16 +6,16 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        link::{HighlightRecord, LinkField, LinkFilter, LinkItem, LinkSort},
-        page::PageId,
+        helper::CursorPage,
+        page::{HighlightRecord, PageField, PageFilter, PageId, PageItem, PageSort},
         tag::TagSummary,
     },
     error::{OptionExt, Result},
     limit::Limit,
     template::RenderHtml,
     web::{
-        templates::{FormatsTemplate, LinkContentTemplate, LinkGridTemplate, TagListTemplate},
-        view::{FormatView, LinkView, TagView},
+        templates::{FormatsTemplate, PageContentTemplate, PageGridTemplate, TagListTemplate},
+        view::{FormatView, PageView, TagView},
     },
 };
 
@@ -27,20 +27,20 @@ pub(crate) struct SearchQuery {
     field: Option<String>,
 }
 
-fn parse_sort(value: Option<&str>) -> LinkSort {
+fn parse_sort(value: Option<&str>) -> PageSort {
     match value {
-        Some("oldest") => LinkSort::Oldest,
-        Some("name") => LinkSort::Name,
-        _ => LinkSort::Newest,
+        Some("oldest") => PageSort::Oldest,
+        Some("name") => PageSort::Name,
+        _ => PageSort::Newest,
     }
 }
 
-fn parse_field(value: Option<&str>) -> LinkField {
+fn parse_field(value: Option<&str>) -> PageField {
     match value {
-        Some("url") => LinkField::Url,
-        Some("text") => LinkField::Text,
-        Some("tags") => LinkField::Tags,
-        _ => LinkField::Name,
+        Some("url") => PageField::Url,
+        Some("text") => PageField::Text,
+        Some("tags") => PageField::Tags,
+        _ => PageField::Name,
     }
 }
 
@@ -48,23 +48,23 @@ pub(crate) async fn search_links(
     State(pool): State<SqlitePool>,
     Query(query): Query<SearchQuery>,
 ) -> Result<impl axum::response::IntoResponse> {
-    let (items, _) = LinkItem::list(
+    let CursorPage { items, .. } = PageItem::list(
         &pool,
-        &LinkFilter {
+        &PageFilter {
             text: query.q,
             sort: parse_sort(query.sort.as_deref()),
             field: parse_field(query.field.as_deref()),
             limit: Limit::MAX,
-            ..LinkFilter::default()
+            ..PageFilter::default()
         },
     )
     .await?;
 
     let links = items
         .iter()
-        .map(|item| LinkView::from_item(item, &[]))
+        .map(|item| PageView::from_item(item, &[]))
         .collect();
-    LinkGridTemplate { links }.render_html()
+    PageGridTemplate { links }.render_html()
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,9 +102,9 @@ pub(crate) async fn link_format(
     Query(query): Query<FormatQuery>,
 ) -> Result<impl axum::response::IntoResponse> {
     let key = query.format.unwrap_or_else(|| "readable".to_owned());
-    let item = LinkItem::load(&pool, id).await?.or_not_found("link")?;
+    let item = PageItem::load(&pool, id).await?.or_not_found("link")?;
     let highlights = HighlightRecord::list(&pool, id).await?;
-    let link = LinkView::from_item(&item, &highlights);
+    let link = PageView::from_item(&item, &highlights);
 
     let format = link
         .formats
@@ -118,7 +118,7 @@ pub(crate) async fn link_format(
         });
     let readable = format.key == "readable";
 
-    LinkContentTemplate {
+    PageContentTemplate {
         link,
         format,
         readable,
@@ -130,7 +130,7 @@ pub(crate) async fn refetch_formats(
     State(pool): State<SqlitePool>,
     Path(id): Path<PageId>,
 ) -> Result<impl axum::response::IntoResponse> {
-    let item = LinkItem::load(&pool, id).await?.or_not_found("link")?;
-    let link = LinkView::from_item(&item, &[]);
+    let item = PageItem::load(&pool, id).await?.or_not_found("link")?;
+    let link = PageView::from_item(&item, &[]);
     FormatsTemplate { link }.render_html()
 }

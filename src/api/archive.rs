@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use axum::extract::{Multipart, State, multipart::MultipartRejection};
+use axum::extract::{Multipart, Path, State, multipart::MultipartRejection};
 use http::StatusCode;
 use serde::Serialize;
 use serde_json::Value;
@@ -10,17 +10,15 @@ use crate::{
     blob_store::BlobStore,
     db::{
         archive::{AssetSummary, collect_assets},
-        page,
+        page::{PageId, PageRecord},
         pending::{PendingId, PendingRecord},
         store::{insert_blob, prepare_blob},
     },
-    error::{AppError, Result},
+    error::{AppError, OptionExt, Result},
     extract::ApiJson,
     extractor::html,
-    helper::{non_empty, parse_bool},
+    helper::{NonEmptyString, parse_bool},
     image::{Image, ImageFormat},
-    tag,
-    url_canon::canonicalize_url,
 };
 
 // ── Requests ────────────────────────────────────────────────────────────────
@@ -28,12 +26,10 @@ use crate::{
 /// Parsed from the multipart fields of POST /api/archive
 #[derive(Debug, Default)]
 struct ArchiveUpload {
+    pub title: Option<NonEmptyString>,
     pub html: Vec<u8>,
     pub screenshot: Option<Image>,
     pub metadata: Option<serde_json::Value>,
-    pub url: Option<String>,
-    pub title: Option<String>,
-    pub tags: Vec<String>,
     pub pending_id: Option<PendingId>,
     /// `save-assets=false` skips fetching sub-resources. Defaults to true.
     pub save_assets: Option<bool>,
@@ -45,7 +41,7 @@ struct ArchiveUpload {
 #[serde(rename_all = "camelCase")]
 pub(super) struct ArchiveResponse {
     pub capture_id: i64,
-    pub page_id: i64,
+    pub page_id: PageId,
     pub version: i64,
     pub deduplicated: Dedup,
     pub assets: AssetSummary,
@@ -62,34 +58,19 @@ pub(super) struct Dedup {
 }
 
 fn meta_str(meta: Option<&Value>, key: &str) -> Option<String> {
-    meta?.get(key)?.as_str().and_then(non_empty)
+    meta?.get(key)?.as_str().and_then(NonEmptyString::non_empty)
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "one match arm per accepted multipart field"
-)]
 async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
     let mut upload = ArchiveUpload::default();
-    let mut shot: Option<Vec<u8>> = None;
-    let mut shot_fmt: Option<ImageFormat> = None;
+    let mut screenshot: Option<Vec<u8>> = None;
 
     while let Some(field) = mp.next_field().await? {
         let name = field.name().unwrap_or("");
         match name {
             "html" => upload.html = field.bytes().await?.to_vec(),
-            "url" => upload.url = non_empty(&field.text().await?),
-            "title" => upload.title = non_empty(&field.text().await?),
-            "tags" => {
-                let t = field.text().await?;
-                upload.tags = serde_json::from_str(&t).map_err(|_| {
-                    AppError::invalid("invalid_tags", "tags must be a JSON array of strings")
-                })?;
-            }
-            "screenshot" => shot = Some(field.bytes().await?.to_vec()),
-            "screenshot-format" => {
-                shot_fmt = Some(ImageFormat::parse_from_extension(&field.text().await?)?);
-            }
+            "title" => upload.title = Some(NonEmptyString::trimmed(&field.text().await?)?),
+            "screenshot" => screenshot = Some(field.bytes().await?.to_vec()),
             "pending_id" => {
                 upload.pending_id = Some(
                     field
@@ -124,30 +105,17 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
         ));
     }
 
-    if let Some(bytes) = shot {
-        let fmt = match shot_fmt {
-            Some(f) => f,
-            None if ImageFormat::Png.matches_signature(&bytes) => ImageFormat::Png,
-            None if ImageFormat::Jpeg.matches_signature(&bytes) => ImageFormat::Jpeg,
-            None => {
-                return Err(AppError::invalid(
-                    "invalid_image_format",
-                    "cannot determine screenshot format",
-                ));
-            }
-        };
-        if !fmt.matches_signature(&bytes) {
-            return Err(AppError::invalid(
-                "image_format_mismatch",
-                "screenshot bytes do not match screenshot-format",
-            ));
-        }
-        upload.screenshot = Some(Image::new(fmt, bytes)?);
+    if let Some(bytes) = screenshot {
+        let format = ImageFormat::detect(&bytes).ok_or_else(|| {
+            AppError::invalid("invalid_image_format", "cannot determine screenshot format")
+        })?;
+        upload.screenshot = Some(Image::new(format, bytes)?);
     }
+
     Ok(upload)
 }
 
-// POST /api/archive
+// POST /page/{id}/capture
 #[expect(
     clippy::too_many_lines,
     reason = "the archive transaction is intentionally kept in one readable flow"
@@ -156,43 +124,34 @@ pub(super) async fn archive(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
     State(client): State<reqwest::Client>,
+    Path(id): Path<PageId>,
     multipart: std::result::Result<Multipart, MultipartRejection>,
 ) -> Result<(StatusCode, ApiJson<ArchiveResponse>)> {
     let upload = parse_multipart(multipart?).await?;
 
+    let mut tx = pool.begin().await?;
+
+    let page = PageRecord::load(&mut *tx, id).await?.or_not_found("page")?;
+
     // Pending row (optional) can supply url/title. A missing row is tolerated.
     let pending = match upload.pending_id {
-        Some(pid) => PendingRecord::load(&pool, pid).await?,
+        Some(pid) => PendingRecord::load(&mut *tx, pid).await?,
         None => None,
     };
 
-    // Precedence: explicit field > metadata > pending row
-    let raw_url = upload
-        .url
-        .clone()
-        .or_else(|| meta_str(upload.metadata.as_ref(), "url"))
-        .or_else(|| pending.as_ref().map(|p| p.url.clone()))
-        .ok_or_else(|| {
-            AppError::BadRequest("url is required (field, metadata.url, or pending_id)".into())
-        })?;
-    let canon = canonicalize_url(&raw_url)?;
+    let title = upload.title.clone().or_else(|| {
+        meta_str(upload.metadata.as_ref(), "title")
+            .map(NonEmptyString::trimmed)
+            .transpose()
+            .ok()
+            .unwrap_or_default()
+    });
 
-    let title = upload
-        .title
-        .clone()
-        .or_else(|| meta_str(upload.metadata.as_ref(), "title"))
-        .or_else(|| {
-            pending
-                .as_ref()
-                .and_then(|p| p.title.clone())
-                .and_then(|s| non_empty(&s))
-        });
-
-    let tags = tag::parse_names(&upload.tags)?;
     let metadata_text = upload.metadata.as_ref().map(Value::to_string);
 
+    let page_url = url::Url::parse(&page.url).map_err(|e| AppError::Internal(Box::new(e)))?;
+
     // Split out sub-resource URLs before the HTML bytes are moved into the blob.
-    let page_url = url::Url::parse(&canon.url).map_err(|e| AppError::Internal(Box::new(e)))?;
     let (assets, asset_summary) = if upload.save_assets.unwrap_or(true) {
         collect_assets(&pool, &store, &client, &page_url, &upload.html).await?
     } else {
@@ -229,9 +188,6 @@ pub(super) async fn archive(
         None => None,
     };
 
-    let mut tx = pool.begin().await?;
-
-    let page_id = page::get_or_create_id(&mut *tx, &canon).await?;
     let original_id = insert_blob(&mut tx, &original_blob).await?;
     let html_id = match &served_blob {
         Some(b) => insert_blob(&mut tx, b).await?,
@@ -248,7 +204,7 @@ pub(super) async fn archive(
          VALUES (?, ?, ?, ?, unixepoch(), 'text/html', ?, ?)
          RETURNING id",
     )
-    .bind(page_id)
+    .bind(id)
     .bind(html_id)
     .bind(original_id)
     .bind(shot_id)
@@ -272,29 +228,28 @@ pub(super) async fn archive(
     }
 
     let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capture WHERE page_id = ?")
-        .bind(page_id)
+        .bind(id)
         .fetch_one(&mut *tx)
         .await?;
 
-    // Tags are unioned; a re-archive can never remove tags.
-    page::add_tags(&mut tx, page_id, &tags).await?;
-
-    // Merge tags from the pending row (by id, or any queued row with the same URL) and dequeue.
-    sqlx::query(
-        "INSERT OR IGNORE INTO page_tag (page_id, tag_id)
+    if let Some(p) = pending {
+        // Merge tags from the pending row (by id, or any queued row with the same URL) and dequeue.
+        sqlx::query(
+            "INSERT OR IGNORE INTO page_tag (page_id, tag_id)
          SELECT ?, pt.tag_id FROM pending_tag pt JOIN pending p ON p.id = pt.pending_id
          WHERE p.url = ? OR p.id = ?",
-    )
-    .bind(page_id)
-    .bind(&canon.url)
-    .bind(upload.pending_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM pending WHERE url = ? OR id = ?")
-        .bind(&canon.url)
-        .bind(upload.pending_id)
+        )
+        .bind(id)
+        .bind(&page.url)
+        .bind(p.id)
         .execute(&mut *tx)
         .await?;
+        sqlx::query("DELETE FROM pending WHERE url = ? OR id = ?")
+            .bind(&page.url)
+            .bind(upload.pending_id)
+            .execute(&mut *tx)
+            .await?;
+    }
 
     tx.commit().await?;
 
@@ -302,7 +257,7 @@ pub(super) async fn archive(
         StatusCode::CREATED,
         ApiJson(ArchiveResponse {
             capture_id,
-            page_id: page_id.get(),
+            page_id: id,
             version,
             deduplicated: Dedup {
                 html: served_blob
