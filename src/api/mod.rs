@@ -83,7 +83,7 @@ use crate::{
     AppState,
     api::{
         capture::{
-            get_capture_html, get_capture_original_html, get_capture_screenshot,
+            get_capture_html, get_capture_original_html, get_capture_screenshot, get_thumbnail,
             redirect_latest_html, redirect_latest_original_html, redirect_latest_screenshot,
         },
         pending::list_pending,
@@ -155,6 +155,7 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/pages", get(list_pages))
         .route("/pages/lookup", get(lookup_page))
         .route("/pages/{id}", get(get_page).delete(delete_page))
+        .route("/pages/{id}/thumbnail", get(get_thumbnail))
         .route("/pages/{id}/captures", get(get_capture))
         .route("/pages/{id}/tags", post(add_page_tag).put(put_page_tags))
         .route("/pages/{id}/tags/{tag_id}", delete(remove_page_tag))

@@ -102,6 +102,7 @@ impl CollectionRecord {
         Self::load(pool, id).await?.ok_or(sqlx::Error::RowNotFound)
     }
 
+    // TODO: if needed, partial update could be implemented. See PendingUpdate
     /// Returns `None` if the collection does not exist.
     pub(crate) async fn update(
         pool: &SqlitePool,

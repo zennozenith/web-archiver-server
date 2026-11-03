@@ -57,7 +57,7 @@ CREATE INDEX idx_content_ref_count ON content(ref_count);
 -- Collections: user-organised folders of links. Collections may be nested.
 CREATE TABLE collection (
     id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL,
+    name        TEXT NOT NULL UNIQUE,
     emoji       TEXT NOT NULL DEFAULT '📁',
     description TEXT NOT NULL DEFAULT '',
     color       TEXT NOT NULL DEFAULT '#6d5dfc',
@@ -67,6 +67,9 @@ CREATE TABLE collection (
 );
 CREATE INDEX idx_collection_parent ON collection(parent_id);
 CREATE INDEX idx_collection_public ON collection(public);
+
+INSERT INTO collection (id, name, emoji, description, color, public)
+VALUES (0, 'Archive', '🗄️ ', 'Long-term storage for retired or inactive items.', '#6d5dfc', 0);
 
 CREATE TABLE page (
     id              INTEGER PRIMARY KEY,
@@ -79,7 +82,7 @@ CREATE TABLE page (
     description     TEXT NOT NULL DEFAULT '',      -- user-editable notes
     collection_id   INTEGER REFERENCES collection(id) ON DELETE SET NULL,
     pinned          INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
-    thumbnail_url   TEXT,
+    thumbnail_content_id INTEGER REFERENCES content(id),
     created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX idx_page_host ON page(host);
@@ -210,4 +213,24 @@ CREATE TRIGGER capture_asset_ref_dec_delete
 AFTER DELETE ON capture_asset
 BEGIN
     UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.content_id;
+END;
+
+CREATE TRIGGER page_thumbnail_ref_inc_insert
+AFTER INSERT ON page
+WHEN NEW.thumbnail_content_id IS NOT NULL
+BEGIN
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.thumbnail_content_id;
+END;
+
+CREATE TRIGGER page_thumbnail_ref_update
+AFTER UPDATE OF thumbnail_content_id ON page
+BEGIN
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.thumbnail_content_id;
+    UPDATE content SET ref_count = ref_count + 1 WHERE id = NEW.thumbnail_content_id;
+END;
+
+CREATE TRIGGER page_thumbnail_ref_dec_delete
+AFTER DELETE ON page
+BEGIN
+    UPDATE content SET ref_count = ref_count - 1 WHERE id = OLD.thumbnail_content_id;
 END;

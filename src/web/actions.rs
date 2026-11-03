@@ -1,10 +1,8 @@
 //! Mutation handlers for links, collections and tags.
 
-use std::collections::HashMap;
-
 use axum::{
     Form,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, State, multipart::MultipartRejection},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
 };
@@ -12,6 +10,7 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
+    blob_store::BlobStore,
     db::{
         collection::{CollectionId, CollectionInput, CollectionRecord},
         link::{self, HighlightRecord, LinkItem},
@@ -19,8 +18,10 @@ use crate::{
         tag::Tag,
     },
     error::{AppError, OptionExt, Result},
+    helper::{non_empty, parse_bool},
     htmx::HtmxRequest,
-    tag::{TagId, TagName, parse_names},
+    image::{Image, ImageFormat},
+    tag::{TagId, TagName, comma_separated_tags},
     template::RenderHtml,
     url_canon::canonicalize_url,
     web::{templates::LinkCardTemplate, view::LinkView},
@@ -47,19 +48,6 @@ fn parse_tag_id(value: &str) -> Result<TagId> {
     Ok(TagId::new(id))
 }
 
-fn comma_separated_tags(raw: Option<&String>) -> Result<Vec<TagName>> {
-    let Some(raw) = raw else {
-        return Ok(Vec::new());
-    };
-    let names: Vec<String> = raw
-        .split(',')
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_owned)
-        .collect();
-    parse_names(&names)
-}
-
 async fn non_empty_parent(
     pool: &SqlitePool,
     id: Option<CollectionId>,
@@ -79,39 +67,85 @@ async fn non_empty_parent(
 // Links
 // ───────────────────────────────────────────────────────────────────────────
 
-pub(crate) async fn create_link(
-    State(pool): State<SqlitePool>,
-    mut multipart: Multipart,
-) -> Result<Response> {
-    let mut fields: HashMap<String, String> = HashMap::new();
+/// Parsed from the multipart fields of POST /links
+#[derive(Debug, Default)]
+struct LinkUpload {
+    pub url: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub collection_id: Option<String>, // i64 string
+    pub pinned: bool,
+    pub tags: Vec<TagName>,
+    pub thumbnail: Option<Image>,
+}
 
-    while let Some(field) = multipart.next_field().await? {
-        let name = field.name().unwrap_or_default().to_owned();
-        if name == "file" {
-            // File links are not part of the web-archive flow yet; drain and ignore.
-            let _bytes = field.bytes().await?;
-            continue;
+async fn parse_multipart(mut mp: Multipart) -> Result<LinkUpload> {
+    let mut upload = LinkUpload::default();
+    let mut thumbnail: Option<Vec<u8>> = None;
+
+    while let Some(field) = mp.next_field().await? {
+        let name = field.name().unwrap_or("");
+        match name {
+            "url" => {
+                let raw_url = non_empty(&field.text().await?);
+                upload.url = raw_url;
+            }
+            "title" => upload.title = non_empty(&field.text().await?),
+            "description" => upload.description = non_empty(&field.text().await?),
+            "collection_id" => upload.collection_id = non_empty(&field.text().await?),
+            "pinned" => upload.pinned = parse_bool(&field.text().await?)?,
+            "tags" => {
+                let t = field.text().await?;
+                upload.tags = comma_separated_tags(Some(&t))?;
+            }
+            "thumbnail" => thumbnail = Some(field.bytes().await?.to_vec()),
+            _ => {} // ignore unknown fields
         }
-        fields.insert(name, field.text().await?);
     }
 
-    let raw_url = fields
-        .get("url")
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
+    if let Some(bytes) = thumbnail {
+        let format = ImageFormat::detect(&bytes).ok_or_else(|| {
+            AppError::invalid("invalid_image_format", "cannot determine thumbnail format")
+        })?;
+        upload.thumbnail = Some(Image::new(format, bytes)?);
+    }
+    Ok(upload)
+}
+
+pub(crate) async fn create_link(
+    State(pool): State<SqlitePool>,
+    State(store): State<BlobStore>,
+    multipart: std::result::Result<Multipart, MultipartRejection>,
+) -> Result<Response> {
+    let upload = parse_multipart(multipart?).await?;
+
+    let raw_url = upload
+        .url
         .ok_or_else(|| AppError::invalid("missing_url", "A link needs a URL."))?;
-    let url = canonicalize_url(raw_url)?;
+    let url = canonicalize_url(&raw_url)?;
 
-    let title = fields
-        .get("name")
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty());
-    let description = fields.get("description").map_or("", |value| value.trim());
-    let collection_id = parse_collection_id(fields.get("collection_id"));
+    let title = upload
+        .title
+        .ok_or_else(|| AppError::invalid("missing_title", "A link needs a title."))?;
+    let description = upload.description.unwrap_or_default();
+    let collection_id = parse_collection_id(upload.collection_id.as_ref());
     let collection_id = non_empty_parent(&pool, collection_id, None).await?;
-    let tags = comma_separated_tags(fields.get("tags"))?;
+    let tags = upload.tags;
+    let pinned = upload.pinned;
+    let thumbnail = upload.thumbnail;
 
-    let item = link::create(&pool, &url, title, description, collection_id, &tags, None).await?;
+    let item = link::create(
+        &pool,
+        &store,
+        &url,
+        title.as_str(),
+        description.as_str(),
+        collection_id,
+        pinned,
+        &tags,
+        thumbnail,
+    )
+    .await?;
     let link = LinkView::from_item(&item, &[]);
 
     Ok(LinkCardTemplate { link }.render_html()?.into_response())

@@ -6,11 +6,15 @@ use std::collections::HashMap;
 use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteExecutor, SqlitePool};
 
 use crate::{
+    blob_store::BlobStore,
     db::{
         collection::CollectionId,
         page::{self, PageId},
+        store::{insert_blob, prepare_blob},
         tag::Tag,
     },
+    error::AppError,
+    image::Image,
     limit::Limit,
     tag::{TagId, TagName},
     url_canon::CanonicalUrl,
@@ -38,7 +42,7 @@ pub(crate) struct LinkRecord {
     pub collection_name: Option<String>,
     pub collection_emoji: Option<String>,
     pub pinned: bool,
-    pub thumbnail_url: Option<String>,
+    pub thumbnail_id: Option<String>,
     pub created_at: i64,
     pub has_html: bool,
     pub has_screenshot: bool,
@@ -312,33 +316,46 @@ impl HighlightRecord {
 )]
 pub(crate) async fn create(
     pool: &SqlitePool,
+    store: &BlobStore,
     url: &CanonicalUrl,
-    title: Option<&str>,
+    title: &str,
     description: &str,
     collection_id: Option<CollectionId>,
+    pinned: bool,
     tags: &[TagName],
-    thumbnail_url: Option<&str>,
-) -> Result<LinkItem> {
-    let title = title.map(str::trim).filter(|title| !title.is_empty());
-    let thumbnail_url = thumbnail_url
-        .map(str::trim)
-        .filter(|thumbnail| !thumbnail.is_empty());
-
+    thumbnail: Option<Image>,
+) -> Result<LinkItem, AppError> {
     let mut tx = pool.begin().await?;
     let page_id = page::get_or_create_id(&mut *tx, url).await?;
+
+    let thumbnail = match thumbnail {
+        Some(image) => {
+            let format = image.format();
+            let data = image.into_data();
+            Some(prepare_blob(pool, store, data, format.mime_type()).await?)
+        }
+        None => None,
+    };
+
+    let thumbnail_id = match &thumbnail {
+        Some(b) => Some(insert_blob(&mut tx, b).await?),
+        None => None,
+    };
 
     sqlx::query(
         "UPDATE page
          SET title = COALESCE(?, title),
              description = ?,
              collection_id = ?,
-             thumbnail_url = COALESCE(?, thumbnail_url)
+             pinned = ?,
+             thumbnail_content_id = ?
          WHERE id = ?",
     )
     .bind(title)
     .bind(description)
     .bind(collection_id)
-    .bind(thumbnail_url)
+    .bind(i32::from(pinned))
+    .bind(thumbnail_id)
     .bind(page_id)
     .execute(&mut *tx)
     .await?;
@@ -349,7 +366,7 @@ pub(crate) async fn create(
 
     LinkItem::load(pool, page_id)
         .await?
-        .ok_or(sqlx::Error::RowNotFound)
+        .ok_or(sqlx::Error::RowNotFound.into())
 }
 
 /// Updates editable fields and replaces the link's tag set.

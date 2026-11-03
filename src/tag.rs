@@ -154,6 +154,19 @@ pub(crate) fn parse_names(raw: &[String]) -> Result<Vec<TagName>, AppError> {
     Ok(names)
 }
 
+pub(crate) fn comma_separated_tags(raw: Option<&String>) -> Result<Vec<TagName>, AppError> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let names: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    parse_names(&names)
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // TagColor
 // ───────────────────────────────────────────────────────────────────────────

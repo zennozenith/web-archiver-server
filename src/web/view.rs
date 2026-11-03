@@ -225,7 +225,7 @@ impl LinkView {
                 },
             );
 
-        let thumb = match record.thumbnail_url.as_deref() {
+        let thumb = match record.thumbnail_id.as_deref() {
             Some(url) if !url.trim().is_empty() => url.to_owned(),
             _ if record.has_screenshot => {
                 format!("/api/pages/{}/latest/screenshot", record.id)

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use axum::extract::{Multipart, State, multipart::MultipartRejection};
 use http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use sqlx::SqlitePool;
 
@@ -17,6 +17,8 @@ use crate::{
     error::{AppError, Result},
     extract::ApiJson,
     extractor::html,
+    helper::{non_empty, parse_bool},
+    image::{Image, ImageFormat},
     tag,
     url_canon::canonicalize_url,
 };
@@ -27,7 +29,7 @@ use crate::{
 #[derive(Debug, Default)]
 struct ArchiveUpload {
     pub html: Vec<u8>,
-    pub screenshot: Option<(Vec<u8>, ScreenshotFormat)>,
+    pub screenshot: Option<Image>,
     pub metadata: Option<serde_json::Value>,
     pub url: Option<String>,
     pub title: Option<String>,
@@ -35,29 +37,6 @@ struct ArchiveUpload {
     pub pending_id: Option<PendingId>,
     /// `save-assets=false` skips fetching sub-resources. Defaults to true.
     pub save_assets: Option<bool>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum ScreenshotFormat {
-    Png,
-    Jpeg,
-}
-
-impl ScreenshotFormat {
-    const fn mime(self) -> &'static str {
-        match self {
-            Self::Png => "image/png",
-            Self::Jpeg => "image/jpeg",
-        }
-    }
-    /// Verify claimed format against magic bytes.
-    fn matches(self, bytes: &[u8]) -> bool {
-        match self {
-            Self::Png => bytes.starts_with(&[0x89, b'P', b'N', b'G']),
-            Self::Jpeg => bytes.starts_with(&[0xFF, 0xD8, 0xFF]),
-        }
-    }
 }
 
 // ── Responses ───────────────────────────────────────────────────────────────
@@ -82,42 +61,8 @@ pub(super) struct Dedup {
     pub screenshot: Option<bool>,
 }
 
-fn unprocessable(code: &'static str, message: impl Into<String>) -> AppError {
-    AppError::Unprocessable {
-        code,
-        message: message.into(),
-    }
-}
-
-fn non_empty(s: &str) -> Option<String> {
-    let t = s.trim();
-    (!t.is_empty()).then(|| t.to_owned())
-}
-
 fn meta_str(meta: Option<&Value>, key: &str) -> Option<String> {
     meta?.get(key)?.as_str().and_then(non_empty)
-}
-
-fn parse_format(s: &str) -> Result<ScreenshotFormat> {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "png" => Ok(ScreenshotFormat::Png),
-        "jpeg" | "jpg" => Ok(ScreenshotFormat::Jpeg),
-        _ => Err(unprocessable(
-            "invalid_screenshot_format",
-            "screenshot-format must be \"png\" or \"jpeg\"",
-        )),
-    }
-}
-
-fn parse_bool(s: &str) -> Result<bool> {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Ok(true),
-        "0" | "false" | "no" | "off" => Ok(false),
-        _ => Err(unprocessable(
-            "invalid_save_assets",
-            "save-assets must be true or false",
-        )),
-    }
 }
 
 #[expect(
@@ -127,7 +72,7 @@ fn parse_bool(s: &str) -> Result<bool> {
 async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
     let mut upload = ArchiveUpload::default();
     let mut shot: Option<Vec<u8>> = None;
-    let mut shot_fmt: Option<ScreenshotFormat> = None;
+    let mut shot_fmt: Option<ImageFormat> = None;
 
     while let Some(field) = mp.next_field().await? {
         let name = field.name().unwrap_or("");
@@ -138,11 +83,13 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
             "tags" => {
                 let t = field.text().await?;
                 upload.tags = serde_json::from_str(&t).map_err(|_| {
-                    unprocessable("invalid_tags", "tags must be a JSON array of strings")
+                    AppError::invalid("invalid_tags", "tags must be a JSON array of strings")
                 })?;
             }
             "screenshot" => shot = Some(field.bytes().await?.to_vec()),
-            "screenshot-format" => shot_fmt = Some(parse_format(&field.text().await?)?),
+            "screenshot-format" => {
+                shot_fmt = Some(ImageFormat::parse_from_extension(&field.text().await?)?);
+            }
             "pending_id" => {
                 upload.pending_id = Some(
                     field
@@ -157,7 +104,7 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
             "metadata" => {
                 let t = field.text().await?;
                 upload.metadata = Some(serde_json::from_str(&t).map_err(|e| {
-                    unprocessable(
+                    AppError::invalid(
                         "invalid_metadata",
                         format!("metadata is not valid JSON: {e}"),
                     )
@@ -171,7 +118,7 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
     }
 
     if upload.html.is_empty() {
-        return Err(unprocessable(
+        return Err(AppError::invalid(
             "missing_html",
             "the html field is required and must not be empty",
         ));
@@ -180,22 +127,22 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
     if let Some(bytes) = shot {
         let fmt = match shot_fmt {
             Some(f) => f,
-            None if ScreenshotFormat::Png.matches(&bytes) => ScreenshotFormat::Png,
-            None if ScreenshotFormat::Jpeg.matches(&bytes) => ScreenshotFormat::Jpeg,
+            None if ImageFormat::Png.matches_signature(&bytes) => ImageFormat::Png,
+            None if ImageFormat::Jpeg.matches_signature(&bytes) => ImageFormat::Jpeg,
             None => {
-                return Err(unprocessable(
-                    "invalid_screenshot_format",
+                return Err(AppError::invalid(
+                    "invalid_image_format",
                     "cannot determine screenshot format",
                 ));
             }
         };
-        if !fmt.matches(&bytes) {
-            return Err(unprocessable(
-                "screenshot_format_mismatch",
+        if !fmt.matches_signature(&bytes) {
+            return Err(AppError::invalid(
+                "image_format_mismatch",
                 "screenshot bytes do not match screenshot-format",
             ));
         }
-        upload.screenshot = Some((bytes, fmt));
+        upload.screenshot = Some(Image::new(fmt, bytes)?);
     }
     Ok(upload)
 }
@@ -274,7 +221,11 @@ pub(super) async fn archive(
         None => None,
     };
     let shot_blob = match upload.screenshot {
-        Some((bytes, fmt)) => Some(prepare_blob(&pool, &store, bytes, fmt.mime()).await?),
+        Some(image) => {
+            let format = image.format();
+            let data = image.into_data();
+            Some(prepare_blob(&pool, &store, data, format.mime_type()).await?)
+        }
         None => None,
     };
 

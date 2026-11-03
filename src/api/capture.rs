@@ -61,6 +61,34 @@ const SCREENSHOT: BlobRoute = BlobRoute {
     csp: CSP,
 };
 
+async fn serve_thumbnail(
+    pool: &SqlitePool,
+    store: &BlobStore,
+    headers: &HeaderMap,
+    page_id: PageId,
+) -> Result<Response> {
+    let content = Content::for_page(pool, page_id)
+        .await?
+        .or_not_found("thumbnail not found")?;
+
+    let content_type = content
+        .mime_type
+        .as_str()
+        .to_owned()
+        .parse()
+        .unwrap_or_default();
+
+    serve_content_with_csp(
+        store,
+        headers,
+        content,
+        &content_type,
+        CAPTURE_CACHE_CONTROL,
+        CSP,
+    )
+    .await
+}
+
 async fn serve_blob(
     pool: &SqlitePool,
     store: &BlobStore,
@@ -213,6 +241,16 @@ impl From<CaptureDetail> for CaptureDetailResponse {
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
+
+// GET /pages/{id}/thumbnail
+pub(super) async fn get_thumbnail(
+    State(pool): State<SqlitePool>,
+    State(store): State<BlobStore>,
+    headers: HeaderMap,
+    ApiPath(id): ApiPath<PageId>,
+) -> Result<Response> {
+    serve_thumbnail(&pool, &store, &headers, id).await
+}
 
 // GET /api/captures/{id}
 pub(super) async fn get_capture(

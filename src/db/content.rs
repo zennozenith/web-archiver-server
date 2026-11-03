@@ -7,6 +7,7 @@ use crate::{
     db::{
         capture::{CaptureBlob, CaptureId},
         helper::id_type,
+        page::PageId,
     },
     hash::Blake3Hash,
     mime::MimeType,
@@ -68,6 +69,24 @@ impl Content {
             " FROM content ct WHERE ct.hash = ?"
         ))
         .bind(hash)
+        .fetch_optional(executor)
+        .await
+    }
+
+    /// The blob of the given kind attached to a page.
+    pub(crate) async fn for_page<'e>(
+        executor: impl SqliteExecutor<'e>,
+        page_id: PageId,
+    ) -> Result<Option<Self>> {
+        sqlx::query_as(concat!(
+            "SELECT ",
+            content_columns!(),
+            " FROM page p
+              JOIN content ct ON ct.id = p.thumbnail_content_id
+              WHERE page.id = ?
+              LIMIT 1"
+        ))
+        .bind(page_id)
         .fetch_optional(executor)
         .await
     }
