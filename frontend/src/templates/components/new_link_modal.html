@@ -56,6 +56,13 @@
             placeholder="What is this link about?"></textarea>
         </fieldset>
 
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Thumbnail <span class="font-normal text-base-content/50">(optional)</span>
+          </legend>
+          <input name="thumbnail" type="file" accept="image/png,image/jpeg" class="file-input w-full" />
+          <p class="label">PNG or JPEG. Used on link cards and in the reader.</p>
+        </fieldset>
+
         <div class="modal-action mt-0">
           <button type="button" class="btn btn-ghost" @click="newLink = false">Cancel</button>
           <button type="submit" class="btn btn-primary">

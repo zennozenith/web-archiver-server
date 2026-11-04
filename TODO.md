@@ -1,2 +1,0 @@
-- Thumbnail input in form
-- Show unorganized collection in sidebar

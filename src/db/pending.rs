@@ -110,7 +110,7 @@ impl PendingRecord {
         tags: &[TagName],
     ) -> Result<CreateOutcome<PendingId>> {
         let inserted: Option<PendingId> = sqlx::query_scalar(
-            "INSERT INTO pending (url) VALUES (?, ?)
+            "INSERT INTO pending (url) VALUES (?)
              ON CONFLICT(url) DO NOTHING
              RETURNING id",
         )
@@ -213,6 +213,17 @@ impl PendingRecord {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Counts items with the given status.
+    pub(crate) async fn count_with_status<'e>(
+        executor: impl SqliteExecutor<'e>,
+        status: PendingStatus,
+    ) -> Result<i64> {
+        sqlx::query_scalar("SELECT COUNT(*) FROM pending WHERE status = ?")
+            .bind(status)
+            .fetch_one(executor)
+            .await
+    }
+
     /// Deletes every item with `status`; returns how many were removed.
     pub(crate) async fn delete_all_with_status<'e>(
         executor: impl SqliteExecutor<'e>,
@@ -248,6 +259,7 @@ impl PendingRecord {
 pub(crate) struct PendingUpdate<'a> {
     /// Moving back to `queued` also clears `last_error`.
     pub status: Option<PendingStatus>,
+    pub url: Option<String>,
     pub tags: Option<&'a [TagName]>,
 }
 
@@ -255,15 +267,21 @@ impl PendingUpdate<'_> {
     pub(crate) async fn apply(self, conn: &mut SqliteConnection, id: PendingId) -> Result<()> {
         let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("UPDATE pending SET ");
         let mut sets = qb.separated(", ");
-        let has_sets = self.status.is_some_and(|status| {
+        let has_status = self.status.is_some();
+        let has_url = self.url.is_some();
+
+        if let Some(status) = self.status {
             sets.push("status = ").push_bind_unseparated(status);
             if status == PendingStatus::Queued {
                 sets.push("last_error = NULL");
             }
-            true
-        });
+        }
 
-        if has_sets {
+        if let Some(url) = self.url.as_deref() {
+            sets.push("url = ").push_bind_unseparated(url);
+        }
+
+        if has_status || has_url {
             qb.push(" WHERE id = ").push_bind(id);
             qb.build().execute(&mut *conn).await?;
         }

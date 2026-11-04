@@ -39,6 +39,7 @@ pub(crate) fn router(state: AppState) -> Router {
             get(pages::collections).post(actions::create_collection),
         )
         .route("/collections/new", get(pages::collection_new))
+        .route("/collections/unorganized", get(pages::unorganized))
         .route(
             "/collections/{id}",
             get(pages::collection)
@@ -49,6 +50,19 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/collections/{id}/edit", get(pages::collection_edit))
         .route("/collections/{id}/sharing", put(actions::update_sharing))
         .route("/public/collections/{id}", get(pages::public_collection))
+        // pending queue
+        .route(
+            "/pending",
+            get(pages::pending)
+                .post(actions::create_pending)
+                .delete(actions::clear_pending),
+        )
+        .route("/pending/bulk", post(actions::bulk_create_pending))
+        .route(
+            "/pending/{id}",
+            post(actions::update_pending).delete(actions::delete_pending),
+        )
+        .route("/pending/{id}/retry", post(actions::retry_pending))
         // tags
         .route("/tags", get(pages::tags))
         .route("/tags/search", get(fragments::search_tags))

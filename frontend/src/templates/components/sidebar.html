@@ -21,6 +21,10 @@
           class="icon-[lucide--pin] size-4"></span>Pinned</a></li>
     <li><a href="/collections" {% if page.active=="collections" %}class="menu-active" aria-current="page" {% endif
         %}><span class="icon-[lucide--folders] size-4"></span>Collections</a></li>
+    <li><a href="/pending" {% if page.active=="pending" %}class="menu-active" aria-current="page" {% endif %}><span
+          class="icon-[lucide--clock] size-4"></span>Pending
+        {% if page.pending_count > 0 %}<span class="badge badge-ghost badge-sm ml-auto tabular-nums">{{
+          page.pending_count }}</span>{% endif %}</a></li>
     <li><a href="/tags" {% if page.active=="tags" %}class="menu-active" aria-current="page" {% endif %}><span
           class="icon-[lucide--tags] size-4"></span>Tags</a></li>
   </ul>
@@ -30,6 +34,14 @@
       <details open>
         <summary class="text-xs font-medium text-base-content/60">Collections</summary>
         <ul>
+          <li>
+            <a href="/collections/unorganized" {% if page.active=="unorganized" %}class="menu-active"
+              aria-current="page" {% endif %}>
+              <span aria-hidden="true">📥</span>
+              <span class="truncate">Unorganized</span>
+              <span class="badge badge-ghost badge-sm ml-auto tabular-nums">{{ page.unorganized_count }}</span>
+            </a>
+          </li>
           {% for collection in page.nav_collections %}
           <li>
             <a href="/collections/{{ collection.id }}">

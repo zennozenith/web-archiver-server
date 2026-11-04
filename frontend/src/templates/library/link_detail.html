@@ -169,7 +169,8 @@
 
       <!-- Edit -->
       <form x-show="mode === 'edit'" x-cloak class="flex flex-col gap-3 p-4" hx-put="/links/{{ link.id }}"
-        hx-swap="none" @htmx:after:request="if ($ok($event)) { mode = 'view'; location.reload() }">
+        hx-encoding="multipart/form-data" hx-swap="none"
+        @htmx:after:request="if ($ok($event)) { mode = 'view'; location.reload() }">
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Name</legend>
           <input name="displayTitle" value="{{ link.display_title }}" class="input w-full" />
@@ -192,6 +193,11 @@
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Description</legend>
           <textarea name="description" rows="4" class="textarea w-full">{{ link.description }}</textarea>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Thumbnail</legend>
+          <input name="thumbnail" type="file" accept="image/png,image/jpeg" class="file-input w-full" />
+          <p class="label">PNG or JPEG. Leave empty to keep the current thumbnail.</p>
         </fieldset>
         <button class="btn btn-primary btn-sm self-start">Save changes</button>
       </form>

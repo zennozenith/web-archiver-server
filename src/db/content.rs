@@ -83,7 +83,7 @@ impl Content {
             content_columns!(),
             " FROM page p
               JOIN content ct ON ct.id = p.thumbnail_content_id
-              WHERE page.id = ?
+              WHERE p.id = ?
               LIMIT 1"
         ))
         .bind(page_id)

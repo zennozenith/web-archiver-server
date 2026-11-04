@@ -2,7 +2,10 @@ use askama::Template;
 
 use crate::{
     db::page::{PageCursor, PageStats},
-    web::view::{CollectionOption, CollectionView, FormatView, Page, PageView, Section, TagView},
+    web::view::{
+        CollectionOption, CollectionView, FormatView, Page, PageView, PendingCounts, PendingView,
+        Section, TagView,
+    },
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -56,9 +59,34 @@ pub(crate) struct CollectionFormTemplate {
     pub submit_label: String,
     pub form_action: String,
     pub name: String,
+    pub emoji: String,
     pub description: String,
     pub color: String,
     pub collections: Vec<CollectionOption>,
+}
+
+#[derive(Template)]
+#[template(path = "library/unorganized.html")]
+pub(crate) struct UnorganizedTemplate {
+    pub page: Page,
+    pub links: Vec<PageView>,
+}
+
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one flag per filter tab keeps the template branch-free"
+)]
+#[derive(Template)]
+#[template(path = "library/pending.html")]
+pub(crate) struct PendingTemplate {
+    pub page: Page,
+    pub pending: Vec<PendingView>,
+    pub counts: PendingCounts,
+    pub all_active: bool,
+    pub queued_active: bool,
+    pub in_progress_active: bool,
+    pub failed_active: bool,
+    pub notice: Option<String>,
 }
 
 #[derive(Template)]

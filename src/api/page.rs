@@ -66,6 +66,7 @@ pub(super) async fn list_pages(
         field: query.field.unwrap_or_default(),
         sort: query.sort.unwrap_or_default(),
         collection_id: query.collection_id,
+        unorganized_only: false,
         tag_id: query.tag_id,
         pinned_only: query.pinned_only.unwrap_or_default(),
         limit: query.limit.unwrap_or(DEFAULT_LIMIT),
@@ -252,7 +253,11 @@ pub(crate) async fn parse_multipart(mut mp: Multipart) -> Result<CreatePage> {
                 let t = field.text().await?;
                 upload_tags = comma_separated_tags(Some(&t))?;
             }
-            "thumbnail" => upload_thumbnail_bytes = Some(field.bytes().await?.to_vec()),
+            "thumbnail" => {
+                let bytes = field.bytes().await?.to_vec();
+                // Browsers submit an empty part when no file was chosen.
+                upload_thumbnail_bytes = (!bytes.is_empty()).then_some(bytes);
+            }
             _ => {} // ignore unknown fields
         }
     }

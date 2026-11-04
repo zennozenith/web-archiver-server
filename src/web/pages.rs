@@ -12,6 +12,7 @@ use crate::{
         collection::{CollectionId, CollectionRecord},
         helper::CursorPage,
         page::{HighlightRecord, PageCursor, PageFilter, PageId, PageItem, PageSort, PageStats},
+        pending::{PendingItem, PendingStatus},
         tag::TagSummary,
     },
     error::{AppError, OptionExt, Result},
@@ -21,10 +22,14 @@ use crate::{
     web::{
         templates::{
             ArchiveTemplate, CollectionFormTemplate, CollectionTemplate, CollectionsTemplate,
-            DashboardTemplate, PageDetailTemplate, PageGridTemplate, PagesTemplate, PinnedTemplate,
-            PublicCollectionTemplate, TagTemplate, TagsTemplate,
+            DashboardTemplate, PageDetailTemplate, PageGridTemplate, PagesTemplate,
+            PendingTemplate, PinnedTemplate, PublicCollectionTemplate, TagTemplate, TagsTemplate,
+            UnorganizedTemplate,
         },
-        view::{CollectionOption, CollectionView, FormatView, Page, PageView, Section, TagView},
+        view::{
+            CollectionOption, CollectionView, FormatView, Page, PageView, PendingCounts,
+            PendingView, Section, TagView,
+        },
     },
 };
 
@@ -47,6 +52,15 @@ pub(crate) struct ParentQuery {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct EditQuery {
     edit: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingQuery {
+    status: Option<PendingStatus>,
+    added: Option<u64>,
+    duplicates: Option<u64>,
+    invalid: Option<u64>,
 }
 
 fn link_views(items: &[PageItem]) -> Vec<PageView> {
@@ -246,6 +260,25 @@ pub(crate) async fn collections(State(pool): State<SqlitePool>) -> Result<impl I
     CollectionsTemplate { page, collections }.render_html()
 }
 
+pub(crate) async fn unorganized(State(pool): State<SqlitePool>) -> Result<impl IntoResponse> {
+    let CursorPage { items, .. } = PageItem::list(
+        &pool,
+        &PageFilter {
+            unorganized_only: true,
+            limit: ALL_LINKS,
+            ..PageFilter::default()
+        },
+    )
+    .await?;
+
+    let page = Page::load(&pool, "unorganized").await?;
+    UnorganizedTemplate {
+        page,
+        links: link_views(&items),
+    }
+    .render_html()
+}
+
 pub(crate) async fn collection(
     State(pool): State<SqlitePool>,
     Path(id): Path<CollectionId>,
@@ -286,6 +319,7 @@ pub(crate) async fn collection_new(
         submit_label: "Create collection".to_owned(),
         form_action: "/collections".to_owned(),
         name: String::new(),
+        emoji: "📁".to_owned(),
         description: String::new(),
         color: "#6d5dfc".to_owned(),
         collections,
@@ -310,6 +344,7 @@ pub(crate) async fn collection_edit(
         submit_label: "Save changes".to_owned(),
         form_action: format!("/collections/{id}"),
         name: record.name,
+        emoji: record.emoji,
         description: record.description,
         color: record.color,
         collections,
@@ -387,6 +422,64 @@ pub(crate) async fn tag(
         page,
         tag,
         links: link_views(&items),
+    }
+    .render_html()
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Pending queue
+// ───────────────────────────────────────────────────────────────────────────
+
+fn pending_notice(
+    added: Option<u64>,
+    duplicates: Option<u64>,
+    invalid: Option<u64>,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(added) = added.filter(|count| *count > 0) {
+        parts.push(format!("{added} added"));
+    }
+    if let Some(duplicates) = duplicates.filter(|count| *count > 0) {
+        let suffix = if duplicates == 1 { "" } else { "s" };
+        parts.push(format!("{duplicates} duplicate{suffix} skipped"));
+    }
+    if let Some(invalid) = invalid.filter(|count| *count > 0) {
+        let suffix = if invalid == 1 { "" } else { "s" };
+        parts.push(format!("{invalid} invalid line{suffix} skipped"));
+    }
+
+    (!parts.is_empty()).then(|| format!("{}.", parts.join(", ")))
+}
+
+pub(crate) async fn pending(
+    State(pool): State<SqlitePool>,
+    Query(query): Query<PendingQuery>,
+) -> Result<impl IntoResponse> {
+    let CursorPage { items, .. } = PendingItem::list(&pool, None, None, ALL_LINKS).await?;
+    let counts = PendingCounts::from_items(&items);
+
+    let pending = items
+        .iter()
+        .filter(|item| {
+            query
+                .status
+                .is_none_or(|status| item.record.status == status)
+        })
+        .map(PendingView::from_item)
+        .collect();
+
+    let notice = pending_notice(query.added, query.duplicates, query.invalid);
+    let page = Page::load(&pool, "pending").await?;
+
+    PendingTemplate {
+        page,
+        pending,
+        all_active: query.status.is_none(),
+        queued_active: query.status == Some(PendingStatus::Queued),
+        in_progress_active: query.status == Some(PendingStatus::InProgress),
+        failed_active: query.status == Some(PendingStatus::Failed),
+        counts,
+        notice,
     }
     .render_html()
 }

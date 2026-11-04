@@ -384,6 +384,8 @@ pub(crate) struct PageFilter {
     pub field: PageField,
     pub sort: PageSort,
     pub collection_id: Option<CollectionId>,
+    /// Only links that are not filed in any collection.
+    pub unorganized_only: bool,
     pub tag_id: Option<TagId>,
     pub pinned_only: bool,
     pub limit: Limit,
@@ -398,6 +400,7 @@ impl Default for PageFilter {
             field: PageField::Name,
             sort: PageSort::Newest,
             collection_id: None,
+            unorganized_only: false,
             tag_id: None,
             pinned_only: false,
             limit: Limit::DEFAULT,
@@ -410,6 +413,10 @@ impl PageFilter {
     fn push_conditions(&self, qb: &mut QueryBuilder<Sqlite>) {
         if let Some(collection_id) = self.collection_id {
             qb.push(" AND collection_id = ").push_bind(collection_id);
+        }
+
+        if self.unorganized_only {
+            qb.push(" AND collection_id IS NULL");
         }
 
         if let Some(tag_id) = self.tag_id {
@@ -555,7 +562,7 @@ impl CreatePage {
 }
 
 /// PATCH semantics: `value: null` clears, an absent field leaves it unchanged.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UpdatePage {
     #[serde(default)]
@@ -621,6 +628,38 @@ impl UpdatePage {
 }
 
 impl PageId {
+    /// Replaces the page's thumbnail. `None` removes the custom thumbnail.
+    /// Returns `false` when the page does not exist.
+    pub(crate) async fn set_thumbnail(
+        self,
+        pool: &SqlitePool,
+        store: &BlobStore,
+        thumbnail: Option<Image>,
+    ) -> Result<bool> {
+        let mut tx = pool.begin().await?;
+
+        let thumbnail_id = match thumbnail {
+            Some(image) => {
+                let format = image.format();
+                let data = image.into_data();
+                let blob = prepare_blob(pool, store, data, format.mime_type()).await?;
+                Some(insert_blob(&mut tx, &blob).await?)
+            }
+            None => None,
+        };
+
+        let updated = sqlx::query("UPDATE page SET thumbnail_content_id = ? WHERE id = ?")
+            .bind(thumbnail_id)
+            .bind(self)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
+            > 0;
+
+        tx.commit().await?;
+        Ok(updated)
+    }
+
     /// Removes a page and its captures; returns `false` if the page did not exist.
     ///
     /// `page_tag` rows cascade. Orphaned blobs are left for GC.
@@ -660,6 +699,13 @@ pub(crate) async fn toggle_pinned<'e>(
     .bind(id)
     .fetch_optional(executor)
     .await
+}
+
+/// Number of links that are not filed in any collection.
+pub(crate) async fn count_unorganized(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT COUNT(*) FROM page WHERE collection_id IS NULL")
+        .fetch_one(pool)
+        .await
 }
 
 pub(crate) async fn stats(pool: &SqlitePool) -> Result<PageStats, sqlx::Error> {

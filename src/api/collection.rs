@@ -31,17 +31,24 @@ pub(super) async fn get_collection(
 #[serde(rename_all = "camelCase")]
 pub(super) struct CollectionCreateRequest {
     name: String,
+    emoji: Option<String>,
     description: Option<String>,
     parent_id: Option<String>,
     color: Option<String>,
-    // TODO: emoji
 }
 
 impl CollectionCreateRequest {
     fn map_collection_input(&self, parent_id: Option<CollectionId>) -> CollectionInput<'_> {
+        let emoji = self
+            .emoji
+            .as_deref()
+            .map(str::trim)
+            .filter(|emoji| !emoji.is_empty())
+            .unwrap_or("📁");
+
         CollectionInput {
             name: self.name.trim(),
-            emoji: "📁",
+            emoji,
             description: self.description.as_deref().unwrap_or_default(),
             color: self.color.as_deref().unwrap_or("#6d5dfc"),
             parent_id,

@@ -7,9 +7,11 @@ use crate::{
     db::{
         collection::{CollectionId, CollectionRecord},
         page::{HighlightRecord, PageItem, PageRecord},
+        pending::{PendingId, PendingItem, PendingStatus},
         tag::{Tag, TagSummary},
     },
     tag::TagId,
+    time::ago_timestamp,
 };
 
 const PLACEHOLDER_THUMB: &str = "/static/vite/images/hero.png";
@@ -24,6 +26,10 @@ pub(crate) struct Page {
     pub nav_tags: Vec<NavTag>,
     pub all_collections: Vec<CollectionOption>,
     pub active: String,
+    /// Links that are not filed in a collection.
+    pub unorganized_count: i64,
+    /// Items waiting to be archived.
+    pub pending_count: i64,
 }
 
 pub(crate) struct NavCollection {
@@ -102,6 +108,51 @@ pub(crate) struct Section {
     pub links: Vec<PageView>,
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each flag controls a separate action or form field"
+)]
+pub(crate) struct PendingView {
+    pub id: PendingId,
+    pub url: String,
+    pub status_label: &'static str,
+    pub status_class: &'static str,
+    pub attempts: i64,
+    pub last_error: Option<String>,
+    pub date: String,
+    pub tags: Vec<TagView>,
+    pub tags_csv: String,
+    pub is_queued: bool,
+    pub is_failed: bool,
+    pub retryable: bool,
+    pub in_progress: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct PendingCounts {
+    pub queued: i64,
+    pub in_progress: i64,
+    pub failed: i64,
+    pub total: i64,
+}
+
+impl PendingCounts {
+    pub(crate) fn from_items(items: &[PendingItem]) -> Self {
+        let mut counts = Self::default();
+        for item in items {
+            counts.total = counts.total.saturating_add(1);
+            match item.record.status {
+                PendingStatus::Queued => counts.queued = counts.queued.saturating_add(1),
+                PendingStatus::InProgress => {
+                    counts.in_progress = counts.in_progress.saturating_add(1);
+                }
+                PendingStatus::Failed => counts.failed = counts.failed.saturating_add(1),
+            }
+        }
+        counts
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Builders
 // ───────────────────────────────────────────────────────────────────────────
@@ -110,6 +161,10 @@ impl Page {
     pub(crate) async fn load(pool: &SqlitePool, active: &str) -> Result<Self> {
         let collections = CollectionRecord::list(pool).await?;
         let tags = TagSummary::list(pool).await?;
+        let unorganized_count = crate::db::page::count_unorganized(pool).await?;
+        let pending_count =
+            crate::db::pending::PendingRecord::count_with_status(pool, PendingStatus::Queued)
+                .await?;
 
         Ok(Self {
             // There is no login in this single-user build, but templates keep
@@ -137,6 +192,8 @@ impl Page {
                 .map(|collection| CollectionOption::from_record(collection, false))
                 .collect(),
             active: active.to_owned(),
+            unorganized_count,
+            pending_count,
         })
     }
 }
@@ -178,12 +235,46 @@ impl TagView {
         }
     }
 
-    fn from_tag(tag: &Tag) -> Self {
+    pub(crate) fn from_tag(tag: &Tag) -> Self {
         Self {
             id: tag.id,
             name: tag.name.to_string(),
             slug: tag.name.to_string(),
             count: 0,
+        }
+    }
+}
+
+impl PendingView {
+    pub(crate) fn from_item(item: &PendingItem) -> Self {
+        let record = &item.record;
+        let (status_label, status_class) = match record.status {
+            PendingStatus::Queued => ("Queued", "badge-info"),
+            PendingStatus::InProgress => ("In progress", "badge-warning"),
+            PendingStatus::Failed => ("Failed", "badge-error"),
+        };
+        let tags: Vec<TagView> = item.tags.iter().map(TagView::from_tag).collect();
+        let tags_csv = item
+            .tags
+            .iter()
+            .map(|tag| tag.name.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        Self {
+            id: record.id,
+            url: record.url.clone(),
+            status_label,
+            status_class,
+            attempts: record.attempts,
+            last_error: record.last_error.clone(),
+            date: ago_timestamp(record.created_at),
+            tags,
+            tags_csv,
+            is_queued: record.status == PendingStatus::Queued,
+            is_failed: record.status == PendingStatus::Failed,
+            retryable: record.status == PendingStatus::Failed,
+            in_progress: record.status == PendingStatus::InProgress,
         }
     }
 }
@@ -226,7 +317,7 @@ impl PageView {
             );
 
         let thumb = match record.thumbnail_content_id {
-            Some(content_id) => format!("/api/page/{content_id}/thumbnail"),
+            Some(_) => format!("/api/page/{}/thumbnail", record.id),
             _ if record.has_screenshot => {
                 format!("/api/page/{}/latest/screenshot", record.id)
             }

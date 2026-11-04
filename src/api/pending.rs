@@ -41,6 +41,7 @@ pub(super) struct PatchPendingRequest {
     #[serde(default, deserialize_with = "opt_comma_separated_or_seq")]
     pub tags: Option<Vec<String>>,
     pub status: Option<PendingStatus>,
+    pub url: Option<String>,
 }
 
 /// Body of `POST /api/pending/{id}/fail`.
@@ -248,6 +249,12 @@ pub(super) async fn patch_pending(
         });
     }
     let tags = req.tags.as_deref().map(parse_names).transpose()?;
+    let url = req
+        .url
+        .as_deref()
+        .map(canonicalize_url)
+        .transpose()?
+        .map(|url| url.url);
 
     let mut tx = pool.begin().await?;
 
@@ -263,6 +270,7 @@ pub(super) async fn patch_pending(
 
     PendingUpdate {
         status: req.status,
+        url,
         tags: tags.as_deref(),
     }
     .apply(&mut tx, id)
