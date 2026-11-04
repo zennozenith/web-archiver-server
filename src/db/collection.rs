@@ -2,7 +2,7 @@
 
 use sqlx::{FromRow, Result, SqliteExecutor, SqlitePool};
 
-use crate::db::helper::id_type;
+use crate::{db::helper::id_type, error::AppError};
 
 id_type! {
     /// Primary key of a collection.
@@ -133,7 +133,14 @@ impl CollectionRecord {
 
     /// Deletes the collection, the links filed directly under it, and detaches
     /// any child collections. Returns `false` if the collection did not exist.
-    pub(crate) async fn delete(pool: &SqlitePool, id: CollectionId) -> Result<bool> {
+    pub(crate) async fn delete(pool: &SqlitePool, id: CollectionId) -> Result<bool, AppError> {
+        if id == CollectionId::new(0) {
+            return Err(AppError::invalid(
+                "preserve_collection_0",
+                "Cannot delete collection 0",
+            ));
+        }
+
         let mut tx = pool.begin().await?;
 
         // Captures of other pages that redirected into this collection stay,

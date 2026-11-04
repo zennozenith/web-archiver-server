@@ -144,7 +144,7 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/pending/{id}/retry", post(retry_pending))
         .route("/pending/{id}/fail", post(fail_pending))
         // pages
-        .route("/page", get(list_pages)) // For creating use POST /page instead of POST /api/page
+        .route("/page", get(list_pages)) // For creating page use POST /links instead of POST /api/page
         .route("/page/lookup", get(lookup_page))
         .route("/page/{id}", get(get_page).delete(delete_page))
         .route("/page/{id}/thumbnail", get(get_thumbnail)) // TODO:

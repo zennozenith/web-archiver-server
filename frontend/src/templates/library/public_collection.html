@@ -1,0 +1,16 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}{{ collection.name }} (public){% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><span aria-hidden="true">{{ collection.emoji }}</span>{{ collection.name }}</h1>
+    <p class="mt-1 text-sm text-base-content/60">Public collection · {{ collection.link_count }} links</p>
+  </div>
+</div>
+
+<div class="link-grid group/results" data-view="grid">
+  {% for link in links %}{% include "library/_link_card.html" %}{% endfor %}
+</div>
+{% endblock %}

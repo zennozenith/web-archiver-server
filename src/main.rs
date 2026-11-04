@@ -30,7 +30,7 @@ mod template;
 mod time;
 mod url_canon;
 mod web;
-mod web_old;
+mod web_archive;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -122,61 +122,8 @@ async fn main() {
 fn app(state: AppState) -> Router {
     Router::new()
         .nest("/api", api::router(state.clone()))
-        .nest("/old", web_old::router(state.clone()))
+        .nest("/archive", web_archive::router(state.clone()))
         .merge(web::router(state))
         .merge(asset::serve_dir())
         .layer(TraceLayer::new_for_http())
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use axum::{
-//         body::Body,
-//         http::{self, Request, StatusCode},
-//     };
-//     use http_body_util::BodyExt;
-//     use tower::ServiceExt; // for `call`, `oneshot`, and `ready` // for `collect`
-
-//     #[tokio::test]
-//     async fn test_get() {
-//         let app = app();
-
-//         let response = app
-//             .oneshot(Request::get("/").body(Body::empty()).unwrap())
-//             .await
-//             .unwrap();
-
-//         assert_eq!(response.status(), StatusCode::OK);
-
-//         let body = response.into_body().collect().await.unwrap().to_bytes();
-//         let body = std::str::from_utf8(&body).unwrap();
-
-//         assert!(body.contains(r#"<input type="submit" value="Subscribe!">"#));
-//     }
-
-//     #[tokio::test]
-//     async fn test_post() {
-//         let app = app();
-
-//         let response = app
-//             .oneshot(
-//                 Request::post("/")
-//                     .header(
-//                         http::header::CONTENT_TYPE,
-//                         mime::APPLICATION_WWW_FORM_URLENCODED.as_ref(),
-//                     )
-//                     .body(Body::from("name=foo&email=bar@axum"))
-//                     .unwrap(),
-//             )
-//             .await
-//             .unwrap();
-
-//         assert_eq!(response.status(), StatusCode::OK);
-
-//         let body = response.into_body().collect().await.unwrap().to_bytes();
-//         let body = std::str::from_utf8(&body).unwrap();
-
-//         assert_eq!(body, "email='bar@axum'\nname='foo'\n");
-//     }
-// }

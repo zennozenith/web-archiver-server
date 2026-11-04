@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post, put},
 };
 
-use crate::{AppState, error::AppError, web_old::error::negotiate_errors};
+use crate::{AppState, error::AppError, web_archive::error::negotiate_errors};
 
 pub(crate) fn router(state: AppState) -> Router {
     Router::new()

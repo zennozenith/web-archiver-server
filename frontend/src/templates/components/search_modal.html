@@ -1,0 +1,21 @@
+{# Quick search (press / or Ctrl/⌘ K). Results render into #search-results via /links/search. #}
+<dialog class="modal modal-top sm:modal-middle"
+  x-effect="if (search) { if (!$el.open) $el.showModal() } else if ($el.open) { $el.close() }"
+  @close="search = false">
+
+  <div class="modal-box flex max-h-[85vh] border border-base-300 w-full max-w-3xl flex-col gap-4 p-4">
+    <label class="input w-full">
+      <span class="icon-[lucide--search] size-4 text-base-content/50"></span>
+      <input type="search" name="q" autofocus autocomplete="off" placeholder="Search links by title, URL or tag"
+        aria-label="Search links" hx-get="/links/search" hx-trigger="input changed delay:250ms, search"
+        hx-target="#search-results" hx-sync="this:replace" />
+      <kbd class="kbd kbd-xs">esc</kbd>
+    </label>
+
+    <div id="search-results" class="link-grid group/results min-h-24 overflow-y-auto" data-view="list">
+      <p class="col-span-full py-10 text-center text-sm text-base-content/50">Start typing to search your library.</p>
+    </div>
+  </div>
+
+  <form method="dialog" class="modal-backdrop"><button aria-label="Close">close</button></form>
+</dialog>

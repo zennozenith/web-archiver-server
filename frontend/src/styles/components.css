@@ -1,0 +1,102 @@
+@theme {
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+@layer base {
+  :root {
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+  }
+  [x-cloak] {
+    display: none !important;
+  }
+}
+
+@layer components {
+  /* ── page chrome ─────────────────────────────── */
+  .page-header {
+    @apply mb-6 flex flex-wrap items-center justify-between gap-3;
+  }
+  .page-title {
+    @apply flex items-center gap-2.5 text-2xl font-semibold tracking-tight;
+  }
+  .page-title > [class*="icon-"] {
+    @apply size-6 text-base-content/50;
+  }
+  .empty-state {
+    @apply col-span-full flex flex-col items-center gap-1 rounded-box border border-dashed border-base-300 px-6 py-16 text-center;
+  }
+  .empty-state > [class*="icon-"] {
+    @apply mb-2 size-8 text-base-content/30;
+  }
+  .empty-state .title {
+    @apply font-serif text-lg;
+  }
+  .empty-state p {
+    @apply max-w-sm text-sm text-base-content/60;
+  }
+
+  /* ── link grid: auto-fills; `data-view=list` turns cards into rows ── */
+  .link-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  }
+  .link-grid[data-view="list"] {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .link-card {
+    @apply transition-colors hover:border-primary/60;
+  }
+  .link-card .card-title {
+    @apply line-clamp-2;
+  }
+
+  /* ── collection hero (colour comes from --c on the element) ── */
+  .collection-hero {
+    background: linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--c, var(--color-primary)) 28%, var(--color-base-200)),
+      var(--color-base-200) 70%
+    );
+  }
+
+  /* ── reader ──────────────────────────────────── */
+  .reader {
+    font-family: var(--font-serif);
+    line-height: 1.75;
+    max-width: 68ch;
+  }
+  .reader h1 {
+    @apply mb-3 text-[2.1em] leading-tight font-semibold tracking-tight;
+  }
+  .reader h2 {
+    @apply mt-10 mb-3 text-[1.3em] font-semibold;
+  }
+  .reader p {
+    margin-bottom: 1.1em;
+  }
+  .reader .meta {
+    font-family: system-ui, sans-serif;
+    @apply text-sm text-base-content/60;
+  }
+  .reader mark {
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 0.15em;
+  }
+  .reader mark.y {
+    background: color-mix(in oklab, var(--color-warning) 38%, transparent);
+  }
+  .reader mark.g {
+    background: color-mix(in oklab, var(--color-success) 38%, transparent);
+  }
+}
