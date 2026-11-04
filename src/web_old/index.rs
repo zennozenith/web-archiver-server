@@ -26,17 +26,16 @@ use axum::{extract::State, response::IntoResponse};
 use sqlx::SqlitePool;
 
 #[derive(Template)]
-#[template(path = "index.html")]
+#[template(path = "archive/index.html")]
 struct IndexTemplate<'a> {
     pendings: Vec<PendingFragmentTemplate<'a>>,
     stats: Stats,
     pages: Vec<PageCardTemplate>,
     tags: Vec<TagView>,
-    app_script: String,
 }
 
 #[derive(Template)]
-#[template(path = "vite-counter.html")]
+#[template(path = "_vite-counter.html")]
 struct ViteCounter<'a> {
     title: &'a str,
 }
@@ -91,7 +90,6 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
         stats,
         pages,
         tags,
-        app_script: crate::asset::vite_asset("src/app.ts").unwrap_or_default(),
     }
     .render_html()
 }

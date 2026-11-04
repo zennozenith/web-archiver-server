@@ -1,38 +1,20 @@
 import Alpine from "alpinejs";
 
-interface TagEditorState {
-  editing: boolean;
-  name: string;
-  start(
-    this: TagEditorState & {
-      $nextTick(callback: () => void): void;
-      $refs: Record<string, HTMLInputElement>;
-    },
-    name: string,
-  ): void;
-  cancel(): void;
-}
+import { registerLinkView } from "./alpine/link-view";
+import { registerMagics } from "./alpine/magics";
+import { registerPageFilter } from "./alpine/page-filter";
+import { registerReader } from "./alpine/reader";
+import { registerTagEditor } from "./alpine/tag-editor";
+import { registerTheme } from "./alpine/theme";
+import { registerToasts } from "./alpine/toasts";
 
-function tagEditor(): TagEditorState {
-  return {
-    editing: false,
-    name: "",
-    start(name: string) {
-      this.name = name;
-      this.editing = true;
-      this.$nextTick(() => {
-        const input = this.$refs.input;
-        input?.focus();
-        input?.select();
-      });
-    },
-    cancel() {
-      this.editing = false;
-    },
-  };
-}
-
-Alpine.data("tagEditor", tagEditor);
+registerMagics(Alpine);
+registerTheme(Alpine);
+registerToasts(Alpine);
+registerTagEditor(Alpine);
+registerPageFilter(Alpine);
+registerLinkView(Alpine);
+registerReader(Alpine);
 
 declare global {
   interface Window {

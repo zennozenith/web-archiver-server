@@ -7,11 +7,12 @@ import tailwindcss from "@tailwindcss/vite";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
-const files = globSync("src/**/*.{js,ts,css,html}", {
+const files = globSync("src/**/*.{js,ts,html}", {
   cwd: root,
   absolute: true,
   // skip type declarations and partials like _foo.css
-  ignore: ["**/*.d.ts", "**/_*"],
+  // ignore: ["**/*.d.ts", "**/_*"],
+  ignore: ["**/*.d.ts"],
 }).map((file) => [
   path
     .relative(path.join(root, "src"), file)

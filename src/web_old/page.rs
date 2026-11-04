@@ -17,7 +17,7 @@ pub(super) struct CaptureView {
 }
 
 #[derive(Template)]
-#[template(path = "fragments/page-card.html")]
+#[template(path = "archive/_page_card.html")]
 pub(super) struct PageCardTemplate {
     pub id: i64,
     pub url: String,
@@ -32,7 +32,7 @@ pub(super) struct PageCardTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "fragments/page-tags.html")]
+#[template(path = "archive/_page_tags.html")]
 pub(super) struct PageTagsTemplate {
     pub page_id: i64,
     pub tags: Vec<Tag>,

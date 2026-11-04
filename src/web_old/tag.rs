@@ -11,7 +11,7 @@ pub(super) struct TagView {
 }
 
 #[derive(Template)]
-#[template(path = "fragments/tag-list.html")]
+#[template(path = "archive/_tag_list.html")]
 pub(super) struct TagListTemplate {
     pub tags: Vec<TagView>,
 }

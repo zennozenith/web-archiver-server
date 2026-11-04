@@ -1,0 +1,15 @@
+{# Replaces #page-tags-{id} after a tag is added or removed. Needs page_id and tags. #}
+<div id="page-tags-{{ page_id }}" class="flex flex-wrap items-center gap-1.5">
+  {% for tag in tags %}
+  <span class="badge badge-ghost gap-1">
+    {{ tag.name }}
+    <button type="button" hx-delete="/pages/{{ page_id }}/tags/{{ tag.id }}" hx-swap="none" hx-confirm="Remove this tag?"
+      aria-label="Remove tag {{ tag.name }}" class="cursor-pointer text-base-content/40 hover:text-error">×</button>
+  </span>
+  {% endfor %}
+
+  <form hx-post="/pages/{{ page_id }}/tags" hx-swap="none" @htmx:after:request="$ok($event) && $el.reset()" class="join">
+    <input type="text" name="name" required class="input input-xs join-item w-28" placeholder="add tag…" aria-label="Add tag" />
+    <button class="btn btn-xs join-item" type="submit" aria-label="Add tag">+</button>
+  </form>
+</div>

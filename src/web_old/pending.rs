@@ -6,7 +6,7 @@ use crate::{
 };
 
 #[derive(Template)]
-#[template(path = "fragments/pending-card.html")]
+#[template(path = "archive/_pending_card.html")]
 pub(super) struct PendingFragmentTemplate<'a> {
     pub id: i64,
     pub url: &'a str,
@@ -28,7 +28,7 @@ impl<'a> From<&'a PendingItem> for PendingFragmentTemplate<'a> {
 }
 
 #[derive(Template)]
-#[template(path = "pending.html")]
+#[template(path = "archive/pending.html")]
 pub(super) struct PendingTemplate<'a> {
     pub id: i64,
     pub url: &'a str,

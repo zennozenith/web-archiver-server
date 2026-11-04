@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* Built-ins we still offer; the four custom themes live in styles/themes.css.
+   Use `themes: all` here if you want every DaisyUI theme back. */
+@plugin "daisyui" {
+  themes: light, dark;
+}
+@plugin "@iconify/tailwind4";
+
+@import "./styles/themes.css";
+@import "./styles/components.css";
+
+/* Classes that Rust builds at runtime (FeedbackKind::class()) can't be seen by the scanner. */
+@source inline("alert-{info,success,warning,error}");
+/* If other Rust code emits class names, point the scanner at it:
+@source "../../src"; */
