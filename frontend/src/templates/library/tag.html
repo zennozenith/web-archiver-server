@@ -1,11 +1,10 @@
 {% extends "layouts/app.html" %}
-
 {% block title %}# {{ tag.name }}{% endblock %}
-
 {% block content %}
 <div class="page-header">
   <h1 class="page-title"><span class="icon-[lucide--tag]"></span># {{ tag.name }}
-    <span class="badge badge-ghost tabular-nums">{{ tag.count }}</span></h1>
+    <span class="badge badge-ghost tabular-nums">{{ tag.count }}</span>
+  </h1>
   <a href="/tags" class="btn btn-ghost btn-sm"><span class="icon-[lucide--chevron-left] size-4"></span>All tags</a>
 </div>
 

@@ -1,5 +1,6 @@
 //! Collections: nested folders that group links.
 
+use serde::Serialize;
 use sqlx::{FromRow, Result, SqliteExecutor, SqlitePool};
 
 use crate::{db::helper::id_type, error::AppError};
@@ -14,7 +15,8 @@ id_type! {
 // ───────────────────────────────────────────────────────────────────────────
 
 /// A collection together with the number of links filed directly under it.
-#[derive(Debug, FromRow)]
+#[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CollectionRecord {
     pub id: CollectionId,
     pub name: String,
@@ -192,5 +194,20 @@ impl CollectionRecord {
             .execute(pool)
             .await?;
         Ok(result.rows_affected() > 0)
+    }
+}
+
+pub(crate) async fn non_empty_parent(
+    pool: &SqlitePool,
+    id: Option<CollectionId>,
+    current: Option<CollectionId>,
+) -> Result<Option<CollectionId>> {
+    match id {
+        Some(parent)
+            if Some(parent) != current && CollectionRecord::exists(pool, parent).await? =>
+        {
+            Ok(Some(parent))
+        }
+        _ => Ok(None),
     }
 }

@@ -19,6 +19,7 @@
 //!   POST   /api/pending/:id/fail         JSON { error } increments attempts, sets failed
 //!
 //! ── Pages (a URL and all its versions) ──────────────────────────────────────
+//!   POST   /api/pages                    TODO: Create page ...
 //!   GET    /api/pages                    ?tag=a&tag=b &match=all|any &host &q &sort=recent|title &limit &cursor
 //!   GET    /api/page/lookup              ?url=...  (is this URL archived? returns page + latest capture)
 //!   GET    /api/page/:id                 url, tags, capture count, latest capture
@@ -61,18 +62,21 @@
 mod archive;
 mod asset;
 mod capture;
+mod collection;
 mod content;
 mod misc;
 mod page;
 mod pending;
 mod tag;
 
+pub(crate) use page::parse_multipart;
+
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Request, State},
     middleware::Next,
     response::Response,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use http::header::AUTHORIZATION;
 
@@ -83,6 +87,11 @@ use crate::{
             get_capture_html, get_capture_original_html, get_capture_screenshot, get_thumbnail,
             redirect_latest_html, redirect_latest_original_html, redirect_latest_screenshot,
         },
+        collection::{
+            create_collection, delete_collection, get_collection, list_collection,
+            public_collection, update_collection, update_sharing,
+        },
+        page::{create_page, list_page_captures, patch_page},
         pending::list_pending,
     },
     error::{AppError, Result},
@@ -122,15 +131,48 @@ async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -
 }
 
 pub(crate) fn router(state: AppState) -> Router {
-    let api = Router::new()
-        // tags
+    let api = Router::<AppState>::new()
+        .merge(tag_routes())
+        .merge(collection_routes())
+        .merge(pending_routes())
+        .merge(page_routes())
+        .merge(capture_routes())
+        .merge(content_routes())
+        .merge(misc_routes());
+    // .layer(from_fn_with_state (state.clone(), require_auth));
+
+    Router::new()
+        .route("/health", get(health))
+        .merge(api)
+        .with_state(state)
+}
+
+fn tag_routes() -> Router<AppState> {
+    Router::new()
         .route("/tag", get(list_tags).post(create_tag))
         .route(
             "/tag/{id}",
             axum::routing::patch(patch_tag).delete(delete_tag),
         )
         .route("/tag/{id}/merge", post(merge_tag))
-        // pending
+}
+
+fn collection_routes() -> Router<AppState> {
+    Router::new()
+        .route("/collection", get(list_collection).post(create_collection))
+        .route(
+            "/collection/{id}",
+            get(get_collection)
+                .post(update_collection)
+                .put(update_collection)
+                .delete(delete_collection),
+        )
+        .route("/collection/{id}/sharing", put(update_sharing))
+        .route("/public/collection/{id}", get(public_collection))
+}
+
+fn pending_routes() -> Router<AppState> {
+    Router::new()
         .route(
             "/pending",
             get(list_pending).post(create_pending).delete(clear_pending),
@@ -143,14 +185,20 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/pending/{id}/retry", post(retry_pending))
         .route("/pending/{id}/fail", post(fail_pending))
-        // pages
-        .route("/page", get(list_pages)) // For creating page use POST /links instead of POST /api/page
+}
+
+fn page_routes() -> Router<AppState> {
+    Router::new()
+        .route("/page", get(list_pages).post(create_page))
         .route("/page/lookup", get(lookup_page))
-        .route("/page/{id}", get(get_page).delete(delete_page))
+        .route(
+            "/page/{id}",
+            get(get_page).patch(patch_page).delete(delete_page),
+        )
         .route("/page/{id}/thumbnail", get(get_thumbnail)) // TODO:
         .route(
             "/page/{id}/capture",
-            get(get_capture)
+            get(list_page_captures)
                 .post(archive)
                 .layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
         )
@@ -165,7 +213,10 @@ pub(crate) fn router(state: AppState) -> Router {
             "/page/{id}/latest/screenshot",
             get(redirect_latest_screenshot),
         )
-        // capture
+}
+
+fn capture_routes() -> Router<AppState> {
+    Router::new()
         .route("/capture/{id}", get(get_capture).delete(delete_capture))
         .route("/capture/{id}/html", get(get_capture_html))
         .route(
@@ -176,15 +227,15 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/capture/{id}/asset", get(capture_assets))
         .route("/capture/{id}/asset/{content_id}", get(capture_asset))
         .route("/page/{id}/latest/asset", get(latest_assets))
-        // content (explicit HEAD handler avoids loading the blob)
-        .route("/content/{hash}", get(get_content).head(head_content))
-        // misc
-        .route("/stats", get(stats))
-        .route("/maintenance/gc", post(gc_content));
-    // // .layer(from_fn_with_state(state.clone(), require_auth));
+}
 
+fn content_routes() -> Router<AppState> {
+    // explicit HEAD handler avoids loading the blob
+    Router::new().route("/content/{hash}", get(get_content).head(head_content))
+}
+
+fn misc_routes() -> Router<AppState> {
     Router::new()
-        .route("/api/health", get(health))
-        .merge(api)
-        .with_state(state)
+        .route("/stats", get(stats))
+        .route("/maintenance/gc", post(gc_content))
 }

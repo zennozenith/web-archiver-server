@@ -14,6 +14,7 @@ use axum::{
 use crate::{AppState, error::AppError, web_archive::error::negotiate_errors};
 
 pub(crate) fn router(state: AppState) -> Router {
+    // TODO: singular form route
     Router::new()
         .route("/", get(root))
         .route("/dashboard", get(pages::dashboard))

@@ -3,12 +3,15 @@
   <div class="flex min-w-0 flex-1 items-center gap-2" x-show="!editing">
     <span class="min-w-0 flex-1 truncate">{{ tag.name }}</span>
     <span class="whitespace-nowrap text-xs text-base-content/50 tabular-nums">
-      {{ tag.pages }} {% if tag.pages == 1 %}page{% else %}pages{% endif %}{% if tag.pending > 0 %} · {{ tag.pending }} queued{% endif %}
+      {{ tag.pages }} {% if tag.pages == 1 %}page{% else %}pages{% endif %}{% if tag.pending > 0 %} · {{ tag.pending }}
+      queued{% endif %}
     </span>
-    <button type="button" @click="start()" class="btn btn-ghost btn-xs btn-square" aria-label="Rename {{ tag.name }}" title="Rename">
+    <button type="button" @click="start()" class="btn btn-ghost btn-xs btn-square" aria-label="Rename {{ tag.name }}"
+      title="Rename">
       <span class="icon-[lucide--pencil] size-3.5"></span>
     </button>
-    <button type="button" hx-delete="/tags/{{ tag.id }}" hx-swap="none" hx-confirm="Delete this tag? It will be removed from all pages."
+    <button type="button" hx-delete="/tags/{{ tag.id }}" hx-swap="none"
+      hx-confirm="Delete this tag? It will be removed from all pages."
       class="btn btn-ghost btn-xs btn-square text-error" aria-label="Delete {{ tag.name }}" title="Delete">
       <span class="icon-[lucide--trash-2] size-3.5"></span>
     </button>

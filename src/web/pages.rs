@@ -408,7 +408,7 @@ pub(crate) async fn export(State(pool): State<SqlitePool>) -> Result<Json<serde_
         .map(|item| {
             json!({
                 "url": &item.record.url,
-                "title": &item.record.display_title,
+                "display_title": &item.record.display_title,
                 "description": &item.record.description,
                 "collectionId": item.record.collection_id,
                 "pinned": item.record.pinned,

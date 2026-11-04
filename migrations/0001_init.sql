@@ -78,7 +78,7 @@ CREATE TABLE page (
     path            TEXT NOT NULL,
     query           TEXT,
 
-    title           TEXT NOT NULL DEFAULT '',      -- user-editable link title
+    display_title   TEXT NOT NULL DEFAULT '',      -- user-editable link title
     description     TEXT NOT NULL DEFAULT '',      -- user-editable notes
     collection_id   INTEGER REFERENCES collection(id) ON DELETE SET NULL,
     pinned          INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),

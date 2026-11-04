@@ -12,9 +12,9 @@ use crate::{
     blob_store::BlobStore,
     db::{
         capture::{CaptureOverview, CaptureSummary},
-        collection::CollectionId,
+        collection::{CollectionId, non_empty_parent},
         content::ContentId,
-        helper::{CursorPage, InvalidCursor, group_by, id_type},
+        helper::{CursorPage, FieldPatch, InvalidCursor, group_by, id_type},
         store::{insert_blob, prepare_blob},
         tag::Tag,
     },
@@ -22,7 +22,7 @@ use crate::{
     helper::{NonEmptyString, escape_like},
     image::Image,
     limit::Limit,
-    tag::{TagId, TagName},
+    tag::{TagId, TagName, comma_separated_tags},
     url_canon::CanonicalUrl,
 };
 
@@ -42,7 +42,7 @@ macro_rules! page_record_select {
                 COALESCE((SELECT MAX(captured_at) FROM capture WHERE page_id = p.id), 0) AS last_captured_at,
                 (SELECT COUNT(*) FROM capture WHERE page_id = p.id) AS capture_count,
                 COALESCE(
-                    NULLIF(TRIM(p.title), ''),
+                    NULLIF(TRIM(p.display_title), ''),
                     (SELECT c.title FROM capture c
                      WHERE c.page_id = p.id
                      ORDER BY c.captured_at DESC, c.id DESC LIMIT 1),
@@ -493,29 +493,9 @@ impl HighlightRecord {
 // Mutations
 // ───────────────────────────────────────────────────────────────────────────
 
-// TODO: remove
-// pub(crate) async fn get_or_create_id<'e>(
-//     executor: impl SqliteExecutor<'e>,
-//     url: &CanonicalUrl,
-// ) -> Result<PageId> {
-//     // No-op DO UPDATE so RETURNING yields the existing row's id.
-//     sqlx::query_scalar(
-//         "INSERT INTO page (url, scheme, host, path, query) VALUES (?, ?, ?, ?, ?)
-//          ON CONFLICT(url) DO UPDATE SET url = url
-//          RETURNING id",
-//     )
-//     .bind(&url.url)
-//     .bind(url.scheme.as_str())
-//     .bind(&url.host)
-//     .bind(&url.path)
-//     .bind(&url.query)
-//     .fetch_one(executor)
-//     .await
-// }
-
 pub(crate) struct CreatePage {
     pub url: CanonicalUrl,
-    pub title: NonEmptyString,
+    pub display_title: NonEmptyString,
     pub description: String,
     pub collection_id: Option<CollectionId>,
     pub pinned: bool,
@@ -544,7 +524,7 @@ impl CreatePage {
         // No-op DO UPDATE so RETURNING yields the existing row's id.
         let page_id: PageId = sqlx::query_scalar(
             "INSERT INTO page (url, scheme, host, path, query,
-                title, description, collection_id, pinned, thumbnail_content_id)
+                display_title, description, collection_id, pinned, thumbnail_content_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(url) DO UPDATE SET url = url
          RETURNING id",
@@ -554,7 +534,7 @@ impl CreatePage {
         .bind(self.url.host)
         .bind(self.url.path)
         .bind(self.url.query)
-        .bind(self.title)
+        .bind(self.display_title)
         .bind(self.description)
         .bind(self.collection_id)
         .bind(i32::from(self.pinned))
@@ -572,26 +552,89 @@ impl CreatePage {
     }
 }
 
-pub(crate) struct DeletePage;
+/// PATCH semantics: `value: null` clears, an absent field leaves it unchanged.
+#[derive(Debug, Deserialize)]
+pub(crate) struct UpdatePage {
+    #[serde(default)]
+    pub display_title: FieldPatch<String>,
+    #[serde(default)]
+    pub description: FieldPatch<String>,
+    #[serde(default)]
+    pub collection_id: FieldPatch<String>, // i64 string
+    #[serde(default)]
+    pub pinned: FieldPatch<bool>,
+    #[serde(default)]
+    pub tags: FieldPatch<String>,
+}
 
-impl DeletePage {
+impl UpdatePage {
+    pub(crate) async fn apply(self, pool: &SqlitePool, id: PageId) -> Result<bool> {
+        let Some(current) = PageItem::load(pool, id).await? else {
+            return Ok(false);
+        };
+
+        let tags = match self.tags {
+            FieldPatch::Unchanged => Some(current.tags.into_iter().map(|v| v.name).collect()),
+            FieldPatch::Clear => None,
+            FieldPatch::Set(t) => Some(comma_separated_tags(Some(&t))?),
+        };
+
+        let display_title = self.display_title.apply(Some(current.record.display_title));
+        let description = self.description.apply(Some(current.record.description));
+        let collection_id = match self.collection_id {
+            FieldPatch::Unchanged => current.record.collection_id,
+            FieldPatch::Clear => None,
+            FieldPatch::Set(s) => CollectionId::parse_or(Some(&s)),
+        };
+
+        let pinned = self.pinned.apply(Some(current.record.pinned));
+
+        let collection_id = non_empty_parent(pool, collection_id, None).await?;
+        let mut tx = pool.begin().await?;
+
+        sqlx::query(
+            "UPDATE page
+             SET display_title = COALESCE(NULLIF(TRIM(?), ''), display_title),
+                 description = ?,
+                 collection_id = ?,
+                 pinned = ?
+             WHERE id = ?",
+        )
+        .bind(&display_title)
+        .bind(&description)
+        .bind(collection_id)
+        .bind(pinned)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+        if let Some(tags) = tags {
+            replace_tags(&mut tx, id, &tags).await?;
+        }
+
+        tx.commit().await?;
+        Ok(true)
+    }
+}
+
+impl PageId {
     /// Removes a page and its captures; returns `false` if the page did not exist.
     ///
     /// `page_tag` rows cascade. Orphaned blobs are left for GC.
-    pub(crate) async fn execute(pool: &SqlitePool, id: PageId) -> Result<bool> {
+    pub(crate) async fn delete(self, pool: &SqlitePool) -> Result<bool> {
         let mut tx = pool.begin().await?;
 
         // Captures of other pages that redirected here keep existing, minus the link.
         sqlx::query("UPDATE capture SET redirect_page_id = NULL WHERE redirect_page_id = ?")
-            .bind(id)
+            .bind(self.0)
             .execute(&mut *tx)
             .await?;
         sqlx::query("DELETE FROM capture WHERE page_id = ?")
-            .bind(id)
+            .bind(self.0)
             .execute(&mut *tx)
             .await?;
         let deleted = sqlx::query("DELETE FROM page WHERE id = ?")
-            .bind(id)
+            .bind(self.0)
             .execute(&mut *tx)
             .await?
             .rows_affected()
@@ -599,49 +642,6 @@ impl DeletePage {
 
         tx.commit().await?;
         Ok(deleted)
-    }
-}
-
-pub(crate) struct UptatePage;
-
-impl UptatePage {
-    /// Updates editable fields and replaces the link's tag set.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "link metadata is a wide row; grouping it would only add boilerplate"
-    )]
-    pub(crate) async fn execute(
-        pool: &SqlitePool,
-        id: PageId,
-        title: Option<&str>,
-        description: &str,
-        collection_id: Option<CollectionId>,
-        tags: &[TagName],
-    ) -> Result<bool> {
-        let mut tx = pool.begin().await?;
-
-        if !exists(&mut *tx, id).await? {
-            return Ok(false);
-        }
-
-        sqlx::query(
-            "UPDATE page
-             SET title = COALESCE(NULLIF(TRIM(?), ''), title),
-                 description = ?,
-                 collection_id = ?
-             WHERE id = ?",
-        )
-        .bind(title.unwrap_or_default())
-        .bind(description)
-        .bind(collection_id)
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-
-        replace_tags(&mut tx, id, tags).await?;
-
-        tx.commit().await?;
-        Ok(true)
     }
 }
 

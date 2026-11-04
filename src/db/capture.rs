@@ -169,7 +169,6 @@ pub(crate) struct CaptureSummary {
 }
 
 impl CaptureSummary {
-    #[expect(unused, reason = "Might be needed later")]
     /// Newest version first. `after` is the version of the last item already seen.
     pub(crate) async fn list(
         pool: &SqlitePool,

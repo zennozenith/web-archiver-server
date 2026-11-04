@@ -1,8 +1,8 @@
 {# Needs `collection`. Open with `share = true` from a parent x-data scope. #}
 <dialog class="modal modal-bottom sm:modal-middle"
-  x-effect="if (share) { if (!$el.open) $el.showModal() } else if ($el.open) { $el.close() }"
-  @close="share = false">
-  <div class="modal-box max-w-xl border border-base-300" x-data="{ pub: {% if collection.public %}true{% else %}false{% endif %}, copied: false }">
+  x-effect="if (share) { if (!$el.open) $el.showModal() } else if ($el.open) { $el.close() }" @close="share = false">
+  <div class="modal-box max-w-xl border border-base-300"
+    x-data="{ pub: {% if collection.public %}true{% else %}false{% endif %}, copied: false }">
     <div class="mb-4 flex items-center justify-between">
       <h3 class="text-lg font-semibold">Share collection</h3>
       <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="share = false" aria-label="Close">
@@ -16,14 +16,16 @@
         <input type="checkbox" name="public" class="toggle toggle-primary mt-0.5" x-model="pub" />
         <span>
           <span class="block font-medium">Make this a public collection</span>
-          <span class="block text-sm text-base-content/60">Anyone with the link can view this collection and its links.</span>
+          <span class="block text-sm text-base-content/60">Anyone with the link can view this collection and its
+            links.</span>
         </span>
       </label>
 
       <fieldset class="fieldset" x-show="pub" x-transition>
         <legend class="fieldset-legend">Shareable link</legend>
         <div class="join w-full">
-          <input x-ref="shareUrl" readonly value="{{ collection.share_url }}" class="input join-item w-full" aria-label="Shareable link" />
+          <input x-ref="shareUrl" readonly value="{{ collection.share_url }}" class="input join-item w-full"
+            aria-label="Shareable link" />
           <button type="button" class="btn join-item"
             @click="navigator.clipboard.writeText($refs.shareUrl.value); copied = true; setTimeout(() => copied = false, 1500)"
             x-text="copied ? 'Copied' : 'Copy'"></button>

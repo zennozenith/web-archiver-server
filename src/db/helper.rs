@@ -38,6 +38,17 @@ macro_rules! id_type {
             pub(crate) const fn get(self) -> i64 {
                 self.0
             }
+
+            #[expect(clippy::allow_attributes, reason = "Might be needed later")]
+            #[allow(dead_code, reason = "Might be needed later")]
+            pub(crate) fn parse_or(value: Option<&String>) -> Option<Self> {
+                value
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .filter(|id| *id >= 0)
+                    .map(Self::from)
+            }
         }
 
         impl From<i64> for $name {

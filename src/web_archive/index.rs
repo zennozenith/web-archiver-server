@@ -147,7 +147,7 @@ fn page_card(
         search: format!("{display_title} {url} {tag_names}").to_lowercase(),
         url,
         host,
-        title: display_title,
+        display_title,
         last_captured: if capture_count > 0 {
             ago_timestamp(last_captured_at)
         } else {

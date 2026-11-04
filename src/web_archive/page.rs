@@ -22,7 +22,7 @@ pub(super) struct PageCardTemplate {
     pub id: i64,
     pub url: String,
     pub host: String,
-    pub title: String,
+    pub display_title: String,
     pub search: String,
     pub last_captured: String,
     pub capture_count: i64,

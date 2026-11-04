@@ -1,7 +1,6 @@
 {# Quick search (press / or Ctrl/⌘ K). Results render into #search-results via /links/search. #}
 <dialog class="modal modal-top sm:modal-middle"
-  x-effect="if (search) { if (!$el.open) $el.showModal() } else if ($el.open) { $el.close() }"
-  @close="search = false">
+  x-effect="if (search) { if (!$el.open) $el.showModal() } else if ($el.open) { $el.close() }" @close="search = false">
 
   <div class="modal-box flex max-h-[85vh] border border-base-300 w-full max-w-3xl flex-col gap-4 p-4">
     <label class="input w-full">

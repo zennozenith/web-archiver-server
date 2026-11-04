@@ -1,1 +1,1 @@
-- check how thumbnail is stored and served
+- Thumbnail input in form

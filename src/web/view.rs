@@ -79,7 +79,7 @@ pub(crate) struct FormatView {
 
 pub(crate) struct PageView {
     pub id: crate::db::page::PageId,
-    pub title: String,
+    pub display_title: String,
     pub url: String,
     pub domain: String,
     pub description: String,
@@ -243,7 +243,7 @@ impl PageView {
 
         Self {
             id: record.id,
-            title: record.display_title.clone(),
+            display_title: record.display_title.clone(),
             url: record.url.clone(),
             domain: domain_of(record),
             description: record.description.clone(),

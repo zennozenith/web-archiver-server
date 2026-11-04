@@ -1,9 +1,6 @@
 {% extends "layouts/bare.html" %}
-
 {% block title %}Web Archive{% endblock %}
-
 {% block content %}
-
 <header class="mx-auto flex max-w-7xl flex-wrap items-baseline justify-between gap-x-8 gap-y-2 px-5 pt-8 pb-5">
   <h1 class="flex items-center gap-2 text-3xl font-semibold tracking-tight">
     <a href="/dashboard"><span aria-hidden="true">🗄️</span> Web Archive</a>
@@ -53,7 +50,7 @@
     {% endif %}
 
     <div class="flex flex-col gap-3">
-      {% for PageCardTemplate { id, title, url, host, search, last_captured, capture_count, version_label, tags,
+      {% for PageCardTemplate { id, display_title, url, host, search, last_captured, capture_count, version_label, tags,
       captures,
       .. } in pages %}
       {% include "archive/_page_card.html" %}
