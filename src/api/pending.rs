@@ -25,6 +25,7 @@ const MAX_ERROR_CHARS: usize = 2000;
 
 /// Body of `POST /api/pending` and each entry of `POST /api/pending/bulk`.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CreatePendingRequest {
     pub url: String,
     /// Accepts either `["a", "b"]` or `"a,b"`.
@@ -34,6 +35,7 @@ pub(crate) struct CreatePendingRequest {
 
 /// Body of `PATCH /api/pending/{id}`. Absent fields are left unchanged.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct PatchPendingRequest {
     /// Replaces the whole tag set when present.
     #[serde(default, deserialize_with = "opt_comma_separated_or_seq")]
@@ -43,6 +45,7 @@ pub(super) struct PatchPendingRequest {
 
 /// Body of `POST /api/pending/{id}/fail`.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct FailPendingRequest {
     pub error: String,
 }
@@ -77,6 +80,7 @@ fn parse_new_item(item: &CreatePendingRequest) -> Result<(CanonicalUrl, Vec<TagN
 // ── GET /api/pending ────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ListPendingQuery {
     pub status: Option<PendingStatus>,
     pub limit: Option<Limit>,
@@ -122,6 +126,7 @@ pub(super) async fn create_pending(
 
 // ── POST /api/pending/bulk ──────────────────────────────────────────────────
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct BulkCreateRequest {
     pub items: Vec<CreatePendingRequest>,
 }
@@ -321,11 +326,13 @@ pub(super) async fn delete_pending(
 // ── DELETE /api/pending?status=failed|queued ────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ClearPendingQuery {
     status: PendingStatus,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ClearPendingResponse {
     deleted: u64,
 }

@@ -71,6 +71,7 @@ macro_rules! page_record_select {
     reason = "pin state and capture-format flags are independent booleans"
 )]
 #[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PageRecord {
     pub id: PageId,
     pub url: String,
@@ -141,6 +142,7 @@ struct PageTagJoin {
 /// Keyset position for pages ordered by `(last_captured_at, id)` descending.
 /// Serialized as `"<captured_at>:<id>"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[serde(into = "String", try_from = "String")]
 pub(crate) struct PageCursor {
     pub captured_at: i64,
@@ -554,6 +556,7 @@ impl CreatePage {
 
 /// PATCH semantics: `value: null` clears, an absent field leaves it unchanged.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct UpdatePage {
     #[serde(default)]
     pub display_title: FieldPatch<String>,

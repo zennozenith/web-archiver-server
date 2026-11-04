@@ -36,11 +36,13 @@ pub(crate) struct ErrorInfo {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ErrorBody<'a> {
     error: ErrorInner<'a>,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ErrorInner<'a> {
     code: &'a str,
     message: String,
@@ -112,7 +114,7 @@ impl AppError {
             Duplicate { existing_id, msg } => (
                 StatusCode::CONFLICT,
                 "duplicate",
-                Some(json!({ "existing_id": existing_id, "error": msg })),
+                Some(json!({ "existingId": existing_id, "error": msg })),
             ),
             Conflict(_) => (StatusCode::CONFLICT, "conflict", None),
             PayloadTooLarge { limit } => (

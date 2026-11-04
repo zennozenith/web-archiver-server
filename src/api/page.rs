@@ -31,6 +31,7 @@ const PAGE: &str = "page";
 const DEFAULT_LIMIT: Limit = Limit::from_const(50);
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ReplaceTagsRequest {
     pub tags: Vec<CreateTagRequest>,
 }
@@ -98,6 +99,7 @@ pub(crate) async fn create_page(
 // ── GET /api/page/lookup?url=... ────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct LookupPageQuery {
     url: String,
 }
@@ -152,6 +154,7 @@ pub(super) async fn delete_page(
 // ── GET /api/page/{id}/captures ─────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct ListCapturesQuery {
     limit: Option<Limit>,
     /// Version of the last capture already seen.
@@ -191,6 +194,7 @@ pub(super) async fn put_page_tags(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct AddPageTagRequest {
     name: String,
 }
@@ -238,11 +242,11 @@ pub(crate) async fn parse_multipart(mut mp: Multipart) -> Result<CreatePage> {
                 let raw_url = NonEmptyString::non_empty(&field.text().await?);
                 upload_url = raw_url;
             }
-            "display_title" => {
+            "displayTitle" => {
                 upload_display_title = Some(NonEmptyString::trimmed(&field.text().await?)?);
             }
             "description" => upload_description = NonEmptyString::non_empty(&field.text().await?),
-            "collection_id" => upload_collection_id = Some(field.text().await?),
+            "collectionId" => upload_collection_id = Some(field.text().await?),
             "pinned" => upload_pinned = parse_bool(&field.text().await?)?,
             "tags" => {
                 let t = field.text().await?;

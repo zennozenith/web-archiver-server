@@ -27,14 +27,14 @@
 
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Title</legend>
-          <input name="display_title" type="text" required placeholder="Page title" class="input validator w-full" />
+          <input name="displayTitle" type="text" required placeholder="Page title" class="input validator w-full" />
           <p class="validator-hint hidden">Title is required</p>
         </fieldset>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <fieldset class="fieldset">
             <legend class="fieldset-legend">Collection</legend>
-            <select name="collection_id" class="select w-full">
+            <select name="collectionId" class="select w-full">
               <option value="">Unorganized</option>
               {% for collection in page.all_collections %}
               <option value="{{ collection.id }}">{{ collection.emoji }} {{ collection.name }}</option>

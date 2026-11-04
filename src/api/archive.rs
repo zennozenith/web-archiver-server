@@ -71,7 +71,7 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
             "html" => upload.html = field.bytes().await?.to_vec(),
             "title" => upload.title = Some(NonEmptyString::trimmed(&field.text().await?)?),
             "screenshot" => screenshot = Some(field.bytes().await?.to_vec()),
-            "pending_id" => {
+            "pendingId" => {
                 upload.pending_id = Some(
                     field
                         .text()
@@ -91,7 +91,7 @@ async fn parse_multipart(mut mp: Multipart) -> Result<ArchiveUpload> {
                     )
                 })?);
             }
-            "save-assets" | "save_assets" => {
+            "saveAssets" => {
                 upload.save_assets = Some(parse_bool(&field.text().await?)?);
             }
             _ => {} // ignore unknown fields
@@ -152,7 +152,7 @@ pub(super) async fn archive(
     let page_url = url::Url::parse(&page.url).map_err(|e| AppError::Internal(Box::new(e)))?;
 
     // Split out sub-resource URLs before the HTML bytes are moved into the blob.
-    let (assets, asset_summary) = if upload.save_assets.unwrap_or(true) {
+    let (assets, asset_summary) = if upload.save_assets.unwrap_or(false) {
         collect_assets(&pool, &store, &client, &page_url, &upload.html).await?
     } else {
         (Vec::new(), AssetSummary::default())

@@ -4,8 +4,9 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Settings {
-    #[serde(default = "default_data_dir")]
+    #[serde(default = "default_data_dir", alias = "data_dir")]
     pub data_dir: PathBuf,
     #[serde(default)]
     pub database: DatabaseSettings,
@@ -14,12 +15,13 @@ pub(crate) struct Settings {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct DatabaseSettings {
     #[serde(default = "default_db_url")]
     pub url: Box<str>,
-    #[serde(default = "default_max_connections")]
+    #[serde(default = "default_max_connections", alias = "max_connections")]
     pub max_connections: u32,
-    #[serde(default = "default_busy_timeout_sec")]
+    #[serde(default = "default_busy_timeout_sec", alias = "busy_timeout_sec")]
     pub busy_timeout_sec: u64,
 }
 
@@ -47,6 +49,7 @@ impl DatabaseSettings {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ServerSettings {
     pub host: Option<String>,
     #[serde(deserialize_with = "deserialize_number_from_string")]

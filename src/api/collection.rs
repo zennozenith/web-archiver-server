@@ -28,6 +28,7 @@ pub(super) async fn get_collection(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct CollectionCreateRequest {
     name: String,
     description: Option<String>,
@@ -121,16 +122,17 @@ pub(super) async fn delete_collection(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct SharingForm {
-    public: Option<String>,
+    public: Option<bool>,
 }
 
 pub(super) async fn update_sharing(
     State(pool): State<SqlitePool>,
     Path(id): Path<CollectionId>,
-    ApiJson(form): ApiJson<SharingForm>,
+    ApiJson(req): ApiJson<SharingForm>,
 ) -> Result<StatusCode> {
-    if CollectionRecord::set_public(&pool, id, form.public.is_some()).await? {
+    if CollectionRecord::set_public(&pool, id, req.public.unwrap_or(false)).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(AppError::NotFound("collection"))

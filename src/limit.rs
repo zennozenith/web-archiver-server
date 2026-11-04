@@ -210,6 +210,7 @@ mod tests {
     use super::*;
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
     struct Query {
         #[serde(default)]
         limit: Limit,

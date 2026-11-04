@@ -27,6 +27,7 @@ id_type! {
 ///
 /// Construct via [`FromStr`] / [`TryFrom<&str>`]; the invariant is enforced there.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type, Serialize)]
+#[serde(rename_all = "camelCase")]
 #[sqlx(transparent)]
 pub struct TagName(String);
 
@@ -173,6 +174,7 @@ pub(crate) fn comma_separated_tags(raw: Option<&String>) -> Result<Vec<TagName>,
 
 /// A palette key such as `"red"` or `"deep-blue"` — never a hex value.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type, Serialize)]
+#[serde(rename_all = "camelCase")]
 #[sqlx(transparent)]
 pub(crate) struct TagColor(String);
 

@@ -36,7 +36,7 @@
       {% endfor %}
 
       <form hx-post="/pages/{{ id }}/tags" hx-swap="none" @htmx:after:request="$ok($event) && $el.reset()" class="join">
-        <input type="text" name="display_title" required class="input input-xs join-item w-28" placeholder="add tag…"
+        <input type="text" name="displayTitle" required class="input input-xs join-item w-28" placeholder="add tag…"
           aria-label="Add tag to {{ display_title }}" />
         <button class="btn btn-xs join-item" type="submit" aria-label="Add tag">+</button>
       </form>

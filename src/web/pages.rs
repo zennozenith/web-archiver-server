@@ -32,16 +32,19 @@ const PER_PAGE: Limit = Limit::from_const(12);
 const ALL_LINKS: Limit = Limit::MAX;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PageQuery {
     cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ParentQuery {
     parent: Option<CollectionId>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct EditQuery {
     edit: Option<String>,
 }
@@ -408,7 +411,7 @@ pub(crate) async fn export(State(pool): State<SqlitePool>) -> Result<Json<serde_
         .map(|item| {
             json!({
                 "url": &item.record.url,
-                "display_title": &item.record.display_title,
+                "displayTitle": &item.record.display_title,
                 "description": &item.record.description,
                 "collectionId": item.record.collection_id,
                 "pinned": item.record.pinned,

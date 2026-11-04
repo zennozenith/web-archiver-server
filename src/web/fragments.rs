@@ -20,6 +20,7 @@ use crate::{
 };
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SearchQuery {
     q: Option<String>,
     sort: Option<String>,
@@ -68,6 +69,7 @@ pub(crate) async fn search_links(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct TagSearchQuery {
     q: Option<String>,
 }
@@ -92,6 +94,7 @@ pub(crate) async fn search_tags(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct FormatQuery {
     format: Option<String>,
 }

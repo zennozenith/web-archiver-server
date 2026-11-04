@@ -98,6 +98,7 @@ pub(crate) async fn toggle_pin(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct HighlightForm {
     color: Option<String>,
     text: Option<String>,
@@ -128,6 +129,7 @@ pub(crate) async fn add_highlight(
 // ───────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CollectionForm {
     name: String,
     description: Option<String>,
@@ -225,8 +227,9 @@ pub(crate) async fn delete_collection(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SharingForm {
-    public: Option<String>,
+    public: Option<bool>,
 }
 
 pub(crate) async fn update_sharing(
@@ -234,7 +237,7 @@ pub(crate) async fn update_sharing(
     Path(id): Path<CollectionId>,
     Form(form): Form<SharingForm>,
 ) -> Result<Response> {
-    if CollectionRecord::set_public(&pool, id, form.public.is_some()).await? {
+    if CollectionRecord::set_public(&pool, id, form.public.unwrap_or(false)).await? {
         Ok(StatusCode::NO_CONTENT.into_response())
     } else {
         Err(AppError::NotFound("collection"))
@@ -246,6 +249,7 @@ pub(crate) async fn update_sharing(
 // ───────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct TagForm {
     name: String,
 }

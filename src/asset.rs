@@ -13,6 +13,7 @@ use serde::Deserialize;
 use tower_http::services::ServeDir;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ManifestEntry {
     file: String,
 }

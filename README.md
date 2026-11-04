@@ -125,14 +125,14 @@ APP_DATABASE__URL='sqlite://data/db/app.sqlite3' \
 cargo run
 ```
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `APP_ENV` | `local` | Selects `config/{APP_ENV}.toml` when present |
-| `APP_SERVER__HOST` | `127.0.0.1` | Listen address |
-| `APP_SERVER__PORT` | required | Listen port |
-| `APP_DATABASE__URL` | `sqlite://db/app.db` | SQLite connection URL |
-| `APP_DATABASE__MAX_CONNECTIONS` | `10` | Connection pool size |
-| `APP_DATABASE__BUSY_TIMEOUT_SEC` | `5` | SQLite busy timeout |
+| Variable                         | Default              | Description                                  |
+| -------------------------------- | -------------------- | -------------------------------------------- |
+| `APP_ENV`                        | `local`              | Selects `config/{APP_ENV}.toml` when present |
+| `APP_SERVER__HOST`               | `127.0.0.1`          | Listen address                               |
+| `APP_SERVER__PORT`               | required             | Listen port                                  |
+| `APP_DATABASE__URL`              | `sqlite://db/app.db` | SQLite connection URL                        |
+| `APP_DATABASE__MAX_CONNECTIONS`  | `10`                 | Connection pool size                         |
+| `APP_DATABASE__BUSY_TIMEOUT_SEC` | `5`                  | SQLite busy timeout                          |
 
 Blobs are stored under `data/blobs`. Migrations run automatically on startup.
 
@@ -163,22 +163,22 @@ curl -X POST http://localhost:8889/api/archive \
   -F 'url=https://example.com/article' \
   -F 'title=Example article' \
   -F 'tags=["reading","example"]' \
-  -F 'save-assets=true'
+  -F 'saveAssets=true'
 ```
 
 Fields:
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `html` | yes | Rendered HTML to archive |
-| `url` | yes* | Original page URL (*can come from metadata or a pending item) |
-| `title` | no | Page title; metadata and the pending item are fallbacks |
-| `tags` | no | JSON array of tag names |
-| `pending_id` | no | Claim a queued URL and use its URL/title |
-| `screenshot` | no | Screenshot bytes |
-| `screenshot-format` | no | `png` or `jpeg` when a screenshot is sent |
-| `metadata` | no | JSON object; `url` and `title` are recognized |
-| `save-assets` | no | `true` (default) fetches sub-resources |
+| Field               | Required | Description                                                   |
+| ------------------- | -------- | ------------------------------------------------------------- |
+| `html`              | yes      | Rendered HTML to archive                                      |
+| `url`               | yes*     | Original page URL (*can come from metadata or a pending item) |
+| `title`             | no       | Page title; metadata and the pending item are fallbacks       |
+| `tags`              | no       | JSON array of tag names                                       |
+| `pending_id`        | no       | Claim a queued URL and use its URL/title                      |
+| `screenshot`        | no       | Screenshot bytes                                              |
+| `screenshot-format` | no       | `png` or `jpeg` when a screenshot is sent                     |
+| `metadata`          | no       | JSON object; `url` and `title` are recognized                 |
+| `saveAssets`        | no       | `true` (default) fetches sub-resources                        |
 
 Example response (`201 Created`):
 
@@ -203,14 +203,14 @@ Example response (`201 Created`):
 
 ## Replaying a capture
 
-| Endpoint | Returns |
-| --- | --- |
-| `/api/captures/{id}/html` | Rewritten HTML that loads captured assets |
-| `/api/captures/{id}/html/original` | Exact bytes uploaded to the archive API |
-| `/api/captures/{id}/screenshot` | Stored screenshot, if any |
-| `/api/pages/{id}/latest/html` | Redirect to the newest rewritten capture |
-| `/api/pages/{id}/latest/html/original` | Redirect to the newest original capture |
-| `/api/content/{hash}` | Immutable deduplicated blob |
+| Endpoint                               | Returns                                   |
+| -------------------------------------- | ----------------------------------------- |
+| `/api/captures/{id}/html`              | Rewritten HTML that loads captured assets |
+| `/api/captures/{id}/html/original`     | Exact bytes uploaded to the archive API   |
+| `/api/captures/{id}/screenshot`        | Stored screenshot, if any                 |
+| `/api/pages/{id}/latest/html`          | Redirect to the newest rewritten capture  |
+| `/api/pages/{id}/latest/html/original` | Redirect to the newest original capture   |
+| `/api/content/{hash}`                  | Immutable deduplicated blob               |
 
 Archived HTML is sandboxed. Scripts are captured as assets but are **not**
 executed on replay; this keeps archived pages from running untrusted code on your
@@ -221,16 +221,16 @@ origin.
 The complete route list and request details live in
 [`src/api/mod.rs`](src/api/mod.rs). Main groups:
 
-| Group | Endpoints |
-| --- | --- |
-| Archive | `POST /api/archive` |
+| Group         | Endpoints                                                                        |
+| ------------- | -------------------------------------------------------------------------------- |
+| Archive       | `POST /api/archive`                                                              |
 | Pending queue | `GET/POST /api/pending`, `PATCH/DELETE /api/pending/{id}`, bulk/claim/retry/fail |
-| Pages | `GET /api/pages`, `GET/DELETE /api/pages/{id}`, captures, latest HTML |
-| Captures | `GET/DELETE /api/captures/{id}`, HTML/original/screenshot, assets |
-| Content | `GET/HEAD /api/content/{hash}` |
-| Tags | `GET/POST /api/tags`, `PATCH/DELETE /api/tags/{id}`, merge |
-| Maintenance | `POST /api/maintenance/gc` |
-| Misc | `GET /api/health`, `GET /api/stats` |
+| Pages         | `GET /api/pages`, `GET/DELETE /api/pages/{id}`, captures, latest HTML            |
+| Captures      | `GET/DELETE /api/captures/{id}`, HTML/original/screenshot, assets                |
+| Content       | `GET/HEAD /api/content/{hash}`                                                   |
+| Tags          | `GET/POST /api/tags`, `PATCH/DELETE /api/tags/{id}`, merge                       |
+| Maintenance   | `POST /api/maintenance/gc`                                                       |
+| Misc          | `GET /api/health`, `GET /api/stats`                                              |
 
 `slumber.yml` contains an interactive request collection for exploring the API
 with [Slumber](https://slumber.lucaspickering.me/).

@@ -51,8 +51,8 @@ requests:
         url: "https://example.com"
         title: "Example Page"
         tags: '["archived", "docs"]'
-        pending_id: "1"
-        save-assets: "true"
+        pendingId: "1"
+        saveAssets: "true"
 
   # ── Captures / saved sub-resources ────────────────────────────────────────
   get_capture:

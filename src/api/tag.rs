@@ -22,6 +22,7 @@ pub(super) async fn list_tags(State(pool): State<SqlitePool>) -> Result<ApiJson<
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct CreateTagRequest {
     pub name: String,
     pub color: Option<String>,
@@ -47,6 +48,7 @@ pub(super) async fn create_tag(
 
 /// PATCH semantics: `color: null` clears, an absent field leaves it unchanged.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct PatchTagRequest {
     pub name: Option<String>,
     #[serde(default)]
@@ -104,6 +106,7 @@ pub(super) async fn delete_tag(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct MergeTagRequest {
     /// The surviving tag. Serialized as `"into"` to keep the existing wire format.
     #[serde(rename = "into")]

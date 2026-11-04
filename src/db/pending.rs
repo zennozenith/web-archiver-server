@@ -53,6 +53,7 @@ pub(crate) struct PendingRecord {
 
 /// A pending record together with its tags. This is the API representation.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PendingItem {
     #[serde(flatten)]
     pub record: PendingRecord,

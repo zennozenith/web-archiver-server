@@ -21,7 +21,7 @@
 
   <fieldset class="fieldset">
     <legend class="fieldset-legend">Parent collection</legend>
-    <select name="parent_id" class="select w-full">
+    <select name="parentId" class="select w-full">
       <option value="">None</option>
       {% for collection in collections %}
       <option value="{{ collection.id }}" {% if collection.selected %}selected{% endif %}>{{ collection.emoji }} {{

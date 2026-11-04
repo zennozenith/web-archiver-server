@@ -22,7 +22,7 @@ macro_rules! id_type {
             ::sqlx::Type, ::serde::Serialize, ::serde::Deserialize,
         )]
         #[sqlx(transparent)]
-        #[serde(transparent)]
+        #[serde(transparent, rename_all = "camelCase")]
         $vis struct $name(i64);
 
         impl $name {
@@ -158,6 +158,7 @@ impl From<InvalidCursor> for AppError {
 /// Travels over the wire as a decimal string (`"42"`), so clients treat it as
 /// opaque, and malformed input is rejected at deserialization time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[serde(into = "String", try_from = "String")]
 pub(crate) struct Cursor(i64);
 

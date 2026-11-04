@@ -172,11 +172,11 @@
         hx-swap="none" @htmx:after:request="if ($ok($event)) { mode = 'view'; location.reload() }">
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Name</legend>
-          <input name="display_title" value="{{ link.display_title }}" class="input w-full" />
+          <input name="displayTitle" value="{{ link.display_title }}" class="input w-full" />
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Collection</legend>
-          <select name="collection_id" class="select w-full">
+          <select name="collectionId" class="select w-full">
             <option value="">Unorganized</option>
             {% for collection in collections %}
             <option value="{{ collection.id }}" {% if collection.selected %}selected{% endif %}>{{ collection.name }}

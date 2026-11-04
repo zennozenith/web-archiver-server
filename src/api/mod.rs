@@ -1,63 +1,83 @@
-//! ── Archive (create a new capture) ──────────────────────────────────────────
-//!   POST   /api/page/:id/capture         multipart/form-data: html, screenshot,
-//!                                        metadata (JSON), title, `pending_id`, save-assets
-//!                                        (default true; fetch and store the document's
-//!                                        stylesheets/scripts/images/... as content blobs)
-//!                                        → 201 { `capture_id`, `page_id`, version,
-//!                                                deduplicated: {html, originalHtml, screenshot},
-//!                                                assets: {saved, deduplicated, failed, skipped} }
+//! ── Health & maintenance ────────────────────────────────────────────────────
+//!   GET    /api/health                   JSON { status: "ok" }
+//!   GET    /api/stats                    totals, dedup savings, queue depth
+//!   POST   /api/maintenance/gc           delete unreferenced content and orphan files
+//!
+//! ── Collections (nested folders that group pages) ───────────────────────────
+//!   GET    /api/collection               all collections, with direct link counts
+//!   POST   /api/collection               JSON { name, description?, `parentId`?, color? }
+//!   GET    /api/collection/:id           one collection
+//!   POST   /api/collection/:id           update (same body as create; name required)
+//!   PUT    /api/collection/:id           same as POST
+//!   DELETE /api/collection/:id           removes the collection, its pages and captures;
+//!                                        child collections are detached (204)
+//!   PUT    /api/collection/:id/sharing   JSON { public? } non-null value → public
+//!   GET    /api/public/collection/:id    one collection, only when `public` is true
 //!
 //! ── Pending queue ───────────────────────────────────────────────────────────
 //!   GET    /api/pending                  ?`status=queued|in_progress|failed` &limit &cursor
-//!   POST   /api/pending                  JSON { url, title?, tags?: [names] }
-//!   POST   /api/pending/bulk             JSON { items: [{ url, title?, tags? }] }
+//!   POST   /api/pending                  JSON { url, tags?: "a,b" | [names] }
+//!   DELETE /api/pending                  ?status=queued|failed → { deleted }
+//!   POST   /api/pending/bulk             JSON { items: [{ url, tags? }] } (1..=500)
 //!   GET    /api/pending/:id
-//!   PATCH  /api/pending/:id              JSON { title?, tags?, status? }
+//!   PATCH  /api/pending/:id              JSON { tags?, status? }
 //!   DELETE /api/pending/:id
 //!   POST   /api/pending/:id/retry        reset failed → queued
 //!   POST   /api/pending/claim            worker atomically takes next queued item → `in_progress`
+//!                                        (204 when the queue is empty)
 //!   POST   /api/pending/:id/fail         JSON { error } increments attempts, sets failed
 //!
 //! ── Pages (a URL and all its versions) ──────────────────────────────────────
-//!   POST   /api/pages                    TODO: Create page ...
-//!   GET    /api/pages                    ?tag=a&tag=b &match=all|any &host &q &sort=recent|title &limit &cursor
+//!   GET    /api/page                     ?text &field=name|url|text|tags
+//!                                        &sort=newest|oldest|name
+//!                                        &pinnedOnly &collectionId &tagId &limit &cursor
+//!   POST   /api/page                     multipart/form-data: url, `displayTitle`,
+//!                                        description?, `collectionId`?, pinned?,
+//!                                        tags? (comma-separated), thumbnail? → page item
 //!   GET    /api/page/lookup              ?url=...  (is this URL archived? returns page + latest capture)
 //!   GET    /api/page/:id                 url, tags, capture count, latest capture
+//!   PATCH  /api/page/:id                 JSON { `displayTitle`?, description?, `collectionId`?,
+//!                                        pinned?, tags? } (absent = unchanged; 204)
 //!   DELETE /api/page/:id                 removes page, captures, tag links (orphan content GC'd)
-//!   GET    /api/page/:id/capture         version history, newest first
-//!   PUT    /api/page/:id/tag             JSON { tags: [names] } replace the full set
+//!   GET    /api/page/:id/thumbnail       stored thumbnail blob
+//!   GET    /api/page/:id/capture         ?limit &cursor  version history, newest first
+//!                                        → { items: [...], nextCursor }
+//!   PUT    /api/page/:id/tag             JSON { tags: [{ name, color? }] } replace the full set
 //!   POST   /api/page/:id/tag             JSON { name } add one (get-or-create)
-//!   DELETE /api/page/`:id`/tag/`:tag_id`
+//!   DELETE /api/page/:id/tag/`:tag_id`
 //!
 //! ── Captures (a single version) ─────────────────────────────────────────────
+//!   POST   /api/page/:id/capture         multipart/form-data: html, screenshot?,
+//!                                        metadata? (JSON), title?, `pendingId`?,
+//!                                        saveAssets? (default false; fetch and store the
+//!                                        document's stylesheets/scripts/images/... as
+//!                                        content blobs)
+//!                                        → 201 { `capture_id`, `page_id`, version,
+//!                                                deduplicated: {html, originalHtml, screenshot},
+//!                                                assets: {saved, deduplicated, failed, skipped} }
 //!   GET    /api/capture/:id              metadata, headers, sizes, title, version number
 //!   DELETE /api/capture/:id
 //!   GET    /api/capture/:id/html         archived document with resource URLs rewritten
 //!                                        to /api/content/:hash
-//!   GET    /api/capture/:id/html/original  exact bytes uploaded to /api/archive
+//!   GET    /api/capture/:id/html/original  exact bytes uploaded to /api/page/:id/capture
 //!   GET    /api/capture/:id/screenshot   image with the stored format's Content-Type
 //!   GET    /api/capture/:id/asset        sub-resources saved with this capture
-//!   GET    /api/capture/`:id`/asset/`:content_id`
-//!   GET    /api/page/:id/latest/html     302 → latest capture's html
-//!   GET    /api/page/:id/latest/html/original  302 → latest capture's original html
-//!   GET    /api/page/:id/latest/screenshot
-//!   GET    /api/page/:id/latest/asset
+//!   GET    /api/capture/:id/asset/`:content_id`
+//!   GET    /api/page/:id/latest/html     307 → latest capture's html
+//!   GET    /api/page/:id/latest/html/original  307 → latest capture's original html
+//!   GET    /api/page/:id/latest/screenshot      307 → latest capture's screenshot
+//!   GET    /api/page/:id/latest/asset    assets of the latest capture
 //!
 //! ── Content (raw deduplicated blobs) ────────────────────────────────────────
 //!   GET    /api/content/:hash            hex blake3; immutable
 //!   HEAD   /api/content/:hash            exists? (lets clients skip uploading known files)
 //!
 //! ── Tags ────────────────────────────────────────────────────────────────────
-//!   GET    /api/tag                      with page counts
+//!   GET    /api/tag                      with page and pending counts
 //!   POST   /api/tag                      JSON { name, color? }
-//!   PATCH  /api/tag/:id                  JSON { name?, color? }
+//!   PATCH  /api/tag/:id                  JSON { name?, color? } (color: null clears)
 //!   DELETE /api/tag/:id
 //!   POST   /api/tag/:id/merge            JSON { into: `tag_id` }
-//!
-//! ── Misc ────────────────────────────────────────────────────────────────────
-//!   GET    /api/search                   ?q= (FTS5, later)
-//!   GET    /api/stats                    totals, dedup savings, queue depth
-//!   GET    /api/health
 
 mod archive;
 mod asset;
