@@ -9,7 +9,7 @@
     </div>
     <p class="mt-1 text-xs text-base-content/50">Tags: {{ tags }}</p>
   </div>
-  <button type="button" hx-delete="/pending/{{id}}" hx-target="#pending-{{id}}" hx-swap="outerHTML"
+  <button type="button" hx-delete="/archive/pending/{{id}}" hx-target="#pending-{{id}}" hx-swap="outerHTML"
     hx-confirm="Remove this URL from the queue?" class="btn btn-ghost btn-xs btn-square text-error shrink-0"
     aria-label="Remove from queue" title="Remove from queue">
     <span class="icon-[lucide--x] size-4"></span>

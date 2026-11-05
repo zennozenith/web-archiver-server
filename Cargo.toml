@@ -1,6 +1,6 @@
 [package]
 name = "web-archiver"
-version = "0.0.0"
+version = "0.0.2"
 edition = "2024"
 description = "A self-hosted web archive server that saves and replays rendered pages and their sub-resources"
 readme = "README.md"

@@ -10,14 +10,14 @@
       title="Rename">
       <span class="icon-[lucide--pencil] size-3.5"></span>
     </button>
-    <button type="button" hx-delete="/tags/{{ tag.id }}" hx-swap="none"
+    <button type="button" hx-delete="/archive/tag/{{ tag.id }}" hx-swap="none"
       hx-confirm="Delete this tag? It will be removed from all pages."
       class="btn btn-ghost btn-xs btn-square text-error" aria-label="Delete {{ tag.name }}" title="Delete">
       <span class="icon-[lucide--trash-2] size-3.5"></span>
     </button>
   </div>
 
-  <form x-show="editing" x-cloak hx-patch="/tags/{{ tag.id }}" hx-swap="none" class="join min-w-0 flex-1">
+  <form x-show="editing" x-cloak hx-patch="/archive/tag/{{ tag.id }}" hx-swap="none" class="join min-w-0 flex-1">
     <input x-ref="input" x-model="name" type="text" name="name" required class="input input-xs join-item min-w-0 flex-1"
       aria-label="Rename {{ tag.name }}" />
     <button class="btn btn-xs btn-primary join-item" type="submit">Save</button>

@@ -1,8 +1,23 @@
 use askama::Template;
+use axum::{
+    Form,
+    extract::{Path, State},
+};
+use serde::Deserialize;
+use sqlx::SqlitePool;
 
 use crate::{
-    db::pending::{PendingItem, PendingStatus},
+    db::{
+        helper::CreateOutcome,
+        pending::{PendingId, PendingItem, PendingRecord, PendingStatus},
+    },
+    error::{AppError, OptionExt, Result},
+    extract::comma_separated_or_seq,
+    htmx::{HtmxResponse, PartialSwap},
+    tag,
+    template::FeedbackTemplate,
     time::ago_timestamp,
+    url_canon::canonicalize_url,
 };
 
 #[derive(Template)]
@@ -49,75 +64,63 @@ impl<'a> From<&'a PendingItem> for PendingTemplate<'a> {
     }
 }
 
-// pub(super) async fn create_pending(
-//     State(pool): State<SqlitePool>,
-//     Form(req): Form<CreatePendingRequest>,
-// ) -> Result<HtmxResponse> {
-//     let canon = canonicalize_url(&req.url)?;
-//     let tags = tag::parse_names(&req.tags)?;
+/// Body of `POST /archive/pending`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CreatePendingRequest {
+    pub url: String,
+    /// Accepts either `["a", "b"]` or `"a,b"`.
+    #[serde(default, deserialize_with = "comma_separated_or_seq")]
+    pub tags: Vec<String>,
+}
 
-//     let mut tx = pool.begin().await?;
-//     let id = match PendingRecord::enqueue(&mut tx, &canon, &tags).await? {
-//         CreateOutcome::Created(id) => id,
-//         CreateOutcome::Existing(existing_id) => {
-//             return Err(AppError::Duplicate {
-//                 existing_id: existing_id.get(),
-//                 msg: "Url exists",
-//             });
-//         }
-//     };
-//     tx.commit().await?;
+pub(super) async fn create_pending(
+    State(pool): State<SqlitePool>,
+    Form(req): Form<CreatePendingRequest>,
+) -> Result<HtmxResponse> {
+    let canon = canonicalize_url(&req.url)?;
+    let tags = tag::parse_names(&req.tags)?;
 
-//     let pending_dto = PendingItem::load(&pool, id)
-//         .await?
-//         .or_not_found("pending item")?;
+    let mut tx = pool.begin().await?;
+    let id = match PendingRecord::enqueue(&mut tx, &canon, &tags).await? {
+        CreateOutcome::Created(id) => id,
+        CreateOutcome::Existing(existing_id) => {
+            return Err(AppError::Duplicate {
+                existing_id: existing_id.get(),
+                msg: "url is already in the pending queue",
+            });
+        }
+    };
+    tx.commit().await?;
 
-//     Ok(HtmxResponse::partials([
-//         // New card goes to the top of the list
-//         PartialSwap::tpl(
-//             "#pending-list",
-//             &PendingFragmentTemplate::from(&pending_dto),
-//         )?
-//         .swap("afterbegin"),
-//         // Clear any previous error message
-//         PartialSwap::new("#pending-feedback", "").swap("innerHTML"),
-//     ]))
-// }
+    let pending_dto = PendingItem::load(&pool, id)
+        .await?
+        .or_not_found("pending item")?;
 
-// #[derive(Deserialize)]
-// pub(super) struct QueryPending {
-//     limit: Option<Limit>,
-//     status: Option<PendingStatus>,
-//     after_id: Option<i64>,
-// }
+    Ok(HtmxResponse::partials([
+        // New card goes to the top of the list
+        PartialSwap::tpl(
+            "#pending-list",
+            &PendingFragmentTemplate::from(&pending_dto),
+        )?
+        .swap("afterbegin"),
+        // Clear any previous error message
+        PartialSwap::new("#pending-feedback", "").swap("innerHTML"),
+    ]))
+}
 
-// pub(super) async fn get_pending(
-//     State(pool): State<SqlitePool>,
-//     Query(query): Query<QueryPending>,
-// ) -> Result<Json<CursorPage<PendingItem>>> {
-//     let QueryPending {
-//         limit,
-//         status,
-//         after_id,
-//     } = query;
+pub(super) async fn delete_pending(
+    State(pool): State<SqlitePool>,
+    Path(id): Path<PendingId>,
+) -> Result<HtmxResponse> {
+    // Idempotent: if the row is already gone, the card should disappear anyway.
+    PendingRecord::delete(&pool, id).await?;
 
-//     let cursor = after_id.map(Cursor::new);
-//     let limit = limit.unwrap_or(DEFAULT_PENDING_LIMIT);
-//     Ok(Json(PendingItem::list(&pool, status, cursor, limit).await?))
-// }
-
-// pub(super) async fn delete_pending(
-//     State(pool): State<SqlitePool>,
-//     Path(id): Path<PendingId>,
-// ) -> Result<HtmxResponse> {
-//     // Idempotent: if the row is already gone, the card should disappear anyway.
-//     PendingRecord::delete(&pool, id).await?;
-
-//     // 200 with an empty body, not 204. htmx 4 doesn't swap 204 responses,
-//     // so the card would never be removed.
-//     Ok(HtmxResponse::partials([
-//         PartialSwap::new(format!("#pending-{id}"), "").swap("outerHTML"),
-//         PartialSwap::tpl("#pending-feedback", &FeedbackTemplate::success("Removed"))?
-//             .swap("innerHTML"),
-//     ]))
-// }
+    // 200 with an empty body, not 204. htmx 4 doesn't swap 204 responses,
+    // so the card would never be removed.
+    Ok(HtmxResponse::partials([
+        PartialSwap::new(format!("#pending-{id}"), "").swap("outerHTML"),
+        PartialSwap::tpl("#pending-feedback", &FeedbackTemplate::success("Removed"))?
+            .swap("innerHTML"),
+    ]))
+}

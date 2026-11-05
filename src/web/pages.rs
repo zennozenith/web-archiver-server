@@ -216,9 +216,9 @@ pub(crate) async fn archive(
 
     let target = match format.as_str() {
         "readable" => Some(format!("/links/{id}")),
-        "webpage" | "html" if item.record.has_html => Some(format!("/api/pages/{id}/latest/html")),
+        "webpage" | "html" if item.record.has_html => Some(format!("/api/page/{id}/latest/html")),
         "screenshot" | "png" if item.record.has_screenshot => {
-            Some(format!("/api/pages/{id}/latest/screenshot"))
+            Some(format!("/api/page/{id}/latest/screenshot"))
         }
         _ => None,
     };

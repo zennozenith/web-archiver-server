@@ -26,7 +26,7 @@ const MAX_ERROR_CHARS: usize = 2000;
 /// Body of `POST /api/pending` and each entry of `POST /api/pending/bulk`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CreatePendingRequest {
+pub(super) struct CreatePendingRequest {
     pub url: String,
     /// Accepts either `["a", "b"]` or `"a,b"`.
     #[serde(default, deserialize_with = "comma_separated_or_seq")]

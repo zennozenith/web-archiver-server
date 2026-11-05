@@ -13,7 +13,7 @@ use crate::{
 
 const ASSET_CACHE: &str = "private, max-age=86400";
 
-// GET /api/captures/{id}/assets
+// GET /api/capture/{id}/assets
 pub(super) async fn capture_assets(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
@@ -22,7 +22,7 @@ pub(super) async fn capture_assets(
     Ok(ApiJson(list.into_iter().collect()))
 }
 
-// GET /api/pages/{id}/latest/assets
+// GET /api/page/{id}/latest/assets
 pub(super) async fn latest_assets(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<i64>,
@@ -34,7 +34,7 @@ pub(super) async fn latest_assets(
     Ok(ApiJson(list.into_iter().collect()))
 }
 
-// GET /api/captures/{id}/assets/{content_id}
+// GET /api/capture/{id}/assets/{content_id}
 pub(super) async fn capture_asset(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,

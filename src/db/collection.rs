@@ -145,27 +145,28 @@ impl CollectionRecord {
 
         let mut tx = pool.begin().await?;
 
-        // Captures of other pages that redirected into this collection stay,
-        // but lose the dangling reference.
-        sqlx::query(
-            "UPDATE capture SET redirect_page_id = NULL
-             WHERE redirect_page_id IN (SELECT id FROM page WHERE collection_id = ?)",
-        )
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
+        // TODO: No need to delete pages also
+        // // Captures of other pages that redirected into this collection stay,
+        // // but lose the dangling reference.
+        // sqlx::query(
+        //     "UPDATE capture SET redirect_page_id = NULL
+        //      WHERE redirect_page_id IN (SELECT id FROM page WHERE collection_id = ?)",
+        // )
+        // .bind(id)
+        // .execute(&mut *tx)
+        // .await?;
 
-        sqlx::query(
-            "DELETE FROM capture WHERE page_id IN (SELECT id FROM page WHERE collection_id = ?)",
-        )
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
+        // sqlx::query(
+        //     "DELETE FROM capture WHERE page_id IN (SELECT id FROM page WHERE collection_id = ?)",
+        // )
+        // .bind(id)
+        // .execute(&mut *tx)
+        // .await?;
 
-        sqlx::query("DELETE FROM page WHERE collection_id = ?")
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
+        // sqlx::query("DELETE FROM page WHERE collection_id = ?")
+        //     .bind(id)
+        //     .execute(&mut *tx)
+        //     .await?;
 
         sqlx::query("UPDATE collection SET parent_id = NULL WHERE parent_id = ?")
             .bind(id)

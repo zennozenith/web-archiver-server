@@ -5,7 +5,7 @@
       <span class="badge badge-ghost badge-sm tabular-nums">{{ tag.count }}</span>
     </a>
 
-    <form x-show="editing" x-cloak hx-put="/tags/{{ tag.id }}" hx-swap="none"
+    <form x-show="editing" x-cloak hx-put="/tag/{{ tag.id }}" hx-swap="none"
       @htmx:after:request="$ok($event) && location.reload()" class="join min-w-0 flex-1">
       <input x-ref="input" x-model="name" name="name" required class="input input-sm join-item min-w-0 flex-1"
         aria-label="Tag name" />

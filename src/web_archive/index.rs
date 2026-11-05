@@ -94,6 +94,7 @@ pub(super) async fn index(State(pool): State<SqlitePool>) -> Result<impl IntoRes
     .render_html()
 }
 
+#[expect(clippy::too_many_lines, reason = "")]
 fn page_card(
     row: PageRecord,
     tags_by_page: &mut HashMap<PageId, Vec<Tag>>,
@@ -106,6 +107,7 @@ fn page_card(
         host,
         last_captured_at,
         capture_count,
+        pinned,
         ..
     } = row;
 
@@ -148,6 +150,7 @@ fn page_card(
         url,
         host,
         display_title,
+        pinned,
         last_captured: if capture_count > 0 {
             ago_timestamp(last_captured_at)
         } else {

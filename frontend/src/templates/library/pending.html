@@ -92,7 +92,7 @@
         <div class="flex shrink-0 items-center gap-1">
           {% if item.retryable %}
           <button type="button" class="btn btn-ghost btn-xs btn-square" title="Retry" aria-label="Retry"
-            hx-post="/pending/{{ item.id }}/retry" hx-swap="none"
+            hx-post="/api/pending/{{ item.id }}/retry" hx-swap="none"
             @htmx:after:request="$ok($event) && location.reload()">
             <span class="icon-[lucide--refresh-cw] size-4"></span>
           </button>
