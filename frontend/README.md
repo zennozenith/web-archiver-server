@@ -105,18 +105,18 @@ task through devenv automatically.
 
 ## Scripts
 
-| Script          | Command                          | Purpose                                      |
-| --------------- | -------------------------------- | -------------------------------------------- |
-| `dev`           | `vp dev`                         | Vite dev server for asset work               |
-| `build:tsc`     | `tsc --noEmit && vp build`       | Type-check, then production build            |
-| `build`         | `vp build`                       | Production build into `OUT_DIR`              |
-| `build:preview` | `node scripts/build-preview.mjs` | Render static pages with placeholder data    |
-| `watch`         | `vp build --watch`               | Rebuild on change                            |
-| `preview`       | `vp preview`                     | Preview the production build                 |
-| `fmt`           | `vp fmt`                         | Format TS/CSS/config                         |
-| `fmt:check`     | `vp fmt --check`                 | Check formatting                             |
-| `lint`          | `vp lint`                        | Lint with type-aware rules                   |
-| `lint:fix`      | `vp lint --fix`                  | Apply lint fixes                             |
+| Script          | Command                          | Purpose                                   |
+| --------------- | -------------------------------- | ----------------------------------------- |
+| `dev`           | `vp dev`                         | Vite dev server for asset work            |
+| `build:tsc`     | `tsc --noEmit && vp build`       | Type-check, then production build         |
+| `build`         | `vp build`                       | Production build into `OUT_DIR`           |
+| `build:preview` | `node scripts/build-preview.mjs` | Render static pages with placeholder data |
+| `watch`         | `vp build --watch`               | Rebuild on change                         |
+| `preview`       | `vp preview`                     | Preview the production build              |
+| `fmt`           | `vp fmt`                         | Format TS/CSS/config                      |
+| `fmt:check`     | `vp fmt --check`                 | Check formatting                          |
+| `lint`          | `vp lint`                        | Lint with type-aware rules                |
+| `lint:fix`      | `vp lint --fix`                  | Apply lint fixes                          |
 
 Run them with `vp run <script>`, for example `vp run build:tsc` and
 `vp run fmt:check`.

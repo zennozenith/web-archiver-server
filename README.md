@@ -1,5 +1,7 @@
 # Web Archiver
 
+[![Built with devenv](https://devenv.sh/assets/devenv-badge.svg)](https://devenv.sh)
+
 A self-hosted web archive: save rendered pages, their sub-resources, and a
 screenshot, then replay them later from your own machine.
 
@@ -91,15 +93,15 @@ up to four levels deep.
 
 ## Tech stack
 
-| Layer     | Technology                                                                 |
-| --------- | -------------------------------------------------------------------------- |
+| Layer     | Technology                                                                  |
+| --------- | --------------------------------------------------------------------------- |
 | Server    | Rust 2024, [Axum](https://github.com/tokio-rs/axum), Tokio                  |
 | Database  | SQLite via [SQLx](https://github.com/launchbadge/sqlx), embedded migrations |
-| Templates | [Askama](https://github.com/askama-rs/askama)                              |
+| Templates | [Askama](https://github.com/askama-rs/askama)                               |
 | HTTP      | [reqwest](https://github.com/seanmonstar/reqwest) with rustls               |
-| Storage   | BLAKE3 content addressing, Brotli/gzip, local blob store                   |
-| Frontend  | Vite+ (Vite/Rolldown), TypeScript, Alpine.js, htmx, Tailwind CSS, DaisyUI  |
-| Icons     | Iconify + Lucide, rendered as Tailwind classes                             |
+| Storage   | BLAKE3 content addressing, Brotli/gzip, local blob store                    |
+| Frontend  | Vite+ (Vite/Rolldown), TypeScript, Alpine.js, htmx, Tailwind CSS, DaisyUI   |
+| Icons     | Iconify + Lucide, rendered as Tailwind classes                              |
 
 Frontend details, conventions, and workflows live in
 [`frontend/README.md`](frontend/README.md).
@@ -179,16 +181,16 @@ APP_DATA_DIR='./data' \
 cargo run
 ```
 
-| Variable                         | Default              | Description                                     |
-| -------------------------------- | -------------------- | ----------------------------------------------- |
-| `APP_ENV`                        | `local`              | Selects `config/{APP_ENV}.toml` when it exists  |
-| `APP_DATA_DIR`                   | `data`               | Base directory for the blob store               |
-| `APP_SERVER__HOST`               | `127.0.0.1`          | Listen address                                  |
-| `APP_SERVER__PORT`               | *required*           | Listen port                                     |
-| `APP_DATABASE__URL`              | `sqlite://data/db/app.db` | SQLite connection URL                      |
-| `APP_DATABASE__MAX_CONNECTIONS`  | `10`                 | Connection pool size                            |
-| `APP_DATABASE__BUSY_TIMEOUT_SEC` | `5`                  | SQLite busy timeout in seconds                  |
-| `RUST_LOG`                       | `web_archiver=debug` | `tracing-subscriber` environment filter         |
+| Variable                         | Default                   | Description                                    |
+| -------------------------------- | ------------------------- | ---------------------------------------------- |
+| `APP_ENV`                        | `local`                   | Selects `config/{APP_ENV}.toml` when it exists |
+| `APP_DATA_DIR`                   | `data`                    | Base directory for the blob store              |
+| `APP_SERVER__HOST`               | `127.0.0.1`               | Listen address                                 |
+| `APP_SERVER__PORT`               | _required_                | Listen port                                    |
+| `APP_DATABASE__URL`              | `sqlite://data/db/app.db` | SQLite connection URL                          |
+| `APP_DATABASE__MAX_CONNECTIONS`  | `10`                      | Connection pool size                           |
+| `APP_DATABASE__BUSY_TIMEOUT_SEC` | `5`                       | SQLite busy timeout in seconds                 |
+| `RUST_LOG`                       | `web_archiver=debug`      | `tracing-subscriber` environment filter        |
 
 The database directory must exist before startup; SQLite creates the database
 file but not its parent directory. Blobs are stored under `APP_DATA_DIR/blobs`.
@@ -198,21 +200,21 @@ Migrations run automatically on startup.
 
 The server-rendered UI is available at `/` (redirects to `/dashboard`).
 
-| Path                          | Page                                              |
-| ----------------------------- | ------------------------------------------------- |
-| `/dashboard`                  | Library overview, stats, and recent links         |
-| `/links`                      | All saved links, with infinite scroll and filters |
-| `/links/{id}`                 | Reader/detail page with tags, highlights, formats |
-| `/pinned`                     | Pinned links                                      |
-| `/collections`                | Collection overview                               |
-| `/collections/{id}`           | Links in a collection                             |
-| `/collections/unorganized`    | Links with no collection                          |
-| `/pending`                    | Capture queue                                     |
-| `/tags`                       | All tags                                          |
-| `/tags/{name}`                | Links with a tag                                  |
-| `/public/collections/{id}`    | Read-only public collection                       |
-| `/export`                     | JSON export of collections and links              |
-| `/archive`                    | Compact archive dashboard (capture history)       |
+| Path                       | Page                                              |
+| -------------------------- | ------------------------------------------------- |
+| `/dashboard`               | Library overview, stats, and recent links         |
+| `/links`                   | All saved links, with infinite scroll and filters |
+| `/links/{id}`              | Reader/detail page with tags, highlights, formats |
+| `/pinned`                  | Pinned links                                      |
+| `/collections`             | Collection overview                               |
+| `/collections/{id}`        | Links in a collection                             |
+| `/collections/unorganized` | Links with no collection                          |
+| `/pending`                 | Capture queue                                     |
+| `/tags`                    | All tags                                          |
+| `/tags/{name}`             | Links with a tag                                  |
+| `/public/collections/{id}` | Read-only public collection                       |
+| `/export`                  | JSON export of collections and links              |
+| `/archive`                 | Compact archive dashboard (capture history)       |
 
 Keyboard shortcuts: `Ctrl/Cmd+K` or `/` opens search.
 
@@ -221,15 +223,15 @@ Keyboard shortcuts: `Ctrl/Cmd+K` or `/` opens search.
 All JSON endpoints live under `/api`. The authoritative route list and request
 details are documented at the top of [`src/api/mod.rs`](src/api/mod.rs).
 
-| Group         | Endpoints                                                                                     |
-| ------------- | --------------------------------------------------------------------------------------------- |
-| Health/stats  | `GET /api/health`, `GET /api/stats`, `POST /api/maintenance/gc`                               |
-| Collections   | `GET/POST /api/collection`, `GET/POST/PUT/DELETE /api/collection/{id}`, sharing, public read  |
-| Pending       | `GET/POST/DELETE /api/pending`, bulk, claim, retry, fail, per-item get/patch/delete            |
-| Pages         | `GET/POST /api/page`, lookup, `GET/PATCH/DELETE /api/page/{id}`, thumbnail, capture history    |
-| Captures      | `POST /api/page/{id}/capture`, `GET/DELETE /api/capture/{id}`, HTML/original/screenshot/assets |
-| Content       | `GET/HEAD /api/content/{hash}`                                                                |
-| Tags          | `GET/POST /api/tag`, `PATCH/DELETE /api/tag/{id}`, `POST /api/tag/{id}/merge`                 |
+| Group        | Endpoints                                                                                      |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| Health/stats | `GET /api/health`, `GET /api/stats`, `POST /api/maintenance/gc`                                |
+| Collections  | `GET/POST /api/collection`, `GET/POST/PUT/DELETE /api/collection/{id}`, sharing, public read   |
+| Pending      | `GET/POST/DELETE /api/pending`, bulk, claim, retry, fail, per-item get/patch/delete            |
+| Pages        | `GET/POST /api/page`, lookup, `GET/PATCH/DELETE /api/page/{id}`, thumbnail, capture history    |
+| Captures     | `POST /api/page/{id}/capture`, `GET/DELETE /api/capture/{id}`, HTML/original/screenshot/assets |
+| Content      | `GET/HEAD /api/content/{hash}`                                                                 |
+| Tags         | `GET/POST /api/tag`, `PATCH/DELETE /api/tag/{id}`, `POST /api/tag/{id}/merge`                  |
 
 `slumber.yml` contains an interactive request collection for exploring the API
 with [Slumber](https://slumber.lucaspickering.me/).
@@ -256,14 +258,14 @@ curl -X POST http://localhost:8889/api/page/1/capture \
 
 Useful capture fields:
 
-| Field         | Required | Description                                                |
-| ------------- | -------- | ---------------------------------------------------------- |
-| `html`        | yes      | Rendered HTML to archive                                   |
-| `title`       | no       | Capture title; the metadata `title` is a fallback          |
-| `screenshot`  | no       | Screenshot bytes (PNG or JPEG; detected by magic bytes)    |
-| `metadata`    | no       | JSON object supplied by the client                         |
-| `pendingId`   | no       | Claim a queued item, merge its tags, and dequeue it        |
-| `saveAssets`  | no       | Fetch and store the document's sub-resources (default off) |
+| Field        | Required | Description                                                |
+| ------------ | -------- | ---------------------------------------------------------- |
+| `html`       | yes      | Rendered HTML to archive                                   |
+| `title`      | no       | Capture title; the metadata `title` is a fallback          |
+| `screenshot` | no       | Screenshot bytes (PNG or JPEG; detected by magic bytes)    |
+| `metadata`   | no       | JSON object supplied by the client                         |
+| `pendingId`  | no       | Claim a queued item, merge its tags, and dequeue it        |
+| `saveAssets` | no       | Fetch and store the document's sub-resources (default off) |
 
 A successful capture returns `201 Created` with `captureId`, `pageId`, `version`,
 deduplication flags, and an asset summary (`saved`, `deduplicated`, `failed`,
@@ -272,16 +274,16 @@ deduplication flags, and an asset summary (`saved`, `deduplicated`, `failed`,
 
 ### Replay endpoints
 
-| Endpoint                                    | Returns                                    |
-| ------------------------------------------- | ------------------------------------------ |
-| `/api/capture/{id}/html`                    | Rewritten HTML that loads captured assets  |
-| `/api/capture/{id}/html/original`           | Exact bytes uploaded for that capture      |
-| `/api/capture/{id}/screenshot`              | Stored screenshot, if any                  |
-| `/api/capture/{id}/asset`                   | Assets saved with the capture              |
-| `/api/page/{id}/latest/html`                | Redirect to the newest rewritten capture   |
-| `/api/page/{id}/latest/html/original`       | Redirect to the newest original upload     |
-| `/api/page/{id}/latest/screenshot`          | Redirect to the newest screenshot          |
-| `/api/content/{hash}`                       | Immutable deduplicated blob                |
+| Endpoint                              | Returns                                   |
+| ------------------------------------- | ----------------------------------------- |
+| `/api/capture/{id}/html`              | Rewritten HTML that loads captured assets |
+| `/api/capture/{id}/html/original`     | Exact bytes uploaded for that capture     |
+| `/api/capture/{id}/screenshot`        | Stored screenshot, if any                 |
+| `/api/capture/{id}/asset`             | Assets saved with the capture             |
+| `/api/page/{id}/latest/html`          | Redirect to the newest rewritten capture  |
+| `/api/page/{id}/latest/html/original` | Redirect to the newest original upload    |
+| `/api/page/{id}/latest/screenshot`    | Redirect to the newest screenshot         |
+| `/api/content/{hash}`                 | Immutable deduplicated blob               |
 
 Archived HTML is sandboxed: scripts are captured as assets but are **not**
 executed on replay.

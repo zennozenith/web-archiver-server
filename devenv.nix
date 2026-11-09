@@ -20,6 +20,7 @@
     bacon
     cargo-nextest
     cargo-update
+    sqlx-cli
 
     openssl
     pkg-config
