@@ -16,14 +16,14 @@ templates those routes use.
 
 ## Tech stack
 
-| Concern       | Tool                                                                  |
-| ------------- | --------------------------------------------------------------------- |
-| Build         | [Vite+](https://viteplus.dev/) 1.4 (`vp`), Vite/Rolldown              |
-| Language      | TypeScript 7                                                          |
-| Interactivity | [Alpine.js](https://alpinejs.dev/) 3                                  |
-| Server calls  | [htmx](https://htmx.org/) 4 (vendored, no network dependency)         |
-| Styling       | Tailwind CSS 4 + [DaisyUI](https://daisyui.com/) 5                    |
-| Icons         | Iconify + Lucide via `@iconify/tailwind4`                             |
+| Concern       | Tool                                                                   |
+| ------------- | ---------------------------------------------------------------------- |
+| Build         | [Vite+](https://viteplus.dev/) 1.4 (`vp`), Vite/Rolldown               |
+| Language      | TypeScript 7                                                           |
+| Interactivity | [Alpine.js](https://alpinejs.dev/) 3                                   |
+| Server calls  | [htmx](https://htmx.org/) 4 (vendored, no network dependency)          |
+| Styling       | Tailwind CSS 4 + [DaisyUI](https://daisyui.com/) 5                     |
+| Icons         | Iconify + Lucide via `@iconify/tailwind4`                              |
 | Templates     | [Askama](https://github.com/askama-rs/askama) syntax, rendered in Rust |
 
 ## Prerequisites
@@ -66,6 +66,36 @@ Open <http://localhost:8889/dashboard>.
 but pages are rendered by Askama. Use the Rust server when you need to see real
 data or exercise htmx requests.
 
+### Static preview without the Rust server
+
+Generate a placeholder-data copy of every page route:
+
+```bash
+cd frontend
+vp run build:preview
+```
+
+This command:
+
+1. Runs `vp build` into `preview/static/vite`.
+2. Renders the Askama templates with placeholder data from
+   `scripts/preview-data.mjs`.
+3. Rewrites absolute asset and navigation URLs to relative paths.
+
+Open `frontend/preview/index.html` directly in a browser. The generated tree is
+self-contained, so it can also be served by any static file server. Because
+browsers block ES modules on `file://`, use a static server when you want the
+Alpine interactions to run too:
+
+```bash
+python3 -m http.server 4173 --directory frontend/preview
+```
+
+The `preview/` directory is generated and ignored by Git. Re-run
+`vp run build:preview` after changing a template or a placeholder. Captured
+HTML, screenshots, and thumbnails are not bundled; their `/api/...` links fall
+back to the matching link detail page where possible.
+
 ### Why the build must run before cargo
 
 Askama compiles templates from `static/vite/src/templates` (configured in
@@ -75,17 +105,18 @@ task through devenv automatically.
 
 ## Scripts
 
-| Script       | Command             | Purpose                                              |
-| ------------ | ------------------- | ---------------------------------------------------- |
-| `dev`        | `vp dev`            | Vite dev server for asset work                       |
-| `build:tsc`  | `tsc --noEmit && vp build` | Type-check, then production build             |
-| `build`      | `vp build`          | Production build into `OUT_DIR`                      |
-| `watch`      | `vp build --watch`  | Rebuild on change                                    |
-| `preview`    | `vp preview`        | Preview the production build                         |
-| `fmt`        | `vp fmt`            | Format TS/CSS/config                                 |
-| `fmt:check`  | `vp fmt --check`    | Check formatting                                     |
-| `lint`       | `vp lint`           | Lint with type-aware rules                           |
-| `lint:fix`   | `vp lint --fix`     | Apply lint fixes                                     |
+| Script          | Command                          | Purpose                                      |
+| --------------- | -------------------------------- | -------------------------------------------- |
+| `dev`           | `vp dev`                         | Vite dev server for asset work               |
+| `build:tsc`     | `tsc --noEmit && vp build`       | Type-check, then production build            |
+| `build`         | `vp build`                       | Production build into `OUT_DIR`              |
+| `build:preview` | `node scripts/build-preview.mjs` | Render static pages with placeholder data    |
+| `watch`         | `vp build --watch`               | Rebuild on change                            |
+| `preview`       | `vp preview`                     | Preview the production build                 |
+| `fmt`           | `vp fmt`                         | Format TS/CSS/config                         |
+| `fmt:check`     | `vp fmt --check`                 | Check formatting                             |
+| `lint`          | `vp lint`                        | Lint with type-aware rules                   |
+| `lint:fix`      | `vp lint --fix`                  | Apply lint fixes                             |
 
 Run them with `vp run <script>`, for example `vp run build:tsc` and
 `vp run fmt:check`.
@@ -117,6 +148,8 @@ frontend/
 ├── public/
 │   ├── images/             Static images copied into the build
 │   └── vendored/           htmx and htmax builds (+ .br variants)
+├── scripts/                Static-preview generator and placeholder data
+├── preview/                Generated static preview (ignored by Git)
 └── src/
     ├── app.ts              Alpine registration and startup
     ├── app.css             Tailwind, DaisyUI, theme and component imports
@@ -166,15 +199,15 @@ Path aliases: `@src` → `src/`, `@common` → `src/common/` (the alias exists i
 
 All components are registered in `src/app.ts`.
 
-| Module                  | Registration     | Responsibility                                                 |
-| ----------------------- | ---------------- | -------------------------------------------------------------- |
-| `alpine/magics.ts`      | `$ok` magic      | True when an htmx request finished with status < 400            |
-| `alpine/theme.ts`       | `themeSwitcher`  | Theme selection, applied before paint and saved in localStorage |
-| `alpine/toasts.ts`      | `toastRegion`    | Auto-dismiss server-rendered alerts after 8 seconds            |
-| `alpine/tag-editor.ts`  | `tagEditor`      | Inline tag rename, reading the current name from `data-name`    |
-| `alpine/page-filter.ts` | `pageFilter`     | Client-side filtering of cards by lower-cased `data-search`     |
-| `alpine/link-view.ts`   | `linkView`       | Grid/list toggle persisted in localStorage                      |
-| `alpine/reader.ts`      | `reader`         | Reader panel, text size, format, and selection state            |
+| Module                  | Registration    | Responsibility                                                  |
+| ----------------------- | --------------- | --------------------------------------------------------------- |
+| `alpine/magics.ts`      | `$ok` magic     | True when an htmx request finished with status < 400            |
+| `alpine/theme.ts`       | `themeSwitcher` | Theme selection, applied before paint and saved in localStorage |
+| `alpine/toasts.ts`      | `toastRegion`   | Auto-dismiss server-rendered alerts after 8 seconds             |
+| `alpine/tag-editor.ts`  | `tagEditor`     | Inline tag rename, reading the current name from `data-name`    |
+| `alpine/page-filter.ts` | `pageFilter`    | Client-side filtering of cards by lower-cased `data-search`     |
+| `alpine/link-view.ts`   | `linkView`      | Grid/list toggle persisted in localStorage                      |
+| `alpine/reader.ts`      | `reader`        | Reader panel, text size, format, and selection state            |
 
 To add a component, create a module that exports `registerX(alpine: Alpine)`,
 then import and call it in `src/app.ts`.
@@ -225,16 +258,16 @@ precompressed static file server.
 
 ## Troubleshooting
 
-| Symptom                                        | Fix                                                                                   |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `vp: command not found`                        | Install the Vite+ CLI (see Prerequisites) and restart the shell.                       |
-| Unstyled pages or 404s under `/static/vite/`    | Build with `OUT_DIR=../static/vite`; the server expects that output directory.         |
-| Askama says a template is missing               | Run the frontend build before `cargo run`; Askama reads the generated template tree.   |
-| `vp build` writes to `dist/` unexpectedly       | `OUT_DIR` is unset. Set it to `../static/vite` to match the server.                   |
-| Cargo build fails running `devenv tasks …`      | Install devenv or adjust the frontend build invocation in the root `build.rs`.         |
-| Type errors after a dependency update           | Run `vp install`, then `vp run build:tsc`.                                            |
-| A class emitted by Rust has no styles          | Add it to `@source inline(...)` in `src/app.css`.                                     |
-| Template changes do not appear                  | Rebuild the frontend; templates are compiled into `static/vite/src/templates`.         |
+| Symptom                                      | Fix                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `vp: command not found`                      | Install the Vite+ CLI (see Prerequisites) and restart the shell.                     |
+| Unstyled pages or 404s under `/static/vite/` | Build with `OUT_DIR=../static/vite`; the server expects that output directory.       |
+| Askama says a template is missing            | Run the frontend build before `cargo run`; Askama reads the generated template tree. |
+| `vp build` writes to `dist/` unexpectedly    | `OUT_DIR` is unset. Set it to `../static/vite` to match the server.                  |
+| Cargo build fails running `devenv tasks …`   | Install devenv or adjust the frontend build invocation in the root `build.rs`.       |
+| Type errors after a dependency update        | Run `vp install`, then `vp run build:tsc`.                                           |
+| A class emitted by Rust has no styles        | Add it to `@source inline(...)` in `src/app.css`.                                    |
+| Template changes do not appear               | Rebuild the frontend; templates are compiled into `static/vite/src/templates`.       |
 
 ## Related
 

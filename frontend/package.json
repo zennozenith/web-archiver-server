@@ -7,6 +7,7 @@
     "dev": "vp dev",
     "build:tsc": "tsc --noEmit && vp build",
     "build": "vp build",
+    "build:preview": "node scripts/build-preview.mjs",
     "watch": "vp build --watch",
     "preview": "vp preview",
     "fmt": "vp fmt",
