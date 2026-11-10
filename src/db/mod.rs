@@ -9,7 +9,6 @@ pub(crate) mod capture;
 pub(crate) mod collection;
 pub(crate) mod content;
 pub(crate) mod helper;
-// pub(crate) mod link;
 pub(crate) mod page;
 pub(crate) mod pending;
 pub(crate) mod stats;
