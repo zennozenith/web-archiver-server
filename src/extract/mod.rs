@@ -15,6 +15,8 @@ use axum::{
 use http::header::CONTENT_TYPE;
 use serde::Deserialize;
 
+pub(crate) mod auth_user;
+
 /// Query string; supports repeated keys (?tag=a&tag=b).
 #[derive(FromRequestParts)]
 #[from_request(via(axum::extract::Query), rejection(AppError))]

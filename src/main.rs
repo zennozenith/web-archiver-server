@@ -13,6 +13,7 @@ mod asset;
 mod blob_store;
 mod compress;
 mod config;
+mod crypto;
 mod db;
 mod downloader;
 mod error;
@@ -24,10 +25,12 @@ mod htmx;
 mod image;
 mod limit;
 mod mime;
+mod prelude;
 mod serve;
 mod tag;
 mod template;
 mod time;
+mod token;
 mod url_canon;
 mod web;
 mod web_archive;
@@ -63,8 +66,13 @@ impl FromRef<AppState> for reqwest::Client {
 async fn main() {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| format!("{}=debug", env!("CARGO_CRATE_NAME")).into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                format!(
+                    "{}=debug,tower_http=info,sqlx=warn",
+                    env!("CARGO_CRATE_NAME")
+                )
+                .into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -77,6 +85,8 @@ async fn main() {
     let db = db::create_pool(&settings.database)
         .await
         .expect("Unable to create database");
+    db::migrate(&db).await.expect("Unable to migrate database");
+    db::spawn_cleanup(db.clone());
 
     let http = reqwest::Client::builder()
         .user_agent(concat!(
@@ -121,9 +131,10 @@ async fn main() {
 
 fn app(state: AppState) -> Router {
     Router::new()
-        .nest("/api", api::router(state.clone()))
-        .nest("/archive", web_archive::router(state.clone()))
-        .merge(web::router(state))
+        .nest("/api", api::router())
+        .nest("/archive", web_archive::router())
+        .merge(web::router())
         .merge(asset::serve_dir())
         .layer(TraceLayer::new_for_http())
+        .with_state(state)
 }

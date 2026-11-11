@@ -1,7 +1,11 @@
-use axum::extract::State;
+use axum::{
+    Router,
+    extract::State,
+    routing::{get, post},
+};
 use sqlx::SqlitePool;
 
-use crate::{blob_store::BlobStore, db::stats, error::Result, extract::ApiJson};
+use crate::{AppState, blob_store::BlobStore, db::stats, error::Result, extract::ApiJson};
 
 // GET /api/health  (unauthenticated)
 pub(super) async fn health(State(pool): State<SqlitePool>) -> Result<ApiJson<serde_json::Value>> {
@@ -10,16 +14,22 @@ pub(super) async fn health(State(pool): State<SqlitePool>) -> Result<ApiJson<ser
 }
 
 // GET /api/stats
-pub(super) async fn stats(State(pool): State<SqlitePool>) -> Result<ApiJson<stats::Stats>> {
+async fn stats(State(pool): State<SqlitePool>) -> Result<ApiJson<stats::Stats>> {
     let stat = stats::stats(&pool).await?;
     Ok(ApiJson(stat))
 }
 
 // POST /api/maintenance/gc
-pub(super) async fn gc_content(
+async fn gc_content(
     State(pool): State<SqlitePool>,
     State(store): State<BlobStore>,
 ) -> Result<ApiJson<stats::GCStat>> {
     let gc_stat = stats::gc_content(&pool, &store).await?;
     Ok(ApiJson(gc_stat))
+}
+
+pub(super) fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/stats", get(stats))
+        .route("/maintenance/gc", post(gc_content))
 }

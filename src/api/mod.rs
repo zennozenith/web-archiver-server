@@ -89,48 +89,26 @@ mod page;
 mod pending;
 mod tag;
 
+pub(crate) mod admin;
+pub(crate) mod auth;
+pub(crate) mod me;
+
 pub(crate) use page::parse_multipart;
 
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Request, State},
+    extract::{Request, State},
     middleware::Next,
     response::Response,
-    routing::{delete, get, post, put},
+    routing::get,
 };
 use http::header::AUTHORIZATION;
 
 use crate::{
     AppState,
-    api::{
-        capture::{
-            get_capture_html, get_capture_original_html, get_capture_screenshot, get_thumbnail,
-            redirect_latest_html, redirect_latest_original_html, redirect_latest_screenshot,
-        },
-        collection::{
-            create_collection, delete_collection, get_collection, list_collection,
-            public_collection, update_collection, update_sharing,
-        },
-        page::{create_page, list_page_captures, patch_page},
-        pending::list_pending,
-    },
+    api::misc::health,
     error::{AppError, Result},
 };
-use archive::archive;
-use asset::{capture_asset, capture_assets, latest_assets};
-use capture::{delete_capture, get_capture};
-use content::{get_content, head_content};
-use misc::{gc_content, health, stats};
-use page::{
-    add_page_tag, delete_page, get_page, list_pages, lookup_page, put_page_tags, remove_page_tag,
-};
-use pending::{
-    bulk_create_pending, claim_pending, clear_pending, create_pending, delete_pending,
-    fail_pending, get_pending, patch_pending, retry_pending,
-};
-use tag::{create_tag, delete_tag, list_tags, merge_tag, patch_tag};
-
-const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
 
 #[expect(
     dead_code,
@@ -150,112 +128,19 @@ async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -
     Ok(next.run(req).await)
 }
 
-pub(crate) fn router(state: AppState) -> Router {
+pub(crate) fn router() -> Router<AppState> {
     let api = Router::<AppState>::new()
-        .merge(tag_routes())
-        .merge(collection_routes())
-        .merge(pending_routes())
-        .merge(page_routes())
-        .merge(capture_routes())
-        .merge(content_routes())
-        .merge(misc_routes());
+        .merge(auth::routes())
+        .merge(me::routes())
+        .merge(admin::routes())
+        .merge(tag::routes())
+        .merge(collection::routes())
+        .merge(pending::routes())
+        .merge(page::routes())
+        .merge(capture::routes())
+        .merge(content::routes())
+        .merge(misc::routes());
     // .layer(from_fn_with_state (state.clone(), require_auth));
 
-    Router::new()
-        .route("/health", get(health))
-        .merge(api)
-        .with_state(state)
-}
-
-fn tag_routes() -> Router<AppState> {
-    Router::new()
-        .route("/tag", get(list_tags).post(create_tag))
-        .route(
-            "/tag/{id}",
-            axum::routing::patch(patch_tag).delete(delete_tag),
-        )
-        .route("/tag/{id}/merge", post(merge_tag))
-}
-
-fn collection_routes() -> Router<AppState> {
-    Router::new()
-        .route("/collection", get(list_collection).post(create_collection))
-        .route(
-            "/collection/{id}",
-            get(get_collection)
-                .post(update_collection)
-                .put(update_collection)
-                .delete(delete_collection),
-        )
-        .route("/collection/{id}/sharing", put(update_sharing))
-        .route("/public/collection/{id}", get(public_collection))
-}
-
-fn pending_routes() -> Router<AppState> {
-    Router::new()
-        .route(
-            "/pending",
-            get(list_pending).post(create_pending).delete(clear_pending),
-        )
-        .route("/pending/bulk", post(bulk_create_pending))
-        .route("/pending/claim", post(claim_pending))
-        .route(
-            "/pending/{id}",
-            get(get_pending).patch(patch_pending).delete(delete_pending),
-        )
-        .route("/pending/{id}/retry", post(retry_pending))
-        .route("/pending/{id}/fail", post(fail_pending))
-}
-
-fn page_routes() -> Router<AppState> {
-    Router::new()
-        .route("/page", get(list_pages).post(create_page))
-        .route("/page/lookup", get(lookup_page))
-        .route(
-            "/page/{id}",
-            get(get_page).patch(patch_page).delete(delete_page),
-        )
-        .route("/page/{id}/thumbnail", get(get_thumbnail)) // TODO:
-        .route(
-            "/page/{id}/capture",
-            get(list_page_captures)
-                .post(archive)
-                .layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
-        )
-        .route("/page/{id}/tag", post(add_page_tag).put(put_page_tags))
-        .route("/page/{id}/tag/{tag_id}", delete(remove_page_tag))
-        .route("/page/{id}/latest/html", get(redirect_latest_html))
-        .route(
-            "/page/{id}/latest/html/original",
-            get(redirect_latest_original_html),
-        )
-        .route(
-            "/page/{id}/latest/screenshot",
-            get(redirect_latest_screenshot),
-        )
-}
-
-fn capture_routes() -> Router<AppState> {
-    Router::new()
-        .route("/capture/{id}", get(get_capture).delete(delete_capture))
-        .route("/capture/{id}/html", get(get_capture_html))
-        .route(
-            "/capture/{id}/html/original",
-            get(get_capture_original_html),
-        )
-        .route("/capture/{id}/screenshot", get(get_capture_screenshot))
-        .route("/capture/{id}/asset", get(capture_assets))
-        .route("/capture/{id}/asset/{content_id}", get(capture_asset))
-        .route("/page/{id}/latest/asset", get(latest_assets))
-}
-
-fn content_routes() -> Router<AppState> {
-    // explicit HEAD handler avoids loading the blob
-    Router::new().route("/content/{hash}", get(get_content).head(head_content))
-}
-
-fn misc_routes() -> Router<AppState> {
-    Router::new()
-        .route("/stats", get(stats))
-        .route("/maintenance/gc", post(gc_content))
+    Router::new().route("/health", get(health)).merge(api)
 }

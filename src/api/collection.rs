@@ -1,22 +1,25 @@
-use axum::extract::{Path, State};
+use axum::{
+    Router,
+    extract::{Path, State},
+    routing::{get, put},
+};
 use http::StatusCode;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
+    AppState,
     db::collection::{CollectionId, CollectionInput, CollectionRecord, non_empty_parent},
     error::{AppError, OptionExt, Result},
     extract::ApiJson,
 };
 
-pub(super) async fn list_collection(
-    State(pool): State<SqlitePool>,
-) -> Result<ApiJson<Vec<CollectionRecord>>> {
+async fn list_collection(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<CollectionRecord>>> {
     let collections = CollectionRecord::list(&pool).await?;
     Ok(ApiJson(collections))
 }
 
-pub(super) async fn get_collection(
+async fn get_collection(
     State(pool): State<SqlitePool>,
     Path(id): Path<CollectionId>,
 ) -> Result<ApiJson<CollectionRecord>> {
@@ -29,7 +32,7 @@ pub(super) async fn get_collection(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct CollectionCreateRequest {
+struct CollectionCreateRequest {
     name: String,
     emoji: Option<String>,
     description: Option<String>,
@@ -68,7 +71,7 @@ impl CollectionCreateRequest {
     }
 }
 
-pub(super) async fn create_collection(
+async fn create_collection(
     State(pool): State<SqlitePool>,
     ApiJson(req): ApiJson<CollectionCreateRequest>,
 ) -> Result<ApiJson<CollectionRecord>> {
@@ -86,7 +89,7 @@ pub(super) async fn create_collection(
     Ok(ApiJson(collection))
 }
 
-pub(super) async fn update_collection(
+async fn update_collection(
     State(pool): State<SqlitePool>,
     Path(id): Path<CollectionId>,
     ApiJson(req): ApiJson<CollectionCreateRequest>,
@@ -117,7 +120,7 @@ pub(super) async fn update_collection(
     Ok(ApiJson(updated))
 }
 
-pub(super) async fn delete_collection(
+async fn delete_collection(
     State(pool): State<SqlitePool>,
     Path(id): Path<CollectionId>,
 ) -> Result<StatusCode> {
@@ -130,11 +133,11 @@ pub(super) async fn delete_collection(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct SharingForm {
+struct SharingForm {
     public: Option<bool>,
 }
 
-pub(super) async fn update_sharing(
+async fn update_sharing(
     State(pool): State<SqlitePool>,
     Path(id): Path<CollectionId>,
     ApiJson(req): ApiJson<SharingForm>,
@@ -158,4 +161,18 @@ pub(crate) async fn public_collection(
     }
 
     Ok(ApiJson(record))
+}
+
+pub(super) fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/collection", get(list_collection).post(create_collection))
+        .route(
+            "/collection/{id}",
+            get(get_collection)
+                .post(update_collection)
+                .put(update_collection)
+                .delete(delete_collection),
+        )
+        .route("/collection/{id}/sharing", put(update_sharing))
+        .route("/public/collection/{id}", get(public_collection))
 }

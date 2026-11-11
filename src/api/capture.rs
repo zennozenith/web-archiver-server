@@ -1,13 +1,16 @@
 use axum::{
+    Router,
     extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
+    routing::get,
 };
 use serde::Serialize;
 use serde_json::Value;
 use sqlx::SqlitePool;
 
 use crate::{
+    AppState,
     blob_store::BlobStore,
     db::{
         capture::{self, CaptureBlob, CaptureDetail, CaptureId},
@@ -326,4 +329,21 @@ pub(super) async fn redirect_latest_screenshot(
     ApiPath(page_id): ApiPath<PageId>,
 ) -> Result<Response> {
     redirect_to_latest(&pool, page_id, &SCREENSHOT).await
+}
+
+pub(super) fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/capture/{id}", get(get_capture).delete(delete_capture))
+        .route("/capture/{id}/html", get(get_capture_html))
+        .route(
+            "/capture/{id}/html/original",
+            get(get_capture_original_html),
+        )
+        .route("/capture/{id}/screenshot", get(get_capture_screenshot))
+        .route("/capture/{id}/asset", get(super::asset::capture_assets))
+        .route(
+            "/capture/{id}/asset/{content_id}",
+            get(super::asset::capture_asset),
+        )
+        .route("/page/{id}/latest/asset", get(super::asset::latest_assets))
 }

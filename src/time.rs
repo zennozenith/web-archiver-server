@@ -1,5 +1,26 @@
 use chrono::{DateTime, Utc};
 
+pub(crate) const HOUR_MS: i64 = 3_600_000;
+pub(crate) const DAY_MS: i64 = 86_400_000;
+
+/// The schema stores every timestamp as INTEGER Unix epoch *milliseconds* (UTC).
+pub(crate) fn now_ms() -> i64 {
+    Utc::now().timestamp_millis()
+}
+
+/// Timestamp arithmetic that cannot overflow (or panic in debug builds).
+pub(crate) const fn add_ms(ts: i64, delta: i64) -> i64 {
+    ts.saturating_add(delta)
+}
+
+pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
+    DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_default()
+}
+
+pub(crate) fn opt_ms_to_dt(ms: Option<i64>) -> Option<DateTime<Utc>> {
+    ms.map(ms_to_dt)
+}
+
 #[cfg_attr(
     not(feature = "timeago"),
     expect(
@@ -70,44 +91,4 @@ fn format_relative(val: i64, unit: &str) -> String {
     let suffix = if val < 0 { "ago" } else { "from now" };
     let plural = if abs_val == 1 { "" } else { "s" };
     format!("{abs_val} {unit}{plural} {suffix}")
-}
-
-#[deprecated(since = "0.0.0", note = "use `ago_timestamp` with a Unix timestamp")]
-mod deprecated {
-    use chrono::{DateTime, Utc};
-
-    #[expect(dead_code, reason = "legacy ISO-8601 formatter kept for reference")]
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_possible_truncation,
-        clippy::cast_precision_loss,
-        reason = "relative-time formatting operates on small, bounded durations"
-    )]
-    pub(super) fn ago(iso: &str) -> Result<String, Box<dyn std::error::Error>> {
-        const UNITS: &[(&str, i64)] = &[("day", 86400), ("hour", 3600), ("minute", 60)];
-
-        // Parse the ISO string into a DateTime
-        let target = DateTime::parse_from_rfc3339(iso)?;
-        let now = Utc::now();
-
-        // Calculate difference in seconds (negative if in the past)
-        let secs = target.signed_duration_since(now).num_seconds();
-        let abs_secs = secs.abs();
-
-        for &(unit, threshold) in UNITS {
-            if abs_secs >= threshold {
-                let val = (secs as f64 / threshold as f64).round() as i64;
-                return Ok(format_relative(val, unit));
-            }
-        }
-
-        Ok("just now".to_owned())
-    }
-
-    fn format_relative(val: i64, unit: &str) -> String {
-        let abs_val = val.abs();
-        let suffix = if val < 0 { "ago" } else { "from now" };
-        let plural = if abs_val == 1 { "" } else { "s" };
-        format!("{abs_val} {unit}{plural} {suffix}")
-    }
 }

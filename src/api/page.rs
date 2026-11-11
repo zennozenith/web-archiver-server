@@ -1,11 +1,14 @@
 use axum::{
-    extract::{Multipart, State, multipart::MultipartRejection},
+    Router,
+    extract::{DefaultBodyLimit, Multipart, State, multipart::MultipartRejection},
     http::StatusCode,
+    routing::{delete, get, post},
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
+    AppState,
     api::tag::CreateTagRequest,
     blob_store::BlobStore,
     db::{
@@ -29,6 +32,7 @@ use crate::{
 
 const PAGE: &str = "page";
 const DEFAULT_LIMIT: Limit = Limit::from_const(50);
+const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -291,4 +295,35 @@ pub(crate) async fn parse_multipart(mut mp: Multipart) -> Result<CreatePage> {
         tags,
         thumbnail,
     })
+}
+
+pub(super) fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/page", get(list_pages).post(create_page))
+        .route("/page/lookup", get(lookup_page))
+        .route(
+            "/page/{id}",
+            get(get_page).patch(patch_page).delete(delete_page),
+        )
+        .route("/page/{id}/thumbnail", get(super::capture::get_thumbnail)) // TODO:
+        .route(
+            "/page/{id}/capture",
+            get(list_page_captures)
+                .post(super::archive::archive)
+                .layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
+        )
+        .route("/page/{id}/tag", post(add_page_tag).put(put_page_tags))
+        .route("/page/{id}/tag/{tag_id}", delete(remove_page_tag))
+        .route(
+            "/page/{id}/latest/html",
+            get(super::capture::redirect_latest_html),
+        )
+        .route(
+            "/page/{id}/latest/html/original",
+            get(super::capture::redirect_latest_original_html),
+        )
+        .route(
+            "/page/{id}/latest/screenshot",
+            get(super::capture::redirect_latest_screenshot),
+        )
 }

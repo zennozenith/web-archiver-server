@@ -1,14 +1,17 @@
 use axum::{
+    Router,
     extract::State,
     http::{
         HeaderMap, HeaderValue, StatusCode,
         header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_LENGTH, CONTENT_TYPE, ETAG},
     },
     response::{IntoResponse, Response},
+    routing::get,
 };
 use sqlx::SqlitePool;
 
 use crate::{
+    AppState,
     blob_store::BlobStore,
     db::content::{Content, ContentHead},
     error::{AppError, OptionExt, Result},
@@ -68,4 +71,9 @@ pub(super) async fn head_content(
         headers.insert(CONTENT_TYPE, mime);
     }
     Ok((StatusCode::OK, headers).into_response())
+}
+
+pub(super) fn routes() -> Router<AppState> {
+    // explicit HEAD handler avoids loading the blob
+    Router::new().route("/content/{hash}", get(get_content).head(head_content))
 }

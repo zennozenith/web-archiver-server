@@ -74,7 +74,8 @@ impl From<EmptyStringError> for AppError {
 /// A validated string wrapper that guarantees the inner string is never empty.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type)]
 #[sqlx(transparent)]
-pub(crate) struct NonEmptyString(String);
+#[repr(transparent)]
+pub(crate) struct NonEmptyString(Box<str>);
 
 impl NonEmptyString {
     /// Attempts to create a `NonEmptyString` from any string-like type.
@@ -87,7 +88,7 @@ impl NonEmptyString {
         if s.is_empty() {
             Err(EmptyStringError)
         } else {
-            Ok(Self(s))
+            Ok(Self(s.into_boxed_str()))
         }
     }
 
@@ -98,7 +99,7 @@ impl NonEmptyString {
         if trimmed.is_empty() {
             Err(EmptyStringError)
         } else {
-            Ok(Self(trimmed.to_owned()))
+            Ok(Self(trimmed.into()))
         }
     }
 
@@ -111,7 +112,7 @@ impl NonEmptyString {
     /// Consumes the wrapper and returns the owned `String`.
     #[expect(dead_code, reason = "Might be needed later")]
     pub(crate) fn into_inner(self) -> String {
-        self.0
+        self.0.into_string()
     }
 
     /// Trims whitespace from a string slice and returns an owned, non-empty `String`.

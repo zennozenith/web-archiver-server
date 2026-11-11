@@ -25,22 +25,17 @@ macro_rules! id_type {
         #[serde(transparent, rename_all = "camelCase")]
         $vis struct $name(i64);
 
+        #[allow(dead_code, reason = "Might be needed later")]
         impl $name {
 
-            #[expect(clippy::allow_attributes, reason = "Might be needed later")]
-            #[allow(dead_code, reason = "Might be needed later")]
             pub(crate) const fn new(id: i64) -> Self {
                 Self(id)
             }
 
-            #[expect(clippy::allow_attributes, reason = "Might be needed later")]
-            #[allow(dead_code, reason = "Might be needed later")]
             pub(crate) const fn get(self) -> i64 {
                 self.0
             }
 
-            #[expect(clippy::allow_attributes, reason = "Might be needed later")]
-            #[allow(dead_code, reason = "Might be needed later")]
             pub(crate) fn parse_or(value: Option<&String>) -> Option<Self> {
                 value
                     .map(|value| value.trim())

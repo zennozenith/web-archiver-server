@@ -1,10 +1,16 @@
 use std::str::FromStr;
 
-use axum::{extract::State, http::StatusCode};
+use axum::{
+    Router,
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+};
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::{
+    AppState,
     db::{
         helper::{CreateOutcome, FieldPatch},
         tag::{PatchOutcome, Tag, TagPatch, TagSummary},
@@ -16,7 +22,7 @@ use crate::{
 
 // CHECKED:
 /// GET /api/tag
-pub(super) async fn list_tags(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<TagSummary>>> {
+async fn list_tags(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<TagSummary>>> {
     let tags = TagSummary::list(&pool).await?;
     Ok(ApiJson(tags))
 }
@@ -30,7 +36,7 @@ pub(super) struct CreateTagRequest {
 
 // CHECKED:
 /// POST /api/tag
-pub(super) async fn create_tag(
+async fn create_tag(
     State(pool): State<SqlitePool>,
     ApiJson(req): ApiJson<CreateTagRequest>,
 ) -> Result<(StatusCode, ApiJson<Tag>)> {
@@ -49,7 +55,7 @@ pub(super) async fn create_tag(
 /// PATCH semantics: `color: null` clears, an absent field leaves it unchanged.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct PatchTagRequest {
+struct PatchTagRequest {
     pub name: Option<String>,
     #[serde(default)]
     pub color: FieldPatch<String>,
@@ -78,7 +84,7 @@ impl PatchTagRequest {
 
 // CHECKED:
 // PATCH /api/tag/{id}   (color: null clears, absent keeps)
-pub(super) async fn patch_tag(
+async fn patch_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<TagId>,
     ApiJson(req): ApiJson<PatchTagRequest>,
@@ -95,7 +101,7 @@ pub(super) async fn patch_tag(
 
 // CHECKED:
 // DELETE /api/tag/{id}   (page_tag / pending_tag rows cascade)
-pub(super) async fn delete_tag(
+async fn delete_tag(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<TagId>,
 ) -> Result<StatusCode> {
@@ -107,7 +113,7 @@ pub(super) async fn delete_tag(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct MergeTagRequest {
+struct MergeTagRequest {
     /// The surviving tag. Serialized as `"into"` to keep the existing wire format.
     #[serde(rename = "into")]
     pub target: TagId,
@@ -115,7 +121,7 @@ pub(super) struct MergeTagRequest {
 
 // CHECKED:
 // POST /api/tag/{id}/merge   { "into": <tag_id> }
-pub(super) async fn merge_tag(
+async fn merge_tag(
     State(pool): State<SqlitePool>,
     ApiPath(source): ApiPath<TagId>,
     ApiJson(req): ApiJson<MergeTagRequest>,
@@ -125,4 +131,14 @@ pub(super) async fn merge_tag(
 
     let target = Tag::merge(&pool, merge).await?.or_not_found("tag")?;
     Ok(ApiJson(target))
+}
+
+pub(super) fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/tag", get(list_tags).post(create_tag))
+        .route(
+            "/tag/{id}",
+            axum::routing::patch(patch_tag).delete(delete_tag),
+        )
+        .route("/tag/{id}/merge", post(merge_tag))
 }

@@ -4,9 +4,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct Settings {
-    #[serde(default = "default_data_dir", alias = "data_dir")]
+    #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
     #[serde(default)]
     pub database: DatabaseSettings,
@@ -40,10 +39,10 @@ impl DatabaseSettings {
         SqliteConnectOptions::from_str(&self.url)
             .expect("Invalid database url")
             .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Normal)
-            .foreign_keys(true)
-            .busy_timeout(std::time::Duration::from_secs(self.busy_timeout_sec))
+            .foreign_keys(true) // PRAGMA foreign_keys = ON
+            .journal_mode(SqliteJournalMode::Wal) // PRAGMA journal_mode = WAL
+            .synchronous(SqliteSynchronous::Normal) // PRAGMA synchronous = NORMAL
+            .busy_timeout(std::time::Duration::from_secs(self.busy_timeout_sec)) // PRAGMA busy_timeout = ...
         // .optimize_on_close(true)
     }
 }

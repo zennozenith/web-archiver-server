@@ -8,10 +8,18 @@ repository = "https://github.com/zennozenith/web-archiver-server"
 license = "MIT"
 keywords = ["archive", "axum", "self-hosted", "sqlite", "web"]
 categories = ["database", "web-programming::http-server"]
+default-run = "web-archiver"
+
+[[bin]]
+name = "create_super_admin"
+path = "src/bin/create_super_admin.rs"
+required-features = ["admin-cli"]
 
 [dependencies]
+argon2 = "0.6"
 askama = "0.16.1"
 axum = { version = "0.8.9", features = ["macros", "multipart"] }
+base64 = { version = "0.23.1", optional = true }
 blake3 = "1.8.7"
 brotli = "9.0.0"
 bytes = "1.12.1"
@@ -20,15 +28,20 @@ config = { version = "0.15.27", default-features = false, features = ["serde_jso
 ego-tree = "=0.11.1"
 flate2 = "1.1.10"
 futures = "0.3.34"
+getrandom = "0.4"
+hex = "0.4"
 html5ever = "=0.40.1"
 http = "1.5.0"
 mime_guess = "2.0.5"
 reqwest = { version = "0.13.5", default-features = false, features = ["brotli", "deflate", "gzip", "rustls", "stream"] }
+rpassword = { version = "7.5.5", optional = true }
 rust-embed = { version = "8.13.0", features = ["axum", "compression", "mime_guess"] }
 scraper = "0.29.0"
+secrecy = { version = "0.10.3", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "4.7.0", default-features = false }
 serde_json = "1"
+sha2 = "0.11"
 sqlx = { version = "0.9", features = ["migrate", "runtime-tokio", "sqlite"] }  # "chrono",
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
@@ -48,7 +61,10 @@ tower = "0.5.3"
 
 [features]
 default = []
+admin-cli = ["dep:base64", "dep:rpassword"]
+base64 = ["dep:base64"]
 debug = ["axum/macros"]
+rpassword = ["dep:rpassword"]
 # postgres = ["sqlx/tls-native-tls"]
 timeago = ["dep:timeago"]
 vendored = []  # Compile and statically link a copy of OpenSSL

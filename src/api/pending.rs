@@ -1,12 +1,15 @@
 use axum::{
+    Router,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::{
+    AppState,
     db::{
         helper::{CreateOutcome, Cursor, CursorPage},
         pending::{PendingId, PendingItem, PendingRecord, PendingStatus, PendingUpdate},
@@ -89,7 +92,7 @@ pub(super) struct ListPendingQuery {
 }
 
 // CHECKED:
-pub(super) async fn list_pending(
+async fn list_pending(
     State(pool): State<SqlitePool>,
     ApiQuery(query): ApiQuery<ListPendingQuery>,
 ) -> Result<ApiJson<CursorPage<PendingItem>>> {
@@ -104,7 +107,7 @@ pub(super) async fn list_pending(
 }
 
 // ── POST /api/pending ───────────────────────────────────────────────────────
-pub(super) async fn create_pending(
+async fn create_pending(
     State(pool): State<SqlitePool>,
     ApiJson(req): ApiJson<CreatePendingRequest>,
 ) -> Result<(StatusCode, ApiJson<PendingItem>)> {
@@ -198,7 +201,7 @@ impl BulkCreateResponse {
 }
 
 /// One bad item doesn't fail the batch; DB errors roll back everything.
-pub(super) async fn bulk_create_pending(
+async fn bulk_create_pending(
     State(pool): State<SqlitePool>,
     ApiJson(req): ApiJson<BulkCreateRequest>,
 ) -> Result<ApiJson<BulkCreateResponse>> {
@@ -228,7 +231,7 @@ pub(super) async fn bulk_create_pending(
 
 // ── GET /api/pending/{id} ───────────────────────────────────────────────────
 
-pub(super) async fn get_pending(
+async fn get_pending(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PendingId>,
 ) -> Result<ApiJson<PendingItem>> {
@@ -237,7 +240,7 @@ pub(super) async fn get_pending(
 
 // ── PATCH /api/pending/{id} ─────────────────────────────────────────────────
 
-pub(super) async fn patch_pending(
+async fn patch_pending(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PendingId>,
     ApiJson(req): ApiJson<PatchPendingRequest>,
@@ -283,7 +286,7 @@ pub(super) async fn patch_pending(
 
 // ── POST /api/pending/{id}/retry ────────────────────────────────────────────
 
-pub(super) async fn retry_pending(
+async fn retry_pending(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PendingId>,
 ) -> Result<ApiJson<PendingItem>> {
@@ -296,7 +299,7 @@ pub(super) async fn retry_pending(
 // ── POST /api/pending/claim ─────────────────────────────────────────────────
 
 /// Atomically take the oldest queued item. 204 when the queue is empty.
-pub(super) async fn claim_pending(State(pool): State<SqlitePool>) -> Result<Response> {
+async fn claim_pending(State(pool): State<SqlitePool>) -> Result<Response> {
     let Some(id) = PendingRecord::claim_next(&pool).await? else {
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
@@ -305,7 +308,7 @@ pub(super) async fn claim_pending(State(pool): State<SqlitePool>) -> Result<Resp
 
 // ── POST /api/pending/{id}/fail ─────────────────────────────────────────────
 
-pub(super) async fn fail_pending(
+async fn fail_pending(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PendingId>,
     ApiJson(req): ApiJson<FailPendingRequest>,
@@ -321,7 +324,7 @@ pub(super) async fn fail_pending(
 // ── DELETE /api/pending/{id} ────────────────────────────────────────────────
 // Refuses to delete an item a worker is currently archiving (409).
 
-pub(super) async fn delete_pending(
+async fn delete_pending(
     State(pool): State<SqlitePool>,
     ApiPath(id): ApiPath<PendingId>,
 ) -> Result<StatusCode> {
@@ -345,7 +348,7 @@ pub(super) struct ClearPendingResponse {
     deleted: u64,
 }
 
-pub(super) async fn clear_pending(
+async fn clear_pending(
     State(pool): State<SqlitePool>,
     ApiQuery(query): ApiQuery<ClearPendingQuery>,
 ) -> Result<ApiJson<ClearPendingResponse>> {
@@ -356,4 +359,20 @@ pub(super) async fn clear_pending(
     }
     let deleted = PendingRecord::delete_all_with_status(&pool, query.status).await?;
     Ok(ApiJson(ClearPendingResponse { deleted }))
+}
+
+pub(super) fn routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/pending",
+            get(list_pending).post(create_pending).delete(clear_pending),
+        )
+        .route("/pending/bulk", post(bulk_create_pending))
+        .route("/pending/claim", post(claim_pending))
+        .route(
+            "/pending/{id}",
+            get(get_pending).patch(patch_pending).delete(delete_pending),
+        )
+        .route("/pending/{id}/retry", post(retry_pending))
+        .route("/pending/{id}/fail", post(fail_pending))
 }

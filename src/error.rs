@@ -10,20 +10,12 @@ use http::StatusCode;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::{error::AppError::HashParse, hash::HashParseError};
-
-// pub trait IntoAnyhow<T> {
-//     fn anyhow(self) -> anyhow::Result<T>;
-// }
-
-// impl<T, E> IntoAnyhow<T> for Result<T, E>
-// where
-//     E: std::error::Error + Send + Sync + 'static,
-// {
-//     fn anyhow(self) -> anyhow::Result<T> {
-//         self.map_err(anyhow::Error::from)
-//     }
-// }
+use crate::{
+    error::AppError::{
+        Forbidden, HashParse, InvalidCredentials, TooManyRequest, UnsupportedMediaType,
+    },
+    hash::HashParseError,
+};
 
 pub(crate) type Result<T, E = AppError> = std::result::Result<T, E>;
 
@@ -61,8 +53,14 @@ pub enum AppError {
     BadRequest(String),
 
     // 401
-    #[error("missing or invalid credentials")]
+    #[error("authentication required")]
     Unauthorized,
+    #[error("invalid credentials")]
+    InvalidCredentials,
+
+    // 403
+    #[error("you do not have permission: {0}")]
+    Forbidden(#[from] ForbiddenReason),
 
     // 404
     #[error("{0} not found")]
@@ -81,6 +79,10 @@ pub enum AppError {
     // 415
     #[error("unsupported media type")]
     UnsupportedMediaType,
+
+    // 415
+    #[error("{0}")]
+    TooManyRequest(&'static str),
 
     // // pass-through for any other axum rejection (e.g. 413 from body limits)
     // #[error("{message}")]
@@ -110,6 +112,13 @@ impl AppError {
             HashParse(_) => (StatusCode::BAD_REQUEST, "bad_hash", None),
             BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", None),
             Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", None),
+            InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials", None),
+            Forbidden(e) => {
+                if *e == ForbiddenReason::Unknown {
+                    tracing::error!("New field for forbidden reason");
+                }
+                (StatusCode::FORBIDDEN, "forbidden", None)
+            }
             NotFound(_) => (StatusCode::NOT_FOUND, "not_found", None),
             Duplicate { existing_id, msg } => (
                 StatusCode::CONFLICT,
@@ -122,11 +131,12 @@ impl AppError {
                 "payload_too_large",
                 Some(json!({ "limit": limit })),
             ),
-            Self::UnsupportedMediaType => (
+            UnsupportedMediaType => (
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "unsupported media type",
+                "unsupported_media_type",
                 None,
             ),
+            TooManyRequest(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_request", None),
             Unprocessable { code, .. } => (StatusCode::UNPROCESSABLE_ENTITY, code, None),
             Database(_) | Internal(_) | Render(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal", None)
@@ -140,6 +150,22 @@ impl AppError {
             message: message.into(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ForbiddenReason {
+    #[error("please verify your e-mail address first")]
+    Pending,
+    #[error("this account is suspended")]
+    Suspended,
+    #[error("this account is deactivated")]
+    Deactivated,
+    #[error("you do not have permission")]
+    Permission,
+    #[error("keys cannot mint more keys")]
+    ApiKeyMint,
+    #[error("unknown reason, report admin")]
+    Unknown,
 }
 
 impl IntoResponse for AppError {

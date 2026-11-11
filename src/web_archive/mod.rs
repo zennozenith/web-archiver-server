@@ -13,7 +13,7 @@ mod tag;
 
 use error::negotiate_errors;
 
-pub(crate) fn router(state: AppState) -> Router {
+pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(index::index))
         .route("/pending", post(pending::create_pending))
@@ -23,5 +23,4 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/tag/{id}", patch(tag::rename_tag).delete(tag::delete_tag))
         .route("/counter", get(index::vite_counter))
         .layer(axum::middleware::from_fn(negotiate_errors))
-        .with_state(state)
 }

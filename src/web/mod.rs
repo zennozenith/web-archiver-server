@@ -1,4 +1,5 @@
 mod actions;
+// mod auth_pages;
 mod fragments;
 mod pages;
 mod templates;
@@ -13,9 +14,9 @@ use axum::{
 
 use crate::{AppState, error::AppError, web_archive::error::negotiate_errors};
 
-pub(crate) fn router(state: AppState) -> Router {
-    // TODO: singular form route
+pub(crate) fn router() -> Router<AppState> {
     Router::new()
+        // .merge(auth_pages::router())
         .route("/", get(root))
         .route("/dashboard", get(pages::dashboard))
         // links
@@ -76,7 +77,6 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/export", get(pages::export))
         .fallback(not_found)
         .layer(middleware::from_fn(negotiate_errors))
-        .with_state(state)
 }
 
 async fn root() -> Redirect {
