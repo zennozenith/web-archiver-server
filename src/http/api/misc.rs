@@ -9,7 +9,6 @@ use sqlx::SqlitePool;
 use crate::{db::stats, http::extract::body::AppJson, infra::BlobStore, prelude::*};
 
 // GET /api/health  (unauthenticated)
-#[axum::debug_handler]
 pub(super) async fn health(State(pool): State<SqlitePool>) -> Result<AppJson<serde_json::Value>> {
     stats::health(&pool).await?;
     Ok(AppJson(json!({ "status": "ok" })))

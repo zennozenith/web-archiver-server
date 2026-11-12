@@ -1,8 +1,8 @@
 // mod actions;
-mod auth_pages;
-mod error;
-mod serve;
-mod user;
+// mod auth_pages;
+// mod error;
+// mod serve;
+// mod user;
 // mod web_archive;
 // mod fragments;
 // mod pages;
@@ -20,8 +20,8 @@ use crate::{AppState, error::AppError};
 
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
-        // .nest("/archive", web_archive::router())
-        .merge(auth_pages::router())
+    // .nest("/archive", web_archive::router())
+    // .merge(auth_pages::router())
     // .route("/", get(root))
     // .route("/dashboard", get(pages::dashboard))
     // // links

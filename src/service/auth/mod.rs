@@ -6,6 +6,7 @@ mod mail;
 mod password;
 
 pub(crate) use account::{create_account, verify_email};
+pub(crate) use authenticate::authenticate;
 pub(crate) use login::{login, logout};
 pub(crate) use password::{forgot_password, reset_password};
 

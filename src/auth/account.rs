@@ -17,7 +17,16 @@ pub(crate) struct CreatedAccount {
 }
 
 #[derive(
-    Debug, strum::Display, strum::EnumString, Clone, Copy, PartialEq, Eq, Serialize, sqlx::Type,
+    Debug,
+    strum::Display,
+    strum::EnumString,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    sqlx::Type,
 )]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
@@ -32,10 +41,10 @@ pub(crate) enum AccountStatus {
 impl From<AccountStatus> for ForbiddenReason {
     fn from(value: AccountStatus) -> Self {
         match value {
-            AccountStatus::Pending => ForbiddenReason::Pending,
-            AccountStatus::Suspended => ForbiddenReason::Suspended,
-            AccountStatus::Deactivated => ForbiddenReason::Deactivated,
-            AccountStatus::Active => ForbiddenReason::Unknown,
+            AccountStatus::Pending => Self::Pending,
+            AccountStatus::Suspended => Self::Suspended,
+            AccountStatus::Deactivated => Self::Deactivated,
+            AccountStatus::Active => Self::Unknown,
         }
     }
 }

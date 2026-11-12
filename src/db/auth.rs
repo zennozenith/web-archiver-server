@@ -368,6 +368,7 @@ pub(crate) async fn record_bad_password(
     Ok(())
 }
 
+#[expect(clippy::too_many_arguments, reason = "")]
 pub(crate) async fn create_session(
     pool: &SqlitePool,
     user_id: i64,

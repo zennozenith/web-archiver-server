@@ -23,7 +23,7 @@ pub(crate) async fn authenticate(pool: &SqlitePool, cred: Credential) -> Result<
                 .await?
                 .ok_or(AppError::Unauthorized)?;
 
-            if now - hit.last_used_at > TOUCH_INTERVAL_MS {
+            if now.saturating_sub(hit.last_used_at) > TOUCH_INTERVAL_MS {
                 db::auth::touch_session(pool, &hit.session_public_id, now).await?;
             }
 

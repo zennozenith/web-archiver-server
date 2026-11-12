@@ -9,15 +9,23 @@ use crate::{
 };
 
 mod account;
+mod api_key;
 mod client;
 pub(crate) mod policy;
+mod profile;
 mod token;
+mod view;
 
 pub(crate) use account::{AccountStatus, CreatedAccount, LoginCredentials, NewAccount};
+pub(crate) use api_key::{CreatedApiKey, NewApiKey};
 pub(crate) use client::ClientInfo;
+pub(crate) use profile::ProfileUpdate;
 pub(crate) use token::{
     ApiKeyToken, RandomToken, ResetToken, Rng, SessionToken, TokenPurpose, VerifyToken,
     generate_secret,
+};
+pub(crate) use view::{
+    ApiKeyView, AuditEntry, ProfileView, RoleView, SessionView, UserFilter, UserView,
 };
 
 pub(crate) const SESSION_TTL_MS: i64 = 7 * DAY_MS;
@@ -29,7 +37,14 @@ pub(crate) struct Permission(&'static str);
 impl Permission {
     pub(crate) const TAG_READ: Self = Self("tag:read");
     pub(crate) const TAG_WRITE: Self = Self("tag:write");
-    // add the rest here, one line each
+    pub(crate) const PROFILE_READ: Self = Self("profile:read");
+    pub(crate) const PROFILE_WRITE: Self = Self("profile:write");
+    pub(crate) const USERS_READ: Self = Self("users:read");
+    pub(crate) const USERS_WRITE: Self = Self("users:write");
+    pub(crate) const USERS_DELETE: Self = Self("users:delete");
+    pub(crate) const ROLES_READ: Self = Self("roles:read");
+    pub(crate) const ROLES_WRITE: Self = Self("roles:write");
+    pub(crate) const AUDIT_READ: Self = Self("audit:read");
 
     pub(crate) const fn as_str(self) -> &'static str {
         self.0
@@ -80,9 +95,18 @@ impl AuthUser {
             via_api_key,
         }
     }
+    /// Wildcard holder ("*"), e.g. `super_admin`.
+    pub(crate) fn is_super(&self) -> bool {
+        self.permissions.contains("*")
+    }
+
+    /// Same as `can`, for permission names only known at runtime (API key scopes).
+    pub(crate) fn has(&self, name: &str) -> bool {
+        self.is_super() || self.permissions.contains(name)
+    }
 
     pub(crate) fn can(&self, permission: Permission) -> bool {
-        self.permissions.contains("*") || self.permissions.contains(permission.as_str())
+        self.has(permission.as_str())
     }
 
     pub(crate) fn require(&self, permission: Permission) -> Result<(), AppError> {

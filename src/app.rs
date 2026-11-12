@@ -17,7 +17,7 @@ pub struct AppState {
     pub http: reqwest::Client,
 
     pub mailer: Arc<Mailer>,
-    // pub public_url: Arc<str>,
+    pub public_url: Arc<str>,
 }
 
 impl FromRef<AppState> for SqlitePool {

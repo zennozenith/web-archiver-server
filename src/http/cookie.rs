@@ -1,4 +1,5 @@
 use http::{HeaderMap, header};
+use secrecy::ExposeSecret as _;
 
 use crate::auth::{SESSION_TTL_MS, SessionToken};
 
@@ -34,6 +35,6 @@ impl SessionCookie {
     }
 
     pub(crate) fn get(headers: &HeaderMap) -> Option<SessionToken> {
-        cookie_value(&headers, Self::KEY).and_then(|v| SessionToken::try_from(v).ok())
+        cookie_value(headers, Self::KEY).and_then(|v| SessionToken::try_from(v).ok())
     }
 }

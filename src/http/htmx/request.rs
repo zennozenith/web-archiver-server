@@ -101,7 +101,10 @@ impl HtmxRequest {
 
 impl<S: Send + Sync> FromRequestParts<S> for HtmxRequest {
     type Rejection = Infallible;
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Infallible> {
-        Ok(Self::from_headers(&parts.headers))
+    fn from_request_parts(
+        parts: &mut Parts,
+        _: &S,
+    ) -> impl Future<Output = Result<Self, Infallible>> {
+        std::future::ready(Ok(Self::from_headers(&parts.headers)))
     }
 }

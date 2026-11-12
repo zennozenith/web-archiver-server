@@ -5,7 +5,10 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
 use crate::{config::DatabaseSettings, util::time::DAY_MS};
 
-// pub(crate) mod admin;
+pub(crate) mod api_key;
+pub(crate) mod profile;
+pub(crate) mod role;
+pub(crate) mod session;
 // pub(crate) mod archive;
 pub(crate) mod audit;
 pub(crate) mod auth;
@@ -19,7 +22,6 @@ pub(crate) mod stats;
 // pub(crate) mod store;
 // pub(crate) mod tag;
 pub(crate) mod user;
-pub(crate) mod user_profile;
 
 pub(crate) async fn create_pool(
     database_settings: &DatabaseSettings,

@@ -20,7 +20,9 @@ fn credential(headers: &HeaderMap) -> Option<Credential> {
     if let Some(key) = bearer {
         return Some(Credential::ApiKey(SecretString::from(key.to_owned())));
     }
-    cookie_value(headers, SessionCookie::KEY).map(|t| Credential::Session(SessionToken::new(t)))
+    cookie_value(headers, SessionCookie::KEY)
+        .and_then(|t| SessionToken::try_from(t).ok())
+        .map(Credential::Session)
 }
 
 impl<S> FromRequestParts<S> for AuthUser

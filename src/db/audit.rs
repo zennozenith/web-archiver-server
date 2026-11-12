@@ -1,6 +1,8 @@
 use serde_json::Value;
 use sqlx::SqlitePool;
 
+use crate::auth::AuditEntry;
+
 /// Append a row to the append-only `audit_log`. Failures are logged, never bubbled up.
 pub(crate) async fn audit(
     pool: &SqlitePool,
@@ -21,4 +23,21 @@ pub(crate) async fn audit(
     if let Err(e) = res {
         tracing::warn!("failed to write audit log ({action}): {e}");
     }
+}
+
+pub(crate) async fn list(pool: &SqlitePool, limit: i64) -> Result<Vec<AuditEntry>, sqlx::Error> {
+    let rows: Vec<AuditEntry> = sqlx::query_as(
+        "SELECT a.id, a.action, actor.email AS actor_email, target.email AS target_email,
+                a.details, a.created_at
+           FROM audit_log a
+           LEFT JOIN users actor  ON actor.id  = a.actor_user_id
+           LEFT JOIN users target ON target.id = a.target_user_id
+          ORDER BY a.id DESC
+          LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
 }

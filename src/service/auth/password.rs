@@ -1,4 +1,4 @@
-use secrecy::SecretString;
+use secrecy::{ExposeSecret as _, SecretString};
 use serde_json::json;
 use sqlx::SqlitePool;
 
@@ -75,14 +75,14 @@ pub(crate) async fn forgot_password(ctx: &AppState, email: String) -> Result<()>
         return Err(AppError::BadRequest("Email empty".into()));
     }
 
-    let Some(user_id) = db::auth::find_active_user_id_by_email(ctx.db, email).await? else {
+    let Some(user_id) = db::auth::find_active_user_id_by_email(&ctx.db, email).await? else {
         return Ok(());
     };
 
     let now = now_ms();
     let token = ResetToken::new()?;
 
-    let mut tx = ctx.begin().await?;
+    let mut tx = ctx.db.begin().await?;
     // Only the most recent link should work.
     db::auth::invalidate_open_tokens(&mut tx, user_id, TokenPurpose::ResetPassword, now).await?;
     db::auth::insert_token(
@@ -99,8 +99,6 @@ pub(crate) async fn forgot_password(ctx: &AppState, email: String) -> Result<()>
     tx.commit().await?;
 
     // Send only after commit: never mail a link that failed to persist.
-    tx.commit().await?;
-
     super::mail::dispatch(
         ctx,
         super::mail::password_reset(&ctx.public_url, email, &token),

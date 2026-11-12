@@ -3,7 +3,7 @@ use secrecy::ExposeSecret as _;
 use crate::{
     AppState,
     auth::{ResetToken, VerifyToken},
-    infra::mailer::Message,
+    infra::{MailerTrait as _, mailer::Message},
 };
 
 pub(super) fn verification(public_url: &str, to: &str, token: &VerifyToken) -> Message {
@@ -37,7 +37,7 @@ pub(super) fn password_reset(public_url: &str, to: &str, token: &ResetToken) -> 
 /// token is already saved, and a visible failure would also reveal whether
 /// an address has an account.
 pub(super) fn dispatch(ctx: &AppState, message: Message) {
-    let mailer = ctx.mailer.clone();
+    let mailer = std::sync::Arc::<crate::infra::mailer::Mailer>::clone(&ctx.mailer);
     tokio::spawn(async move {
         let to = message.to.clone();
         if let Err(e) = mailer.send(message).await {

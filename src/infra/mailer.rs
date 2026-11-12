@@ -3,6 +3,10 @@ pub(crate) use log::LogMailer;
 pub(crate) use memory::MemoryMailer;
 // pub(crate) use smtp::SmtpMailer;
 
+pub(crate) trait MailerTrait: Send + Sync + 'static {
+    async fn send(&self, message: Message) -> Result<(), MailError>;
+}
+
 /// A ready-to-send e-mail. Plain text only; add `html: Option<String>` when
 /// you have templates.
 #[derive(Debug, Clone)]
@@ -26,20 +30,32 @@ pub(crate) enum MailError {
 pub(crate) enum Mailer {
     Log(LogMailer),
     // Smtp(SmtpMailer),
+    #[expect(dead_code, reason = "will be used in test later")]
     #[cfg(test)]
     Memory(MemoryMailer),
 }
 
+impl MailerTrait for Mailer {
+    async fn send(&self, message: Message) -> Result<(), MailError> {
+        match self {
+            Self::Log(log_mailer) => log_mailer.send(message).await,
+            #[cfg(test)]
+            Self::Memory(memory_mailer) => memory_mailer.send(message).await,
+        }
+    }
+}
+
 mod log {
-    use super::{MailError, Message};
+    use super::{MailError, MailerTrait, Message};
 
     /// Prints mail to the log instead of sending it. Development only: bodies
     /// contain live tokens.
     #[derive(Debug)]
     pub(crate) struct LogMailer;
 
-    impl LogMailer {
-        pub(crate) async fn send(&self, m: Message) -> Result<(), MailError> {
+    impl MailerTrait for LogMailer {
+        #[expect(clippy::unused_async_trait_impl, reason = "")]
+        async fn send(&self, m: Message) -> Result<(), MailError> {
             tracing::info!(
                 "[dev e-mail] to={} subject={:?}\n{}",
                 m.to,
@@ -113,7 +129,7 @@ mod memory {
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
-    use super::{MailError, Message};
+    use super::{MailError, MailerTrait, Message};
 
     #[derive(Debug, Clone, Default)]
     pub(crate) struct MemoryMailer(pub Arc<Mutex<Vec<Message>>>);
@@ -122,10 +138,23 @@ mod memory {
         pub(crate) async fn sent(&self) -> Vec<Message> {
             self.0.lock().await.clone()
         }
+    }
 
-        pub(crate) async fn send(&self, m: Message) -> Result<(), MailError> {
+    impl MailerTrait for MemoryMailer {
+        async fn send(&self, m: Message) -> Result<(), MailError> {
             self.0.lock().await.push(m);
             Ok(())
         }
     }
 }
+
+// #[sqlx::test(migrations = "./migrations")]
+// async fn forgot_password_sends_mail_only_for_active_users(pool: SqlitePool) {
+//     let mailer = MemoryMailer::default();
+//     let ctx = test_state(pool, Arc::new(mailer.clone()));
+//     // ...create and activate "a@x.com"
+//     service::auth::forgot_password(&ctx, "a@x.com".into()).await.unwrap();
+//     service::auth::forgot_password(&ctx, "nobody@x.com".into()).await.unwrap();
+//     tokio::task::yield_now().await; // let the spawned send run
+//     assert_eq!(mailer.sent().len(), 1);
+// }

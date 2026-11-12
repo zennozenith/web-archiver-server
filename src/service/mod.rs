@@ -1,3 +1,5 @@
 //! shared by api and web
 
-pub(super) mod auth;
+pub(crate) mod admin;
+pub(crate) mod auth;
+pub(crate) mod me;

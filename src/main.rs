@@ -22,9 +22,10 @@ mod infra;
 mod service;
 mod util;
 
-mod tag;
+// mod tag;
 mod template;
 
+#[expect(clippy::too_many_lines, reason = "")]
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -78,6 +79,7 @@ async fn main() {
         store,
         http,
         mailer,
+        public_url: Arc::from("https://example.com"), // TODO: from settings
     };
     service::auth::init().await;
 
