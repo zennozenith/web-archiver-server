@@ -1,0 +1,18 @@
+{% extends "auth_base.templ.html" %}
+{% block content %}
+<h1 class="font-display text-3xl font-semibold">Verify your e-mail</h1>
+<p class="mt-1 text-dim">Paste the token from the verification e-mail.</p>
+
+<form class="mt-8 space-y-3" hx-post="/verify" hx-target="#form-alert">
+  <fieldset class="fieldset">
+    <legend class="fieldset-legend">Token</legend>
+    <input class="input w-full font-data" name="token" value="{{ token }}" required>
+  </fieldset>
+  <div id="form-alert" aria-live="polite"></div>
+  <button class="btn btn-primary w-full" type="submit">
+    <span class="loading loading-spinner loading-sm htmx-indicator"></span>Verify e-mail
+  </button>
+</form>
+
+<p class="mt-6 text-sm"><a class="link" href="/login">Back to sign in</a></p>
+{% endblock %}

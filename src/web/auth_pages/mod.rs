@@ -16,52 +16,49 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use secrecy::SecretString;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::extract::{ActionError, Fragments, Render, WebRejection, WebUser, with_redirect};
-use crate::{
-    AppState,
-    error::AppError,
-    routes::auth::{self as flow, ForgotReq, LoginReq, RegisterReq, ResetReq, TokenReq},
-};
+use crate::{AppState, api::auth as flow, db::auth::LoginReq, error::AppError};
 
 // ------------------------------------------------------------------ templates
 
 #[derive(Debug, Template)]
-#[template(path = "login.html")]
+#[template(path = "login.templ.html")]
 struct LoginTpl {
     title: &'static str,
 }
 
 #[derive(Debug, Template)]
-#[template(path = "register.html")]
+#[template(path = "register.templ.html")]
 struct RegisterTpl {
     title: &'static str,
 }
 
 #[derive(Debug, Template)]
-#[template(path = "verify.html")]
+#[template(path = "verify.templ.html")]
 struct VerifyTpl {
     title: &'static str,
     token: String,
 }
 
 #[derive(Debug, Template)]
-#[template(path = "forgot.html")]
+#[template(path = "forgot.templ.html")]
 struct ForgotTpl {
     title: &'static str,
 }
 
 #[derive(Debug, Template)]
-#[template(path = "reset.html")]
+#[template(path = "reset.templ.html")]
 struct ResetTpl {
     title: &'static str,
     token: String,
 }
 
 #[derive(Debug, Template)]
-#[template(path = "partials/alert.html")]
+#[template(path = "partials/alert.templ.html")]
 struct AlertTpl {
     kind: &'static str,
     message: String,
@@ -79,12 +76,11 @@ fn alert(status: StatusCode, tpl: &AlertTpl) -> Response {
 }
 
 fn fail(error: &AppError) -> Response {
-    let (_, message) = error.parts();
     alert(
         StatusCode::UNPROCESSABLE_ENTITY,
         &AlertTpl {
             kind: "alert-error",
-            message,
+            message: error.to_string(),
             href: String::new(),
             label: "",
         },
@@ -125,7 +121,7 @@ pub(crate) async fn login_page(signed_in: Result<WebUser, WebRejection>) -> Resp
 #[derive(Debug, Deserialize)]
 pub(crate) struct LoginForm {
     identifier: String,
-    password: String,
+    password: SecretString,
 }
 
 pub(crate) async fn login_submit(
@@ -296,25 +292,10 @@ pub(crate) async fn reset_submit(
 
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
-        .route(
-            "/login",
-            get(auth_pages::login_page).post(auth_pages::login_submit),
-        )
-        .route(
-            "/register",
-            get(auth_pages::register_page).post(auth_pages::register_submit),
-        )
-        .route(
-            "/verify",
-            get(auth_pages::verify_page).post(auth_pages::verify_submit),
-        )
-        .route(
-            "/forgot",
-            get(auth_pages::forgot_page).post(auth_pages::forgot_submit),
-        )
-        .route(
-            "/reset",
-            get(auth_pages::reset_page).post(auth_pages::reset_submit),
-        )
-        .route("/logout", post(auth_pages::logout))
+        .route("/login", get(login_page).post(login_submit))
+        .route("/register", get(register_page).post(register_submit))
+        .route("/verify", get(verify_page).post(verify_submit))
+        .route("/forgot", get(forgot_page).post(forgot_submit))
+        .route("/reset", get(reset_page).post(reset_submit))
+        .route("/logout", post(logout))
 }

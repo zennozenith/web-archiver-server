@@ -102,7 +102,7 @@ pub enum AppError {
 }
 
 impl AppError {
-    fn parts(&self) -> (StatusCode, &'static str, Option<Value>) {
+    pub(crate) fn parts(&self) -> (StatusCode, &'static str, Option<Value>) {
         use AppError::{
             BadRequest, Conflict, Database, Duplicate, Internal, InvalidUrl, NotFound,
             PayloadTooLarge, Render, Unauthorized, Unprocessable,
@@ -164,6 +164,8 @@ pub enum ForbiddenReason {
     Permission,
     #[error("keys cannot mint more keys")]
     ApiKeyMint,
+    #[error("Csrf")]
+    Csrf,
     #[error("unknown reason, report admin")]
     Unknown,
 }

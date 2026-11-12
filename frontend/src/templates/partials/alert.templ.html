@@ -1,0 +1,4 @@
+<div class="alert {{ kind }} alert-soft items-start" role="alert">
+  <span class="flex-1">{{ message }}</span>
+  {% if !href.is_empty() %}<a class="btn btn-sm btn-primary" href="{{ href }}">{{ label }}</a>{% endif %}
+</div>

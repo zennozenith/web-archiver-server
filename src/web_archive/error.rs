@@ -16,7 +16,7 @@ enum Wants {
 }
 
 #[derive(Template)]
-#[template(path = "error.html")]
+#[template(path = "error.deprecated.html")]
 struct ErrorPage<'a> {
     status: u16,
     title: &'a str,

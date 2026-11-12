@@ -1,0 +1,7 @@
+<div id="toasts" hx-swap-oob="beforeend">
+  <div class="alert {{ kind }} shadow-lg" role="status" x-data x-init="setTimeout(() => $el.remove(), 4500)">
+    <span>{{ message }}</span>
+    <button type="button" class="btn btn-ghost btn-xs btn-circle" @click="$el.closest('.alert').remove()"
+      aria-label="Dismiss">✕</button>
+  </div>
+</div>

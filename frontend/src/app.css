@@ -8,9 +8,11 @@
 @plugin "@iconify/tailwind4";
 
 @import "./styles/themes.css";
-@import "./styles/components.css";
+/* @import "./styles/components.css"; */
+@import "./styles/extra.css";
 
 /* Classes that Rust builds at runtime (FeedbackKind::class()) can't be seen by the scanner. */
 @source inline("alert-{info,success,warning,error}");
+
 /* If other Rust code emits class names, point the scanner at it:
 @source "../../src"; */

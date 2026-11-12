@@ -1,0 +1,32 @@
+{% extends "auth_base.templ.html" %}
+{% block content %}
+<h1 class="font-display text-3xl font-semibold">Create account</h1>
+
+<form class="mt-8 space-y-3" hx-post="/register" hx-target="#form-alert">
+  <fieldset class="fieldset">
+    <legend class="fieldset-legend">E-mail</legend>
+    <input class="input w-full" type="email" name="email" autocomplete="email" required autofocus>
+  </fieldset>
+  <div class="grid gap-3 sm:grid-cols-2">
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Username <span class="text-faint">(optional)</span></legend>
+      <input class="input w-full" name="username" autocomplete="username">
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Display name <span class="text-faint">(optional)</span></legend>
+      <input class="input w-full" name="display_name" autocomplete="name">
+    </fieldset>
+  </div>
+  <fieldset class="fieldset">
+    <legend class="fieldset-legend">Password</legend>
+    <input class="input w-full" type="password" name="password" autocomplete="new-password" minlength="8" required>
+    <p class="label">At least 8 characters.</p>
+  </fieldset>
+  <div id="form-alert" aria-live="polite"></div>
+  <button class="btn btn-primary w-full" type="submit">
+    <span class="loading loading-spinner loading-sm htmx-indicator"></span>Create account
+  </button>
+</form>
+
+<p class="mt-6 text-sm">Already registered? <a class="link" href="/login">Sign in</a></p>
+{% endblock %}

@@ -9,6 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _
 use crate::{blob_store::BlobStore, config::Settings};
 
 mod api;
+mod app;
 mod asset;
 mod blob_store;
 mod compress;
