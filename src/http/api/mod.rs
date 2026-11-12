@@ -79,21 +79,19 @@
 //!   DELETE /api/tag/:id
 //!   POST   /api/tag/:id/merge            JSON { into: `tag_id` }
 
-mod archive;
-mod asset;
-mod capture;
-mod collection;
-mod content;
+// mod archive;
+// mod asset;
+// mod capture;
+// mod collection;
+// mod content;
 mod misc;
-mod page;
-mod pending;
-mod tag;
+// mod page;
+// mod pending;
+// mod tag;
 
 pub(crate) mod admin;
 pub(crate) mod auth;
 pub(crate) mod me;
-
-pub(crate) use page::parse_multipart;
 
 use axum::{
     Router,
@@ -104,43 +102,39 @@ use axum::{
 };
 use http::header::AUTHORIZATION;
 
-use crate::{
-    AppState,
-    api::misc::health,
-    error::{AppError, Result},
-};
+use crate::prelude::*;
 
-#[expect(
-    dead_code,
-    reason = "bearer-auth middleware is kept for deployments that enable it"
-)]
-async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Result<Response> {
-    let ok = req
-        .headers()
-        .get(AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        // blake3::Hash equality is constant-time
-        .is_some_and(|t| blake3::hash(t.as_bytes()) == blake3::hash(state.token.as_bytes()));
-    if !ok {
-        return Err(AppError::Unauthorized);
-    }
-    Ok(next.run(req).await)
-}
+// #[expect(
+//     dead_code,
+//     reason = "bearer-auth middleware is kept for deployments that enable it"
+// )]
+// async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Result<Response> {
+//     let ok = req
+//         .headers()
+//         .get(AUTHORIZATION)
+//         .and_then(|v| v.to_str().ok())
+//         .and_then(|v| v.strip_prefix("Bearer "))
+//         // blake3::Hash equality is constant-time
+//         .is_some_and(|t| blake3::hash(t.as_bytes()) == blake3::hash(state.token.as_bytes()));
+//     if !ok {
+//         return Err(AppError::Unauthorized);
+//     }
+//     Ok(next.run(req).await)
+// }
 
 pub(crate) fn router() -> Router<AppState> {
     let api = Router::<AppState>::new()
         .merge(auth::routes())
         .merge(me::routes())
-        .merge(admin::routes())
-        .merge(tag::routes())
-        .merge(collection::routes())
-        .merge(pending::routes())
-        .merge(page::routes())
-        .merge(capture::routes())
-        .merge(content::routes())
-        .merge(misc::routes());
+        .merge(admin::routes());
+    // .merge(tag::routes())
+    // .merge(collection::routes())
+    // .merge(pending::routes())
+    // .merge(page::routes())
+    // .merge(capture::routes())
+    // .merge(content::routes())
+    // .merge(misc::routes());
     // .layer(from_fn_with_state (state.clone(), require_auth));
 
-    Router::new().route("/health", get(health)).merge(api)
+    Router::new().route("/health", get(misc::health)).merge(api)
 }

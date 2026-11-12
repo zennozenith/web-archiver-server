@@ -10,14 +10,15 @@ use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
 use crate::{
+    auth::AuthUser,
     db::{
         user::UserRow,
         user_profile::{CreateKeyReq, ProfileReq, ProfileRow, SessionRow},
     },
     error::{AppError, ForbiddenReason},
-    extract::auth_user::AuthUser,
+    http::extract::body::AppJson,
     prelude::*,
-    time::{ms_to_dt, opt_ms_to_dt},
+    util::time::{ms_to_dt, opt_ms_to_dt},
 };
 
 /// Public representation: the integer `id` is never exposed, only `public_id`.
@@ -94,12 +95,15 @@ impl From<ProfileRow> for ProfileDto {
 }
 // ------------------------------------------------------------------- /me
 
-async fn get_me(State(pool): State<SqlitePool>, user: AuthUser) -> Result<Json<Value>, AppError> {
+async fn get_me(
+    State(pool): State<SqlitePool>,
+    user: AuthUser,
+) -> Result<AppJson<Value>, AppError> {
     user.require("profile:read")?;
 
     let (user_row, profile_row) = crate::db::user_profile::get_me(&pool, user.id).await?;
 
-    Ok(Json(json!({
+    Ok(AppJson(json!({
         "user": UserDto::from(user_row),
         "profile": ProfileDto::from(profile_row),
         "permissions": &user.permissions,

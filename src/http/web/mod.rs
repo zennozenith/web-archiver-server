@@ -1,6 +1,9 @@
 // mod actions;
 mod auth_pages;
-mod extract;
+mod error;
+mod serve;
+mod user;
+// mod web_archive;
 // mod fragments;
 // mod pages;
 // mod templates;
@@ -13,10 +16,12 @@ use axum::{
     routing::{get, post, put},
 };
 
-use crate::{AppState, error::AppError, web_archive::error::negotiate_errors};
+use crate::{AppState, error::AppError};
 
 pub(crate) fn router() -> Router<AppState> {
-    Router::new().merge(auth_pages::router())
+    Router::new()
+        // .nest("/archive", web_archive::router())
+        .merge(auth_pages::router())
     // .route("/", get(root))
     // .route("/dashboard", get(pages::dashboard))
     // // links

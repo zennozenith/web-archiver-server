@@ -5,11 +5,12 @@ use serde_json::json;
 use sqlx::{FromRow, SqlitePool};
 
 use crate::{
-    db::{audit::audit, auth::AccountStatus, user::UserRow},
+    auth::AccountStatus,
+    db::{audit::audit, user::UserRow},
     error::AppError,
     prelude::*,
-    time::now_ms,
     user_select,
+    util::time::now_ms,
 };
 
 async fn user_id_by_public(pool: &SqlitePool, public_id: &str) -> Result<i64> {

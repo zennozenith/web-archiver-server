@@ -6,6 +6,7 @@ use crate::error::AppError;
 
 // ------------------------------------------------------------------- tokens
 
+/// Random 16 bytes hex encoded
 pub(crate) fn random_id() -> Result<String, AppError> {
     let mut buf = [0u8; 16];
     // TODO: Remove expect and return error

@@ -1,10 +1,8 @@
-use std::net::SocketAddr;
-
 use axum::{
     Json, Router,
-    extract::{ConnectInfo, State},
+    extract::State,
     http::{HeaderMap, header},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     routing::post,
 };
 use http::StatusCode;
@@ -14,14 +12,14 @@ use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
 use crate::{
-    db::auth::{AccountStatus, LoginReq, NewAccount, create_account},
-    error::AppError,
-    extract::{
-        ApiJson,
-        auth_user::{SessionCookie, cookie_value},
+    auth::{AccountStatus, ClientInfo, NewAccount, ResetToken, VerifyToken},
+    http::{
+        cookie::SessionCookie,
+        dto::auth::LoginRequest,
+        extract::body::{AppJson, JsonOrForm},
     },
     prelude::*,
-    token::{ResetToken, SessionToken, VerifyToken},
+    service,
 };
 
 // ---------------------------------------------------------------- register
@@ -29,10 +27,10 @@ use crate::{
 /// Creates user + credentials + role in one transaction. New accounts are
 /// `pending` until they verify their e-mail.
 async fn register(
-    State(pool): State<SqlitePool>,
-    ApiJson(req): ApiJson<NewAccount>,
+    State(ctx): State<AppState>,
+    AppJson(req): AppJson<NewAccount>,
 ) -> Result<(StatusCode, Json<Value>)> {
-    let created = create_account(pool, req).await?;
+    let created = service::auth::create_account(&ctx, req).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -53,52 +51,50 @@ pub(crate) struct TokenReq {
 
 async fn verify_email(
     State(pool): State<SqlitePool>,
-    ApiJson(req): ApiJson<TokenReq>,
+    AppJson(req): AppJson<TokenReq>,
 ) -> Result<Json<Value>> {
     let verify_token = VerifyToken::try_from(req.token)?;
-    crate::db::auth::verify_email(pool, verify_token).await?;
+    crate::service::auth::verify_email(&pool, verify_token).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
 // -------------------------------------------------------------------- login
 
-async fn login(
-    State(pool): State<SqlitePool>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    ApiJson(req): ApiJson<LoginReq>,
-) -> Result<Response, AppError> {
-    let ip = addr.ip().to_string();
-    let user_agent = headers
-        .get(header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_owned();
-
-    let session_cookie_token = crate::db::auth::login(&pool, &ip, &user_agent, req).await?;
-
-    Ok((
-        [(
-            header::SET_COOKIE,
-            SessionCookie::cookie(&session_cookie_token),
-        )],
-        Json(json!({ "ok": true })),
-    )
-        .into_response())
+#[derive(Deserialize)]
+pub(crate) struct LoginReq {
+    pub identifier: String,
+    pub password: SecretString,
 }
 
-async fn logout(State(pool): State<SqlitePool>, headers: HeaderMap) -> Result<Response, AppError> {
-    let maybe_token =
-        cookie_value(&headers, SessionCookie::KEY).and_then(|v| SessionToken::try_from(v).ok());
+async fn login(
+    State(ctx): State<AppState>,
+    client: ClientInfo,
+    // ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    JsonOrForm(req): JsonOrForm<LoginRequest>,
+) -> Result<impl IntoResponse> {
+    // let ip = addr.ip().to_string();
+
+    let token = service::auth::login(&ctx, &client, req.into()).await?;
+    Ok((
+        [(header::SET_COOKIE, SessionCookie::set(&token))],
+        StatusCode::NO_CONTENT,
+    ))
+}
+
+async fn logout(
+    State(ctx): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let maybe_token = SessionCookie::get(&headers);
+
     if let Some(session_cookie_token) = maybe_token {
-        crate::db::auth::logout(&pool, session_cookie_token).await?;
+        service::auth::logout(&ctx, session_cookie_token).await?;
     }
 
     Ok((
         [(header::SET_COOKIE, SessionCookie::clear())],
-        Json(json!({ "ok": true })),
-    )
-        .into_response())
+        StatusCode::NO_CONTENT,
+    ))
 }
 
 // ----------------------------------------------------------- password reset
@@ -109,12 +105,13 @@ pub(crate) struct ForgotReq {
 }
 
 async fn forgot_password(
-    State(pool): State<SqlitePool>,
+    State(ctx): State<AppState>,
     Json(req): Json<ForgotReq>,
 ) -> Result<Json<Value>, AppError> {
     let email = req.email.trim().to_owned();
 
-    crate::db::auth::forgot_password(&pool, email).await?;
+    service::auth::forgot_password(&ctx, email).await?;
+
     // Same answer whether or not the account exists (no user enumeration).
     Ok(Json(json!({
         "ok": true,
@@ -131,11 +128,12 @@ pub(crate) struct ResetReq {
 async fn reset_password(
     State(pool): State<SqlitePool>,
     Json(req): Json<ResetReq>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<StatusCode, AppError> {
     let token = ResetToken::try_from(req.token)?;
 
-    let _throw_away = crate::db::auth::reset_password(&pool, token, req.new_password).await;
-    Ok(Json(json!({ "ok": true })))
+    let _throw_away = service::auth::reset_password(&pool, token, req.new_password).await;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub(super) fn routes() -> Router<AppState> {

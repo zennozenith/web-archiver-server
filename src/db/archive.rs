@@ -1,18 +1,20 @@
-use std::collections::{HashMap, HashSet};
-use std::future::Future;
-use std::pin::Pin;
+use std::{
+    collections::{HashMap, HashSet},
+    future::Future,
+    pin::Pin,
+};
 
 use futures::{StreamExt, stream};
 use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::{
-    blob_store::BlobStore,
     db::store::{insert_blob, prepare_blob},
-    downloader,
-    error::Result,
-    extractor::{css, html},
-    hash::Blake3Hash,
+    infra::{
+        Blake3Hash, BlobStore, downloader,
+        extractor::{css, html},
+    },
+    prelude::*,
 };
 
 /// Upper bound on sub-resources fetched per archive request (CSS resources included).

@@ -14,7 +14,7 @@ use crate::{
     error::AppError::{
         Forbidden, HashParse, InvalidCredentials, TooManyRequest, UnsupportedMediaType,
     },
-    hash::HashParseError,
+    infra::HashParseError,
 };
 
 pub(crate) type Result<T, E = AppError> = std::result::Result<T, E>;
@@ -80,7 +80,7 @@ pub enum AppError {
     #[error("unsupported media type")]
     UnsupportedMediaType,
 
-    // 415
+    // 429
     #[error("{0}")]
     TooManyRequest(&'static str),
 

@@ -1,67 +1,29 @@
+#[cfg(debug_assertions)]
 use std::sync::Arc;
-use std::time::Duration;
+use std::{net::SocketAddr, time::Duration};
 
-use axum::{Router, extract::FromRef};
-use sqlx::SqlitePool;
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use crate::{blob_store::BlobStore, config::Settings};
+use crate::{
+    app::AppState,
+    config::Settings,
+    infra::{BlobStore, Mailer},
+};
 
-mod api;
 mod app;
-mod asset;
-mod blob_store;
-mod compress;
+mod auth;
 mod config;
-mod crypto;
-mod db;
-mod downloader;
 mod error;
-mod extract;
-mod extractor;
-mod hash;
-mod helper;
-mod htmx;
-mod image;
-mod limit;
-mod mime;
 mod prelude;
-mod serve;
+
+mod db;
+mod http;
+mod infra;
+mod service;
+mod util;
+
 mod tag;
 mod template;
-mod time;
-mod token;
-mod url_canon;
-mod web;
-mod web_archive;
-
-#[derive(Debug, Clone)]
-pub struct AppState {
-    pub db: SqlitePool,
-    pub token: Arc<str>,
-    pub store: BlobStore,
-    /// Shared client for fetching archived sub-resources.
-    pub http: reqwest::Client,
-}
-
-impl FromRef<AppState> for SqlitePool {
-    fn from_ref(app_state: &AppState) -> Self {
-        app_state.db.clone()
-    }
-}
-
-impl FromRef<AppState> for BlobStore {
-    fn from_ref(app_state: &AppState) -> Self {
-        app_state.store.clone()
-    }
-}
-
-impl FromRef<AppState> for reqwest::Client {
-    fn from_ref(app_state: &AppState) -> Self {
-        app_state.http.clone()
-    }
-}
 
 #[tokio::main]
 async fn main() {
@@ -100,14 +62,26 @@ async fn main() {
         .build()
         .expect("Unable to create HTTP client");
 
+    // let mailer: Arc<dyn Mailer> = match &settings.mail.smtp {
+    //     Some(smtp) => Arc::new(
+    //         SmtpMailer::new(&settings.mail.from, smtp).expect("invalid mail configuration"),
+    //     ),
+    //     None if cfg!(debug_assertions) => Arc::new(LogMailer),
+    //     None => panic!("mail.smtp must be configured in release builds"),
+    // };
+
+    #[cfg(debug_assertions)]
+    let mailer = Arc::new(Mailer::Log(infra::LogMailer));
+
     let state = AppState {
         db,
-        token: Arc::from("test"),
         store,
         http,
+        mailer,
     };
+    service::auth::init().await;
 
-    let app = app(state);
+    let app = app::app(state);
 
     tracing::debug!("{:#?}", &settings);
 
@@ -127,15 +101,9 @@ async fn main() {
             .to_string()
     );
 
-    let _err = axum::serve(listener, app).await;
-}
-
-fn app(state: AppState) -> Router {
-    Router::new()
-        .nest("/api", api::router())
-        .nest("/archive", web_archive::router())
-        .merge(web::router())
-        .merge(asset::serve_dir())
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+    let _err = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await;
 }

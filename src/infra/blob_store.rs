@@ -18,10 +18,9 @@ use std::{
 
 use tokio::{fs, io::AsyncWriteExt};
 
-use crate::{
-    error::{AppError, Result},
-    hash::Blake3Hash,
-};
+use crate::error::{AppError, Result};
+
+use super::hash::Blake3Hash;
 
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 

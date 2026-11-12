@@ -1,6 +1,33 @@
 use secrecy::SecretString;
+use serde::Serialize;
 
 use crate::error::AppError;
+
+/// Mirrors the `CHECK (purpose IN (...))` constraint on `auth_tokens`.
+/// Keep the two in sync: adding a variant here means a migration there.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    strum::Display,
+    strum::EnumString,
+    sqlx::Type,
+)]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub(crate) enum TokenPurpose {
+    VerifyEmail,
+    VerifyPhone,
+    ResetPassword,
+    MagicLink,
+    Invite,
+    ChangeEmail,
+}
 
 /// A source of cryptographically random bytes.
 ///
@@ -83,12 +110,12 @@ macro_rules! random_token {
         $(#[$meta])*
         $vis struct $name(::secrecy::SecretString);
 
-        impl $crate::token::RandomToken for $name {
+        impl $crate::auth::RandomToken for $name {
             const PREFIX: &'static str = $prefix;
 
             #[inline]
-            fn generate_with(rng: &impl $crate::token::Rng) -> ::core::result::Result<Self, $crate::error::AppError> {
-                $crate::token::generate_secret(Self::PREFIX, rng).map(Self)
+            fn generate_with(rng: &impl $crate::auth::Rng) -> ::core::result::Result<Self, $crate::error::AppError> {
+                $crate::auth::generate_secret(Self::PREFIX, rng).map(Self)
             }
 
             #[inline]
@@ -102,14 +129,14 @@ macro_rules! random_token {
             /// Generate a fresh token using the OS RNG.
             #[inline]
             $vis fn new() -> ::core::result::Result<Self, $crate::error::AppError> {
-                <Self as $crate::token::RandomToken>::generate()
+                <Self as $crate::auth::RandomToken>::generate()
             }
 
             /// Generate using an arbitrary RNG (testing only).
             #[inline]
             #[cfg(test)]
-            $vis fn new_with(rng: &impl $crate::token::Rng) -> ::core::result::Result<Self, $crate::error::AppError> {
-                <Self as $crate::token::RandomToken>::generate_with(rng)
+            $vis fn new_with(rng: &impl $crate::auth::Rng) -> ::core::result::Result<Self, $crate::error::AppError> {
+                <Self as $crate::auth::RandomToken>::generate_with(rng)
             }
         }
 
@@ -156,8 +183,6 @@ macro_rules! random_token {
         }
     };
 }
-
-// pub(crate) use random_token;
 
 random_token! {
     /// Token emailed to a user to verify their address.

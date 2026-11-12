@@ -8,7 +8,7 @@ use http::{StatusCode, header};
 use rust_embed::Embed;
 use tower_http::services::ServeDir;
 
-use crate::AppState;
+use crate::prelude::*;
 
 // use std::collections::HashMap;
 // use std::sync::OnceLock;
@@ -61,13 +61,13 @@ impl<T: Embed> ServeEmbed for T {}
 
 #[derive(Embed)]
 #[folder = "static/vite/assets"]
-pub(crate) struct ViteAssets;
+struct ViteAssets;
 
 #[derive(Embed)]
 #[folder = "static/vite/images"]
-pub(crate) struct ViteImages;
+struct ViteImages;
 
-pub(crate) fn serve_dir() -> Router<AppState> {
+pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .nest_service(
             "/static/vite/vendored",
