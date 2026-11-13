@@ -4,7 +4,7 @@
 use askama::Template;
 use axum::extract::State;
 
-use super::view::{RoleChip, Section, Shell, Stamp, UserItem};
+use super::super::view::{RoleChip, Section, Shell, Stamp, UserItem};
 use crate::{
     AppState,
     db::stats::{DayCount, UserCounts},

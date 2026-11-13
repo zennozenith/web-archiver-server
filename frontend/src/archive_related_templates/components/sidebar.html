@@ -24,20 +24,22 @@
 
   <ul class="menu w-full gap-0.5 p-0">
     <li>
+      <!-- beautify ignore:start -->
       <a
         href="/dashboard"
         {%
         if
-        page.active=""
-        ="dashboard"
+        page.active="dashboard"
         %}
         class="menu-active"
         aria-current="page"
         {%
         endif
         %}
-        ><span class="icon-[lucide--house] size-4"></span>Dashboard</a
       >
+        <span class="icon-[lucide--house] size-4"></span>Dashboard
+      </a>
+      <!-- beautify ignore:end -->
     </li>
     <li>
       <a

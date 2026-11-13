@@ -107,7 +107,12 @@ fn nav_groups(user: &AuthUser, active: Section) -> Vec<NavGroup> {
 
     let mut groups = vec![NavGroup {
         label: "Overview",
-        items: vec![item(Section::Dashboard, "/", "Dashboard", icons::GRID)],
+        items: vec![item(
+            Section::Dashboard,
+            "/account",
+            "Dashboard",
+            icons::GRID,
+        )],
     }];
 
     let mut admin = Vec::new();

@@ -15,13 +15,20 @@
         <div class="font-display text-5xl font-semibold tabular-nums">{{ s.total }}</div>
       </div>
       <dl class="flex gap-6 text-sm">
-        <div><dt class="text-xs text-faint">New this week</dt><dd class="text-lg font-semibold tabular-nums">{{ s.new_week }}</dd></div>
-        <div><dt class="text-xs text-faint">Unverified e-mail</dt><dd class="text-lg font-semibold tabular-nums">{{ s.unverified }}</dd></div>
+        <div>
+          <dt class="text-xs text-faint">New this week</dt>
+          <dd class="text-lg font-semibold tabular-nums">{{ s.new_week }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-faint">Unverified e-mail</dt>
+          <dd class="text-lg font-semibold tabular-nums">{{ s.unverified }}</dd>
+        </div>
       </dl>
     </div>
 
     <div class="seg-bar mt-5" role="img" aria-label="Accounts by status">
-      {% for seg in s.segments %}{% if seg.count > 0 %}<div class="{{ seg.class }}" style="flex: {{ seg.count }} 1 0"></div>{% endif %}{% endfor %}
+      {% for seg in s.segments %}{% if seg.count > 0 %}<div class="{{ seg.class }}" style="flex: {{ seg.count }} 1 0">
+      </div>{% endif %}{% endfor %}
     </div>
     <ul class="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
       {% for seg in s.segments %}
@@ -42,12 +49,21 @@
       {% for r in mine.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{% endfor %}
     </div>
     <dl class="mt-4 grid grid-cols-3 gap-3 text-sm">
-      <div class="col-span-3"><dt class="text-xs text-faint">Last sign-in</dt><dd><time datetime="{{ mine.last_login.iso }}" data-local>{{ mine.last_login.text }}</time></dd></div>
-      <div class="col-span-1"><dt class="text-xs text-faint">Sessions</dt><dd class="text-lg font-semibold tabular-nums">{{ mine.sessions }}</dd></div>
-      <div class="col-span-2"><dt class="text-xs text-faint">API keys</dt><dd class="text-lg font-semibold tabular-nums">{{ mine.api_keys }}</dd></div>
+      <div class="col-span-3">
+        <dt class="text-xs text-faint">Last sign-in</dt>
+        <dd><time datetime="{{ mine.last_login.iso }}" data-local>{{ mine.last_login.text }}</time></dd>
+      </div>
+      <div class="col-span-1">
+        <dt class="text-xs text-faint">Sessions</dt>
+        <dd class="text-lg font-semibold tabular-nums">{{ mine.sessions }}</dd>
+      </div>
+      <div class="col-span-2">
+        <dt class="text-xs text-faint">API keys</dt>
+        <dd class="text-lg font-semibold tabular-nums">{{ mine.api_keys }}</dd>
+      </div>
     </dl>
     <div class="mt-4 flex flex-wrap gap-2" hx-boost:inherited="true">
-      <a class="btn btn-sm" href="/account">Profile</a>
+      <a class="btn btn-sm" href="/account/profile">Profile</a>
       <a class="btn btn-sm" href="/account/sessions">Sessions</a>
       <a class="btn btn-sm" href="/account/keys">API keys</a>
     </div>
@@ -64,9 +80,18 @@
         </p>
       </div>
       <dl class="flex gap-6 text-sm">
-        <div><dt class="text-xs text-faint">Active sessions</dt><dd class="text-lg font-semibold tabular-nums">{{ sec.active_sessions }}</dd></div>
-        <div><dt class="text-xs text-faint">Failed (24h)</dt><dd class="text-lg font-semibold tabular-nums">{{ sec.failed_day }}</dd></div>
-        <div><dt class="text-xs text-faint">Locked</dt><dd class="text-lg font-semibold tabular-nums">{{ sec.locked }}</dd></div>
+        <div>
+          <dt class="text-xs text-faint">Active sessions</dt>
+          <dd class="text-lg font-semibold tabular-nums">{{ sec.active_sessions }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-faint">Failed (24h)</dt>
+          <dd class="text-lg font-semibold tabular-nums">{{ sec.failed_day }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-faint">Locked</dt>
+          <dd class="text-lg font-semibold tabular-nums">{{ sec.locked }}</dd>
+        </div>
       </dl>
     </div>
     <div class="mt-5 grid grid-cols-7 gap-3">
@@ -87,12 +112,15 @@
   <section class="rounded-xl border border-line bg-surface p-5">
     <div class="flex items-center justify-between">
       <h2 class="text-sm font-semibold text-dim">Newest accounts</h2>
-      <a class="link text-sm" href="/users" hx-boost="true">All users</a>
+      <a class="link text-sm" href="/admin/users" hx-boost="true">All users</a>
     </div>
     <ul class="mt-3 space-y-3">
       {% for u in recent_users %}
       <li class="flex items-center gap-3">
-        <div class="avatar avatar-placeholder"><div class="w-8 rounded-full bg-brand-soft text-brand"><span class="text-xs font-medium">{{ u.initials }}</span></div></div>
+        <div class="avatar avatar-placeholder">
+          <div class="w-8 rounded-full bg-brand-soft text-brand"><span class="text-xs font-medium">{{ u.initials
+              }}</span></div>
+        </div>
         <div class="min-w-0 flex-1">
           <div class="truncate text-sm font-medium">{{ u.name }}</div>
           <div class="truncate text-xs text-dim">{{ u.secondary }}</div>
@@ -108,7 +136,7 @@
   <section class="rounded-xl border border-line bg-surface p-5 lg:col-span-3">
     <div class="flex items-center justify-between">
       <h2 class="text-sm font-semibold text-dim">Recent activity</h2>
-      <a class="link text-sm" href="/audit" hx-boost="true">Full audit log</a>
+      <a class="link text-sm" href="/admin/audit" hx-boost="true">Full audit log</a>
     </div>
     <ul class="mt-3 divide-y divide-line text-sm">
       {% for a in recent_audit %}

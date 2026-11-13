@@ -17,7 +17,7 @@ pub(crate) async fn audit(
     .bind(actor)
     .bind(target)
     .bind(action)
-    .bind(details.map(|v| v.to_string()))
+    .bind(details.map_or_else(|| String::from("{}"), |v| v.to_string()))
     .execute(pool)
     .await;
     if let Err(e) = res {

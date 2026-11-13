@@ -16,7 +16,7 @@ pub struct AppState {
     /// Shared client for fetching archived sub-resources.
     pub http: reqwest::Client,
 
-    pub mailer: Arc<Mailer>,
+    pub(crate) mailer: Arc<Mailer>,
     pub public_url: Arc<str>,
 }
 
