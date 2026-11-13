@@ -1,0 +1,15 @@
+{% extends "base.templ.html" %}
+{% block content %}
+<div class="page-header mb-6 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="font-display text-2xl font-semibold"># {{ tag.name }}</h1>
+    <p class="text-sm text-dim">{{ tag.page_count }} links</p>
+  </div>
+  <a href="/tags" class="btn btn-ghost btn-sm">← All tags</a>
+</div>
+<div class="link-grid" data-view="grid">
+  {% for link in links %}{% include "archive/_link_card.templ.html" %}{% else %}
+  <div class="empty-state"><p class="title">No links with this tag yet</p><p>Add the tag to a link from its detail page.</p></div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -3,14 +3,13 @@
 use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteExecutor};
 
 use crate::{
-    compress::Compression,
     db::{
         capture::{CaptureBlob, CaptureId},
         helper::id_type,
         page::PageId,
     },
-    hash::Blake3Hash,
-    mime::MimeType,
+    infra::{Blake3Hash, Compression},
+    util::mime::MimeType,
 };
 
 id_type! {
@@ -66,26 +65,64 @@ impl Content {
         sqlx::query_as(concat!(
             "SELECT ",
             content_columns!(),
-            " FROM content ct WHERE ct.hash = ?"
+            " FROM contents ct WHERE ct.hash = ?"
         ))
         .bind(hash)
         .fetch_optional(executor)
         .await
     }
 
-    /// The blob of the given kind attached to a page.
+    /// Whether the owner has a capture, page thumbnail or capture asset that
+    /// references this blob.
+    pub(crate) async fn visible_to<'e>(
+        executor: impl SqliteExecutor<'e>,
+        owner: i64,
+        content_id: ContentId,
+    ) -> Result<bool> {
+        sqlx::query_scalar(
+            "SELECT EXISTS(
+                SELECT 1 FROM pages p
+                 WHERE p.owner_user_id = ? AND p.thumbnail_content_id = ?
+                UNION ALL
+                SELECT 1 FROM captures c
+                  JOIN pages p ON p.id = c.page_id
+                 WHERE p.owner_user_id = ?
+                   AND (c.content_id = ? OR c.original_content_id = ?
+                        OR c.screenshot_content_id = ?)
+                UNION ALL
+                SELECT 1 FROM capture_assets ca
+                  JOIN captures c ON c.id = ca.capture_id
+                  JOIN pages p ON p.id = c.page_id
+                 WHERE p.owner_user_id = ? AND ca.content_id = ?
+             )",
+        )
+        .bind(owner)
+        .bind(content_id)
+        .bind(owner)
+        .bind(content_id)
+        .bind(content_id)
+        .bind(content_id)
+        .bind(owner)
+        .bind(content_id)
+        .fetch_one(executor)
+        .await
+    }
+
+    /// The page's thumbnail blob.
     pub(crate) async fn for_page<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         page_id: PageId,
     ) -> Result<Option<Self>> {
         sqlx::query_as(concat!(
             "SELECT ",
             content_columns!(),
-            " FROM page p
-              JOIN content ct ON ct.id = p.thumbnail_content_id
-              WHERE p.id = ?
+            " FROM pages p
+              JOIN contents ct ON ct.id = p.thumbnail_content_id
+              WHERE p.owner_user_id = ? AND p.id = ?
               LIMIT 1"
         ))
+        .bind(owner)
         .bind(page_id)
         .fetch_optional(executor)
         .await
@@ -94,16 +131,21 @@ impl Content {
     /// The blob of the given kind attached to a capture.
     pub(crate) async fn for_capture<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         capture_id: CaptureId,
         blob: CaptureBlob,
     ) -> Result<Option<Self>> {
         let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(concat!(
             "SELECT ",
             content_columns!(),
-            " FROM capture c JOIN content ct ON ct.id = c."
+            " FROM captures c
+              JOIN pages p ON p.id = c.page_id
+              JOIN contents ct ON ct.id = c."
         ));
         qb.push(blob.column()) // static column name, never user input
-            .push(" WHERE c.id = ")
+            .push(" WHERE p.owner_user_id = ")
+            .push_bind(owner)
+            .push(" AND c.id = ")
             .push_bind(capture_id);
 
         qb.build_query_as().fetch_optional(executor).await
@@ -112,17 +154,21 @@ impl Content {
     /// A specific asset blob of a capture.
     pub(crate) async fn for_capture_asset<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         capture_id: CaptureId,
         content_id: ContentId,
     ) -> Result<Option<Self>> {
         sqlx::query_as(concat!(
             "SELECT ",
             content_columns!(),
-            " FROM capture_asset ca
-              JOIN content ct ON ct.id = ca.content_id
-              WHERE ca.capture_id = ? AND ca.content_id = ?
+            " FROM capture_assets ca
+              JOIN captures c ON c.id = ca.capture_id
+              JOIN pages p ON p.id = c.page_id
+              JOIN contents ct ON ct.id = ca.content_id
+              WHERE p.owner_user_id = ? AND ca.capture_id = ? AND ca.content_id = ?
               LIMIT 1"
         ))
+        .bind(owner)
         .bind(capture_id)
         .bind(content_id)
         .fetch_optional(executor)
@@ -135,9 +181,43 @@ impl ContentHead {
         executor: impl SqliteExecutor<'e>,
         hash: &Blake3Hash,
     ) -> Result<Option<Self>> {
-        sqlx::query_as("SELECT size_original, mime_type FROM content WHERE hash = ?")
+        sqlx::query_as("SELECT size_original, mime_type FROM contents WHERE hash = ?")
             .bind(hash)
             .fetch_optional(executor)
             .await
+    }
+
+    /// Like [`Self::by_hash`], but only when `owner` references the blob.
+    pub(crate) async fn by_hash_visible<'e>(
+        executor: impl SqliteExecutor<'e>,
+        owner: i64,
+        hash: &Blake3Hash,
+    ) -> Result<Option<Self>> {
+        sqlx::query_as(
+            "SELECT ct.size_original, ct.mime_type
+               FROM contents ct
+              WHERE ct.hash = ?
+                AND EXISTS (
+                    SELECT 1 FROM pages p
+                     WHERE p.owner_user_id = ? AND p.thumbnail_content_id = ct.id
+                    UNION ALL
+                    SELECT 1 FROM captures c
+                      JOIN pages p ON p.id = c.page_id
+                     WHERE p.owner_user_id = ?
+                       AND (c.content_id = ct.id OR c.original_content_id = ct.id
+                            OR c.screenshot_content_id = ct.id)
+                    UNION ALL
+                    SELECT 1 FROM capture_assets ca
+                      JOIN captures c ON c.id = ca.capture_id
+                      JOIN pages p ON p.id = c.page_id
+                     WHERE p.owner_user_id = ? AND ca.content_id = ct.id
+                )",
+        )
+        .bind(hash)
+        .bind(owner)
+        .bind(owner)
+        .bind(owner)
+        .fetch_optional(executor)
+        .await
     }
 }

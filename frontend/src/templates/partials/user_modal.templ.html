@@ -5,30 +5,62 @@
 
   <div class="flex items-center gap-4 pr-8">
     <div class="avatar avatar-placeholder">
-      <div class="w-14 rounded-full bg-brand-soft text-brand"><span class="text-lg font-medium">{{ u.initials }}</span></div>
+      <div class="w-14 rounded-full bg-brand-soft text-brand"><span class="text-lg font-medium">{{ u.initials }}</span>
+      </div>
     </div>
     <div class="min-w-0">
       <h2 class="truncate font-display text-xl font-semibold">{{ u.name }}</h2>
       <p class="truncate text-sm text-dim">{{ u.secondary }}</p>
       <div class="mt-1 flex flex-wrap items-center gap-1.5">
         <span class="badge badge-soft {{ u.status_class }}">{{ u.status }}</span>
-        {% if u.verified %}<span class="badge badge-ghost">e-mail verified</span>{% else %}<span class="badge badge-ghost">e-mail unverified</span>{% endif %}
+        {% if u.verified %}<span class="badge badge-ghost">e-mail verified</span>{% else %}<span
+          class="badge badge-ghost">e-mail unverified</span>{% endif %}
         {% for r in u.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{% endfor %}
       </div>
     </div>
   </div>
 
   <dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-    <div><dt class="text-xs text-faint">Last sign-in</dt><dd><time datetime="{{ u.last_login.iso }}" data-local>{{ u.last_login.text }}</time></dd></div>
-    <div><dt class="text-xs text-faint">Last IP</dt><dd class="font-data">{{ detail.last_ip }}</dd></div>
-    <div><dt class="text-xs text-faint">Sign-ins</dt><dd>{{ detail.login_count }}</dd></div>
-    <div><dt class="text-xs text-faint">Joined</dt><dd><time datetime="{{ u.created.iso }}" data-local>{{ u.created.text }}</time></dd></div>
-    <div><dt class="text-xs text-faint">Active sessions</dt><dd>{{ detail.sessions }}</dd></div>
-    <div><dt class="text-xs text-faint">API keys</dt><dd>{{ detail.api_keys }}</dd></div>
-    <div><dt class="text-xs text-faint">Failed attempts</dt><dd>{{ detail.failed_attempts }}</dd></div>
-    <div><dt class="text-xs text-faint">Lock</dt><dd><time datetime="{{ detail.locked.iso }}" data-local>{{ detail.locked.text }}</time></dd></div>
-    <div><dt class="text-xs text-faint">Locale · time zone</dt><dd>{{ u.locale }} · {{ u.timezone }}</dd></div>
-    <div class="col-span-full"><dt class="text-xs text-faint">User ID</dt><dd class="font-data text-xs">{{ u.public_id }}</dd></div>
+    <div>
+      <dt class="text-xs text-faint">Last sign-in</dt>
+      <dd><time datetime="{{ u.last_login.iso }}" data-local>{{ u.last_login.text }}</time></dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">Last IP</dt>
+      <dd class="font-data">{{ detail.last_ip }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">Sign-ins</dt>
+      <dd>{{ detail.login_count }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">Joined</dt>
+      <dd><time datetime="{{ u.created.iso }}" data-local>{{ u.created.text }}</time></dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">Active sessions</dt>
+      <dd>{{ detail.sessions }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">API keys</dt>
+      <dd>{{ detail.api_keys }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">Failed attempts</dt>
+      <dd>{{ detail.failed_attempts }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">Lock</dt>
+      <dd><time datetime="{{ detail.locked.iso }}" data-local>{{ detail.locked.text }}</time></dd>
+    </div>
+    <div>
+      <dt class="text-xs text-faint">Locale · time zone</dt>
+      <dd>{{ u.locale }} · {{ u.timezone }}</dd>
+    </div>
+    <div class="col-span-full">
+      <dt class="text-xs text-faint">User ID</dt>
+      <dd class="font-data text-xs">{{ u.public_id }}</dd>
+    </div>
   </dl>
 
   {% if caps.has("write") %}
@@ -38,11 +70,12 @@
     <p class="mt-1 text-sm text-dim">You can't change your own status.</p>
     {% else %}
     <form class="mt-2 grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end"
-          hx-patch="/users/{{ u.public_id }}/status" hx-target="#modal-body">
+      hx-patch="/admin/users/{{ u.public_id }}/status" hx-target="#modal-body">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">New status</legend>
         <select name="status" class="select w-full">
-          {% for o in statuses %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+          {% for o in statuses %}<option value="{{ o.value }}" {% if o.selected %} selected{% endif %}>{{ o.label }}
+          </option>{% endfor %}
         </select>
       </fieldset>
       <fieldset class="fieldset">
@@ -72,10 +105,10 @@
         <span class="text-xs text-faint">{{ r.lock_note }}</span>
         {% else if r.assigned %}
         <button type="button" class="btn btn-sm btn-outline btn-error"
-                hx-delete="/users/{{ u.public_id }}/roles/{{ r.name }}" hx-target="#modal-body">Revoke</button>
+          hx-delete="/admin/users/{{ u.public_id }}/roles/{{ r.name }}" hx-target="#modal-body">Revoke</button>
         {% else %}
-        <button type="button" class="btn btn-sm btn-outline"
-                hx-post="/users/{{ u.public_id }}/roles/{{ r.name }}" hx-target="#modal-body">Grant</button>
+        <button type="button" class="btn btn-sm btn-outline" hx-post="/admin/users/{{ u.public_id }}/roles/{{ r.name }}"
+          hx-target="#modal-body">Grant</button>
         {% endif %}
       </li>
       {% endfor %}
@@ -107,9 +140,9 @@
     <h3 class="font-display text-base font-semibold text-error">Danger zone</h3>
     <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
       <p class="text-sm text-dim">Deleting removes access immediately and revokes every session and API key.</p>
-      <button type="button" class="btn btn-sm btn-error btn-outline"
-              hx-delete="/users/{{ u.public_id }}" hx-target="#modal-body"
-              hx-confirm="Delete {{ u.name }}? This signs them out and cannot be undone from the UI.">Delete user</button>
+      <button type="button" class="btn btn-sm btn-error btn-outline" hx-delete="/admin/users/{{ u.public_id }}"
+        hx-target="#modal-body"
+        hx-confirm="Delete {{ u.name }}? This signs them out and cannot be undone from the UI.">Delete user</button>
     </div>
   </section>
   {% endif %}

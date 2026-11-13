@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use secrecy::SecretString;
 use serde::Serialize;
 
 use crate::{
@@ -16,7 +15,7 @@ mod profile;
 mod token;
 mod view;
 
-pub(crate) use account::{AccountStatus, CreatedAccount, LoginCredentials, NewAccount};
+pub(crate) use account::{AccountStatus, LoginCredentials, NewAccount};
 pub(crate) use api_key::{CreatedApiKey, NewApiKey};
 pub(crate) use client::ClientInfo;
 pub(crate) use profile::ProfileUpdate;
@@ -35,8 +34,9 @@ pub(crate) const SESSION_TTL_MS: i64 = 7 * DAY_MS;
 pub(crate) struct Permission(&'static str);
 
 impl Permission {
-    pub(crate) const TAG_READ: Self = Self("tag:read");
-    pub(crate) const TAG_WRITE: Self = Self("tag:write");
+    pub(crate) const ARCHIVE_READ: Self = Self("archive:read");
+    pub(crate) const ARCHIVE_WRITE: Self = Self("archive:write");
+    pub(crate) const ARCHIVE_ADMIN: Self = Self("archive:admin");
     pub(crate) const PROFILE_READ: Self = Self("profile:read");
     pub(crate) const PROFILE_WRITE: Self = Self("profile:write");
     pub(crate) const USERS_READ: Self = Self("users:read");

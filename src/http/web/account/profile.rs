@@ -9,6 +9,7 @@ use crate::{
         extract::web_user::WebUser,
         htmx::{ActionError, Fragments, PageError, Render, ToastKind},
         web::{
+            account::overview::{AccountOverview, Mine},
             form::ActionForm,
             view::{Section, Shell, Stamp, UserItem},
         },
@@ -33,8 +34,8 @@ pub(crate) struct ProfileFields {
 pub(crate) struct ProfileTpl {
     shell: Shell,
     me: UserItem,
+    mine: Mine,
     profile: ProfileFields,
-    permissions: Vec<String>,
     can_edit: bool,
 }
 
@@ -43,10 +44,23 @@ pub(super) async fn page(
     WebUser(user): WebUser,
 ) -> Result<Render<ProfileTpl>, PageError> {
     let data = me::get_me(&ctx, &user).await?;
+    let me = UserItem::new(data.mine.user.clone(), &user.public_id);
+
     let p = data.profile;
+    let mine = Mine {
+        name: me.name,
+        status: me.status,
+        status_class: me.status_class,
+        roles: me.roles,
+        last_login: me.last_login,
+        sessions: data.mine.sessions,
+        api_keys: data.mine.api_keys,
+    };
+
     Ok(Render(ProfileTpl {
-        shell: Shell::new(&user, Section::Profile),
-        me: UserItem::new(data.user, &user.public_id),
+        shell: Shell::new::<AccountOverview>(&user, Section::Profile),
+        me: UserItem::new(data.mine.user, &user.public_id),
+        mine,
         profile: ProfileFields {
             display_name: p.display_name.unwrap_or_default(),
             first_name: p.first_name.unwrap_or_default(),
@@ -57,7 +71,6 @@ pub(super) async fn page(
             locale: p.locale,
             timezone: p.timezone,
         },
-        permissions: data.permissions,
         can_edit: user.can(Permission::PROFILE_WRITE),
     }))
 }

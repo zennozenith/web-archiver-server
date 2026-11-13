@@ -1,4 +1,5 @@
 pub(crate) mod admin;
+pub(crate) mod archive;
 pub(crate) mod auth;
 pub(crate) mod user;
 

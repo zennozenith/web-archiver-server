@@ -1,171 +1,119 @@
+//! Collections: flat, per-owner folders that group links.
+
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::State,
+    http::StatusCode,
     routing::{get, put},
 };
-use http::StatusCode;
 use serde::Deserialize;
-use sqlx::SqlitePool;
 
 use crate::{
-    AppState,
-    db::collection::{CollectionId, CollectionInput, CollectionRecord, non_empty_parent},
-    error::{AppError, OptionExt, Result},
-    extract::ApiJson,
+    app::AppState,
+    auth::AuthUser,
+    db::collection::{CollectionId, CollectionRecord},
+    error::Result,
+    http::extract::body::{AppJson, AppPath},
+    service,
 };
-
-async fn list_collection(State(pool): State<SqlitePool>) -> Result<ApiJson<Vec<CollectionRecord>>> {
-    let collections = CollectionRecord::list(&pool).await?;
-    Ok(ApiJson(collections))
-}
-
-async fn get_collection(
-    State(pool): State<SqlitePool>,
-    Path(id): Path<CollectionId>,
-) -> Result<ApiJson<CollectionRecord>> {
-    let record = CollectionRecord::load(&pool, id)
-        .await?
-        .or_not_found("collection")?;
-
-    Ok(ApiJson(record))
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CollectionCreateRequest {
+struct CollectionRequest {
     name: String,
     emoji: Option<String>,
     description: Option<String>,
-    parent_id: Option<String>,
     color: Option<String>,
+    /// Accepted for wire compatibility; collections are flat in this schema.
+    #[serde(default)]
+    #[expect(dead_code, reason = "accepted but ignored: collections are flat")]
+    parent_id: Option<String>,
 }
 
-impl CollectionCreateRequest {
-    fn map_collection_input(&self, parent_id: Option<CollectionId>) -> CollectionInput<'_> {
-        let emoji = self
-            .emoji
-            .as_deref()
-            .map(str::trim)
-            .filter(|emoji| !emoji.is_empty())
-            .unwrap_or("📁");
-
-        CollectionInput {
-            name: self.name.trim(),
-            emoji,
-            description: self.description.as_deref().unwrap_or_default(),
-            color: self.color.as_deref().unwrap_or("#6d5dfc"),
-            parent_id,
-            public: false,
-        }
-    }
-
-    fn map_collection_update_input(
-        &self,
-        parent_id: Option<CollectionId>,
-        public: bool,
-    ) -> CollectionInput<'_> {
-        CollectionInput {
+impl CollectionRequest {
+    fn fields(&self, public: bool) -> service::collection::CollectionFields {
+        service::collection::CollectionFields {
+            name: self.name.clone(),
+            emoji: self.emoji.clone().unwrap_or_default(),
+            description: self.description.clone().unwrap_or_default(),
+            color: self.color.clone().unwrap_or_default(),
             public,
-            ..self.map_collection_input(parent_id)
         }
     }
+}
+
+async fn list_collections(
+    State(ctx): State<AppState>,
+    user: AuthUser,
+) -> Result<AppJson<Vec<CollectionRecord>>> {
+    Ok(AppJson(service::collection::list(&ctx, &user).await?))
+}
+
+async fn get_collection(
+    State(ctx): State<AppState>,
+    user: AuthUser,
+    AppPath(id): AppPath<CollectionId>,
+) -> Result<AppJson<CollectionRecord>> {
+    Ok(AppJson(service::collection::get(&ctx, &user, id).await?))
 }
 
 async fn create_collection(
-    State(pool): State<SqlitePool>,
-    ApiJson(req): ApiJson<CollectionCreateRequest>,
-) -> Result<ApiJson<CollectionRecord>> {
-    if req.name.trim().is_empty() {
-        return Err(AppError::invalid(
-            "missing_name",
-            "A collection needs a name.",
-        ));
-    }
-
-    let parent_id = CollectionId::parse_or(req.parent_id.as_ref());
-    let parent_id = non_empty_parent(&pool, parent_id, None).await?;
-    let collection = CollectionRecord::create(&pool, &req.map_collection_input(parent_id)).await?;
-
-    Ok(ApiJson(collection))
+    State(ctx): State<AppState>,
+    user: AuthUser,
+    AppJson(req): AppJson<CollectionRequest>,
+) -> Result<AppJson<CollectionRecord>> {
+    Ok(AppJson(
+        service::collection::create(&ctx, &user, &req.fields(false)).await?,
+    ))
 }
 
 async fn update_collection(
-    State(pool): State<SqlitePool>,
-    Path(id): Path<CollectionId>,
-    ApiJson(req): ApiJson<CollectionCreateRequest>,
-) -> Result<ApiJson<CollectionRecord>> {
-    if req.name.trim().is_empty() {
-        return Err(AppError::invalid(
-            "missing_name",
-            "A collection needs a name.",
-        ));
-    }
-
-    let current = CollectionRecord::load(&pool, id)
-        .await?
-        .or_not_found("collection")?;
-    let parent_id = CollectionId::parse_or(req.parent_id.as_ref());
-    let parent_id = non_empty_parent(&pool, parent_id, Some(id)).await?;
-
-    let Some(updated) = CollectionRecord::update(
-        &pool,
-        id,
-        &req.map_collection_update_input(parent_id, current.public),
-    )
-    .await?
-    else {
-        return Err(AppError::NotFound("collection"));
-    };
-
-    Ok(ApiJson(updated))
+    State(ctx): State<AppState>,
+    user: AuthUser,
+    AppPath(id): AppPath<CollectionId>,
+    AppJson(req): AppJson<CollectionRequest>,
+) -> Result<AppJson<CollectionRecord>> {
+    let current = service::collection::get(&ctx, &user, id).await?;
+    Ok(AppJson(
+        service::collection::update(&ctx, &user, id, &req.fields(current.public)).await?,
+    ))
 }
 
 async fn delete_collection(
-    State(pool): State<SqlitePool>,
-    Path(id): Path<CollectionId>,
+    State(ctx): State<AppState>,
+    user: AuthUser,
+    AppPath(id): AppPath<CollectionId>,
 ) -> Result<StatusCode> {
-    if CollectionRecord::delete(&pool, id).await? {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(AppError::NotFound("collection"))
-    }
+    service::collection::delete(&ctx, &user, id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SharingForm {
+struct SharingRequest {
     public: Option<bool>,
 }
 
 async fn update_sharing(
-    State(pool): State<SqlitePool>,
-    Path(id): Path<CollectionId>,
-    ApiJson(req): ApiJson<SharingForm>,
+    State(ctx): State<AppState>,
+    user: AuthUser,
+    AppPath(id): AppPath<CollectionId>,
+    AppJson(req): AppJson<SharingRequest>,
 ) -> Result<StatusCode> {
-    if CollectionRecord::set_public(&pool, id, req.public.unwrap_or(false)).await? {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(AppError::NotFound("collection"))
-    }
+    service::collection::set_public(&ctx, &user, id, req.public.unwrap_or(false)).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
-pub(crate) async fn public_collection(
-    State(pool): State<SqlitePool>,
-    Path(id): Path<CollectionId>,
-) -> Result<ApiJson<CollectionRecord>> {
-    let record = CollectionRecord::load(&pool, id)
-        .await?
-        .or_not_found("collection")?;
-    if !record.public {
-        return Err(AppError::NotFound("public collection"));
-    }
-
-    Ok(ApiJson(record))
+async fn public_collection(
+    State(ctx): State<AppState>,
+    AppPath(id): AppPath<CollectionId>,
+) -> Result<AppJson<CollectionRecord>> {
+    Ok(AppJson(service::collection::public(&ctx, id).await?))
 }
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route("/collection", get(list_collection).post(create_collection))
+        .route("/collection", get(list_collections).post(create_collection))
         .route(
             "/collection/{id}",
             get(get_collection)

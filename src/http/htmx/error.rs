@@ -81,6 +81,30 @@ impl From<axum::extract::rejection::FormRejection> for ActionError {
     }
 }
 
+impl From<axum::extract::multipart::MultipartError> for ActionError {
+    fn from(err: axum::extract::multipart::MultipartError) -> Self {
+        Self(AppError::from(err))
+    }
+}
+
+impl From<axum::extract::multipart::MultipartRejection> for ActionError {
+    fn from(rej: axum::extract::multipart::MultipartRejection) -> Self {
+        Self(AppError::from(rej))
+    }
+}
+
+impl From<crate::util::ParseBoolError> for ActionError {
+    fn from(err: crate::util::ParseBoolError) -> Self {
+        Self(AppError::from(err))
+    }
+}
+
+impl From<crate::infra::FormatMismatch> for ActionError {
+    fn from(err: crate::infra::FormatMismatch) -> Self {
+        Self(AppError::from(err))
+    }
+}
+
 impl IntoResponse for ActionError {
     fn into_response(self) -> Response {
         let (status, ..) = self.0.parts();

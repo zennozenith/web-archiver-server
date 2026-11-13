@@ -2,10 +2,12 @@
   <td>
     <div class="flex items-center gap-3">
       <div class="avatar avatar-placeholder">
-        <div class="w-9 rounded-full bg-brand-soft text-brand"><span class="text-sm font-medium">{{ u.initials }}</span></div>
+        <div class="w-9 rounded-full bg-brand-soft text-brand"><span class="text-sm font-medium">{{ u.initials }}</span>
+        </div>
       </div>
       <div class="min-w-0">
-        <div class="truncate font-medium">{{ u.name }}{% if u.is_self %} <span class="badge badge-ghost badge-sm">you</span>{% endif %}</div>
+        <div class="truncate font-medium">{{ u.name }}{% if u.is_self %} <span
+            class="badge badge-ghost badge-sm">you</span>{% endif %}</div>
         <div class="truncate text-xs text-dim">{{ u.secondary }}</div>
       </div>
     </div>
@@ -16,9 +18,11 @@
       {% for r in u.roles %}<span class="badge badge-soft badge-sm {{ r.class }}">{{ r.name }}</span>{% endfor %}
     </div>
   </td>
-  <td class="whitespace-nowrap text-sm"><time datetime="{{ u.last_login.iso }}" data-local>{{ u.last_login.text }}</time></td>
+  <td class="whitespace-nowrap text-sm"><time datetime="{{ u.last_login.iso }}" data-local>{{ u.last_login.text
+      }}</time></td>
   <td class="whitespace-nowrap text-sm"><time datetime="{{ u.created.iso }}" data-local>{{ u.created.text }}</time></td>
   <td class="text-right">
-    <button type="button" class="btn btn-ghost btn-sm" hx-get="/users/{{ u.public_id }}" hx-target="#modal-body" aria-label="Manage {{ u.name }}">Manage</button>
+    <button type="button" class="btn btn-ghost btn-sm" hx-get="/admin/users/{{ u.public_id }}" hx-target="#modal-body"
+      aria-label="Manage {{ u.name }}">Manage</button>
   </td>
 </tr>

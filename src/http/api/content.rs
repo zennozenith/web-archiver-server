@@ -1,3 +1,5 @@
+//! Raw deduplicated content blobs, addressed by their BLAKE3 hash.
+
 use axum::{
     Router,
     extract::State,
@@ -8,39 +10,33 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use sqlx::SqlitePool;
 
 use crate::{
-    AppState,
-    blob_store::BlobStore,
-    db::content::{Content, ContentHead},
-    error::{AppError, OptionExt, Result},
-    extract::ApiPath,
-    hash::Blake3Hash,
-    serve::{etag_for, serve_content},
+    app::AppState,
+    auth::AuthUser,
+    error::{AppError, Result},
+    http::{
+        extract::body::AppPath,
+        serve::{etag_for, serve_content},
+    },
+    infra::Blake3Hash,
+    service,
 };
 
-const CONTENT: &str = "content";
-
-/// Content is immutable by hash. "private" because the API sits behind bearer auth;
-/// switch to "public" if you serve it unauthenticated behind a CDN.
 const IMMUTABLE_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
 
-// GET /api/content/{hash}
-pub(super) async fn get_content(
-    State(pool): State<SqlitePool>,
-    State(store): State<BlobStore>,
+async fn get_content(
+    State(ctx): State<AppState>,
+    user: AuthUser,
     headers: HeaderMap,
-    ApiPath(hash): ApiPath<String>,
+    AppPath(hash): AppPath<String>,
 ) -> Result<Response> {
     let hash: Blake3Hash = hash.parse()?;
-    let content = Content::by_hash(&pool, &hash)
-        .await?
-        .or_not_found(CONTENT)?;
-
+    let content = service::capture::content(&ctx, &user, &hash).await?;
     let content_type = content.mime_type.clone();
+
     serve_content(
-        &store,
+        &ctx.store,
         &headers,
         content,
         &content_type,
@@ -49,15 +45,13 @@ pub(super) async fn get_content(
     .await
 }
 
-// HEAD /api/content/{hash}   -> 200 if known, 404 otherwise (never loads the blob)
-pub(super) async fn head_content(
-    State(pool): State<SqlitePool>,
-    ApiPath(hash): ApiPath<String>,
+async fn head_content(
+    State(ctx): State<AppState>,
+    user: AuthUser,
+    AppPath(hash): AppPath<String>,
 ) -> Result<Response> {
     let hash: Blake3Hash = hash.parse()?;
-    let head = ContentHead::by_hash(&pool, &hash)
-        .await?
-        .ok_or(AppError::NotFound(CONTENT))?;
+    let head = service::capture::content_head(&ctx, &user, &hash).await?;
 
     let etag =
         HeaderValue::from_str(&etag_for(&hash)).map_err(|e| AppError::Internal(Box::new(e)))?;
@@ -74,6 +68,5 @@ pub(super) async fn head_content(
 }
 
 pub(super) fn routes() -> Router<AppState> {
-    // explicit HEAD handler avoids loading the blob
     Router::new().route("/content/{hash}", get(get_content).head(head_content))
 }

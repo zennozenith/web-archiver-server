@@ -4,7 +4,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 use crate::{
     app::AppState,
     auth::{
-        CreatedAccount, NewAccount, TokenPurpose, VerifyToken,
+        NewAccount, TokenPurpose, VerifyToken,
         policy::{DEFAULT_ROLE, TERMS_VERSION},
     },
     db::{self, audit::audit, auth::NewAuthToken},
@@ -24,10 +24,7 @@ use crate::{
 /// # Errors
 ///
 /// A taken username is reported as [`AppError::Conflict`].
-pub(crate) async fn create_account(
-    ctx: &AppState,
-    account: NewAccount,
-) -> Result<Option<CreatedAccount>> {
+pub(crate) async fn create_account(ctx: &AppState, account: NewAccount) -> Result<()> {
     // Hash before opening the transaction: Argon2 is slow and must not hold
     // SQLite's write lock. It also runs for duplicates, which keeps the
     // expensive part of both paths equally slow.
@@ -45,7 +42,7 @@ pub(crate) async fn create_account(
     )
     .await;
 
-    let (user_id, public_id) = match inserted {
+    let (user_id, _) = match inserted {
         Ok(row) => row,
         Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
             if db::auth::email_exists(&mut tx, &account.email).await? {
@@ -54,7 +51,7 @@ pub(crate) async fn create_account(
                     ctx,
                     super::mail::already_registered(&ctx.public_url, &account.email),
                 );
-                return Ok(None);
+                return Ok(());
             }
             // Not the e-mail, so it can only be the username.
             return Err(AppError::Conflict("username already taken".into()));
@@ -82,7 +79,7 @@ pub(crate) async fn create_account(
     );
     audit(&ctx.db, Some(user_id), Some(user_id), "user.created", None).await;
 
-    Ok(Some(CreatedAccount { user_id, public_id }))
+    Ok(())
 }
 
 pub(crate) async fn verify_email(pool: &SqlitePool, token: VerifyToken) -> Result<()> {

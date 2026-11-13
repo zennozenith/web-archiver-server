@@ -1,0 +1,13 @@
+{% extends "base.templ.html" %}
+{% block content %}
+<section class="collection-hero mb-6 rounded-xl border border-line p-5 sm:p-6">
+  <h1 class="font-display text-3xl font-semibold tracking-tight">📥 Unorganized</h1>
+  <p class="mt-1 max-w-prose text-dim">Links that have not been filed in a collection.</p>
+  <span class="badge badge-ghost mt-3 tabular-nums">{{ links.len() }} links</span>
+</section>
+<div class="link-grid" data-view="grid">
+  {% for link in links %}{% include "archive/_link_card.templ.html" %}{% else %}
+  <div class="empty-state"><p class="title">Everything is organized</p><p>Links saved without a collection show up here.</p></div>
+  {% endfor %}
+</div>
+{% endblock %}

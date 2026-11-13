@@ -22,16 +22,6 @@ pub(crate) fn check_password_len(password: &SecretString) -> Result<()> {
     }
 }
 
-pub(crate) fn inactive_error(status: &str) -> AppError {
-    let reason = match status {
-        "pending" => ForbiddenReason::Pending,
-        "suspended" => ForbiddenReason::Suspended,
-        "deactivated" => ForbiddenReason::Deactivated,
-        _ => ForbiddenReason::Unknown,
-    };
-    AppError::Forbidden(reason)
-}
-
 pub(crate) async fn was_recently_used(
     recent: Vec<String>,
     new_password: &secrecy::SecretBox<str>,

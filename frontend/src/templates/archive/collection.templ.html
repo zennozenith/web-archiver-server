@@ -1,0 +1,39 @@
+{% extends "base.templ.html" %}
+{% block content %}
+<section class="collection-hero mb-6 rounded-xl border border-line p-5 sm:p-6" style="--c: {{ collection.color }}">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="min-w-0">
+      <h1 class="font-display text-3xl font-semibold tracking-tight"><span aria-hidden="true">{{ collection.emoji }}</span> {{ collection.name }}</h1>
+      <p class="mt-1 max-w-prose text-dim">{{ collection.description }}</p>
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <span class="badge badge-ghost tabular-nums">{{ collection.link_count }} links</span>
+        {% if collection.public %}<span class="badge badge-success badge-soft">Public</span>{% endif %}
+      </div>
+    </div>
+    {% if can_write %}
+    <div class="flex items-center gap-2">
+      <form hx-put="/collections/{{ collection.id }}/sharing" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+        <input type="hidden" name="public" value="{% if collection.public %}false{% else %}true{% endif %}" />
+        <button class="btn btn-sm">{% if collection.public %}Make private{% else %}Share{% endif %}</button>
+      </form>
+      <a href="/collections/{{ collection.id }}/edit" class="btn btn-sm">Edit</a>
+      {% if !collection.builtin %}
+      <button type="button" class="btn btn-sm btn-error btn-outline" hx-delete="/collections/{{ collection.id }}" hx-confirm="Delete this collection? Its links become unorganized." hx-swap="none" @htmx:after:request="$ok($event) && (location.href = '/collections')">Delete</button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if collection.public %}
+<div class="mb-4 rounded-xl border border-line bg-surface p-3 text-sm text-dim">
+  Public link: <a class="link" href="/shared/collection/{{ collection.id }}">/shared/collection/{{ collection.id }}</a>
+</div>
+{% endif %}
+
+<div class="link-grid" data-view="grid">
+  {% for link in links %}{% include "archive/_link_card.templ.html" %}{% else %}
+  <div class="empty-state"><p class="title">This collection is empty</p><p>Save a link and choose this collection.</p></div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use serde::Serialize;
-use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteExecutor, SqlitePool};
+use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqliteExecutor, SqlitePool};
 
 use crate::{
     db::{
@@ -11,9 +11,8 @@ use crate::{
         helper::{Cursor, CursorPage, group_by, id_type},
         page::{self, PageId},
     },
-    hash::Blake3Hash,
-    limit::Limit,
-    mime::MimeType,
+    infra::Blake3Hash,
+    util::{limit::Limit, mime::MimeType},
 };
 
 id_type! {
@@ -29,8 +28,10 @@ macro_rules! capture_summary_select {
                 c.captured_at AS captured_at, c.title AS title, c.status_code AS status_code,
                 NULLIF(lower(hex(h.hash)), '') AS content_hash,
                 (c.screenshot_content_id IS NOT NULL) AS has_screenshot
-         FROM capture c LEFT JOIN content h ON h.id = c.content_id
-         WHERE c.page_id = ?"
+         FROM captures c
+         JOIN pages p ON p.id = c.page_id
+         LEFT JOIN contents h ON h.id = c.content_id
+         WHERE p.owner_user_id = ? AND c.page_id = ?"
     };
 }
 
@@ -47,7 +48,7 @@ pub(crate) enum CaptureBlob {
 }
 
 impl CaptureBlob {
-    /// Column of `capture` holding this blob's content id.
+    /// Column of `captures` holding this blob's content id.
     pub(crate) const fn column(self) -> &'static str {
         match self {
             Self::Html => "content_id",
@@ -60,14 +61,19 @@ impl CaptureBlob {
     pub(crate) async fn latest_capture_id<'e>(
         self,
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         page_id: PageId,
     ) -> Result<Option<CaptureId>> {
-        let mut qb: QueryBuilder<Sqlite> =
-            QueryBuilder::new("SELECT id FROM capture WHERE page_id = ");
-        qb.push_bind(page_id)
-            .push(" AND ")
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+            "SELECT c.id FROM captures c JOIN pages p ON p.id = c.page_id
+             WHERE p.owner_user_id = ",
+        );
+        qb.push_bind(owner)
+            .push(" AND c.page_id = ")
+            .push_bind(page_id)
+            .push(" AND c.")
             .push(self.column()) // static column name, never user input
-            .push(" IS NOT NULL ORDER BY captured_at DESC, id DESC LIMIT 1");
+            .push(" IS NOT NULL ORDER BY c.captured_at DESC, c.id DESC LIMIT 1");
 
         qb.build_query_scalar().fetch_optional(executor).await
     }
@@ -78,33 +84,54 @@ impl CaptureBlob {
 // ───────────────────────────────────────────────────────────────────────────
 
 #[expect(dead_code, reason = "Might be needed later")]
-pub(crate) async fn exists<'e>(executor: impl SqliteExecutor<'e>, id: CaptureId) -> Result<bool> {
-    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM capture WHERE id = ?)")
-        .bind(id)
-        .fetch_one(executor)
-        .await
+pub(crate) async fn exists<'e>(
+    executor: impl SqliteExecutor<'e>,
+    owner: i64,
+    id: CaptureId,
+) -> Result<bool> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM captures c JOIN pages p ON p.id = c.page_id
+            WHERE p.owner_user_id = ? AND c.id = ?
+        )",
+    )
+    .bind(owner)
+    .bind(id)
+    .fetch_one(executor)
+    .await
 }
 
 /// Id of the page's newest capture, if it has any.
 pub(crate) async fn latest_id<'e>(
     executor: impl SqliteExecutor<'e>,
+    owner: i64,
     page_id: PageId,
 ) -> Result<Option<CaptureId>> {
     sqlx::query_scalar(
-        "SELECT id FROM capture WHERE page_id = ?
-         ORDER BY captured_at DESC, id DESC LIMIT 1",
+        "SELECT c.id FROM captures c JOIN pages p ON p.id = c.page_id
+         WHERE p.owner_user_id = ? AND c.page_id = ?
+         ORDER BY c.captured_at DESC, c.id DESC LIMIT 1",
     )
+    .bind(owner)
     .bind(page_id)
     .fetch_optional(executor)
     .await
 }
 
 /// Returns `true` if a capture was deleted.
-pub(crate) async fn delete<'e>(executor: impl SqliteExecutor<'e>, id: CaptureId) -> Result<bool> {
-    let result = sqlx::query("DELETE FROM capture WHERE id = ?")
-        .bind(id)
-        .execute(executor)
-        .await?;
+pub(crate) async fn delete<'e>(
+    executor: impl SqliteExecutor<'e>,
+    owner: i64,
+    id: CaptureId,
+) -> Result<bool> {
+    let result = sqlx::query(
+        "DELETE FROM captures
+         WHERE id = ? AND page_id IN (SELECT id FROM pages WHERE owner_user_id = ?)",
+    )
+    .bind(id)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(result.rows_affected() > 0)
 }
 
@@ -124,10 +151,61 @@ pub(crate) struct CaptureOverview {
     pub has_screenshot: bool,
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Capture creation
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Everything needed to insert a capture row.
+pub(crate) struct NewCapture<'a> {
+    pub owner: i64,
+    pub page_id: PageId,
+    pub content_id: ContentId,
+    pub original_content_id: ContentId,
+    pub screenshot_content_id: Option<ContentId>,
+    pub captured_at: i64,
+    pub title: Option<&'a str>,
+    pub content_type: &'a str,
+    pub metadata: Option<&'a str>,
+}
+
+impl NewCapture<'_> {
+    /// Inserts the capture for the owner's page and returns its id and version.
+    pub(crate) async fn insert(&self, conn: &mut SqliteConnection) -> Result<(CaptureId, i64)> {
+        let capture_id: CaptureId = sqlx::query_scalar(
+            "INSERT INTO captures (page_id, content_id, original_content_id,
+                                   screenshot_content_id, captured_at, content_type,
+                                   metadata, title)
+             SELECT ?, ?, ?, ?, ?, ?, ?, ? FROM pages
+              WHERE id = ? AND owner_user_id = ?
+             RETURNING id",
+        )
+        .bind(self.page_id)
+        .bind(self.content_id)
+        .bind(self.original_content_id)
+        .bind(self.screenshot_content_id)
+        .bind(self.captured_at)
+        .bind(self.content_type)
+        .bind(self.metadata)
+        .bind(self.title.unwrap_or(""))
+        .bind(self.page_id)
+        .bind(self.owner)
+        .fetch_one(&mut *conn)
+        .await?;
+
+        let version: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM captures WHERE page_id = ?")
+            .bind(self.page_id)
+            .fetch_one(&mut *conn)
+            .await?;
+
+        Ok((capture_id, version))
+    }
+}
+
 impl CaptureOverview {
     /// Captures for many pages in one query, newest first per page.
     pub(crate) async fn overviews_by_page<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         page_ids: &[PageId],
     ) -> Result<HashMap<PageId, Vec<Self>>> {
         if page_ids.is_empty() {
@@ -138,8 +216,10 @@ impl CaptureOverview {
             "SELECT c.id, c.page_id, c.captured_at, c.title, c.status_code,
                 (c.content_id IS NOT NULL) AS has_html,
                 (c.screenshot_content_id IS NOT NULL) AS has_screenshot
-         FROM capture c WHERE c.page_id IN (",
+         FROM captures c JOIN pages p ON p.id = c.page_id
+         WHERE p.owner_user_id = ",
         );
+        qb.push_bind(owner).push(" AND c.page_id IN (");
         let mut list = qb.separated(", ");
         for &id in page_ids {
             list.push_bind(id);
@@ -172,6 +252,7 @@ impl CaptureSummary {
     /// Newest version first. `after` is the version of the last item already seen.
     pub(crate) async fn list(
         pool: &SqlitePool,
+        owner: i64,
         page_id: PageId,
         after: Option<Cursor>,
         limit: Limit,
@@ -183,6 +264,7 @@ impl CaptureSummary {
             capture_summary_select!(),
             ") WHERE version < ? ORDER BY version DESC LIMIT ?"
         ))
+        .bind(owner)
         .bind(page_id)
         .bind(after.map_or(i64::MAX, Cursor::get))
         .bind(limit.saturating_add(1)) // one extra row to detect another page
@@ -197,12 +279,17 @@ impl CaptureSummary {
     }
 
     /// The page's newest capture, or `None` if it has none.
-    pub(crate) async fn latest(pool: &SqlitePool, page_id: PageId) -> Result<Option<Self>> {
+    pub(crate) async fn latest(
+        pool: &SqlitePool,
+        owner: i64,
+        page_id: PageId,
+    ) -> Result<Option<Self>> {
         sqlx::query_as(concat!(
             "SELECT * FROM (",
             capture_summary_select!(),
             ") ORDER BY version DESC LIMIT 1"
         ))
+        .bind(owner)
         .bind(page_id)
         .fetch_optional(pool)
         .await
@@ -237,35 +324,39 @@ pub(crate) struct CaptureDetail {
     pub original_html_stored: Option<i64>,
     pub screenshot_hash: Option<Blake3Hash>,
     pub screenshot_size: Option<i64>,
+    pub screenshot_stored: Option<i64>,
+    #[sqlx(try_from = "Option<String>")]
     pub screenshot_mime: MimeType,
     pub asset_count: i64,
 }
 
 impl CaptureDetail {
-    pub(crate) async fn load(pool: &SqlitePool, id: CaptureId) -> Result<Option<Self>> {
+    pub(crate) async fn load(pool: &SqlitePool, owner: i64, id: CaptureId) -> Result<Option<Self>> {
         sqlx::query_as(
             "SELECT c.id, c.page_id, p.url,
-                    (SELECT COUNT(*) FROM capture c2
+                    (SELECT COUNT(*) FROM captures c2
                       WHERE c2.page_id = c.page_id
                         AND (c2.captured_at, c2.id) <= (c.captured_at, c.id)) AS version,
                     c.captured_at, c.title, c.status_code, c.content_type, c.original_encoding,
                     c.request_headers, c.response_headers, c.metadata, c.error,
                     rp.url AS redirect_url,
-                    NULLIF(lower(hex(h.hash)), '') AS html_hash,
+                    h.hash AS html_hash,
                     h.size_original AS html_size, h.size_stored AS html_stored,
-                    NULLIF(lower(hex(oh.hash)), '') AS original_html_hash,
+                    oh.hash AS original_html_hash,
                     oh.size_original AS original_html_size, oh.size_stored AS original_html_stored,
-                    NULLIF(lower(hex(s.hash)), '') AS screenshot_hash,
-                    s.size_original AS screenshot_size, s.mime_type AS screenshot_mime,
-                    (SELECT COUNT(*) FROM capture_asset ca WHERE ca.capture_id = c.id) AS asset_count
-             FROM capture c
-             JOIN page p ON p.id = c.page_id
-             LEFT JOIN page rp ON rp.id = c.redirect_page_id
-             LEFT JOIN content h ON h.id = c.content_id
-             LEFT JOIN content oh ON oh.id = c.original_content_id
-             LEFT JOIN content s ON s.id = c.screenshot_content_id
-             WHERE c.id = ?",
+                    s.hash AS screenshot_hash,
+                    s.size_original AS screenshot_size, s.size_stored AS screenshot_stored,
+                    s.mime_type AS screenshot_mime,
+                    (SELECT COUNT(*) FROM capture_assets ca WHERE ca.capture_id = c.id) AS asset_count
+             FROM captures c
+             JOIN pages p ON p.id = c.page_id
+             LEFT JOIN pages rp ON rp.id = c.redirect_page_id
+             LEFT JOIN contents h ON h.id = c.content_id
+             LEFT JOIN contents oh ON oh.id = c.original_content_id
+             LEFT JOIN contents s ON s.id = c.screenshot_content_id
+             WHERE p.owner_user_id = ? AND c.id = ?",
         )
+        .bind(owner)
         .bind(id)
         .fetch_optional(pool)
         .await
@@ -295,17 +386,21 @@ pub(crate) struct CaptureAsset {
 impl CaptureAsset {
     pub(crate) async fn list<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         capture_id: CaptureId,
     ) -> Result<Vec<Self>> {
         sqlx::query_as(
             "SELECT ca.content_id, ca.url, ca.kind, ca.status_code,
                     lower(hex(ct.hash)) AS hash, ct.mime_type,
                     ct.size_original, ct.size_stored
-             FROM capture_asset ca
-             JOIN content ct ON ct.id = ca.content_id
-             WHERE ca.capture_id = ?
+             FROM capture_assets ca
+             JOIN captures c ON c.id = ca.capture_id
+             JOIN pages p ON p.id = c.page_id
+             JOIN contents ct ON ct.id = ca.content_id
+             WHERE p.owner_user_id = ? AND ca.capture_id = ?
              ORDER BY ca.kind, ca.url",
         )
+        .bind(owner)
         .bind(capture_id)
         .fetch_all(executor)
         .await
@@ -315,25 +410,27 @@ impl CaptureAsset {
     /// Assets of a capture; `None` if the capture does not exist.
     pub(crate) async fn for_capture(
         pool: &SqlitePool,
+        owner: i64,
         capture_id: CaptureId,
     ) -> Result<Option<Vec<Self>>> {
-        if !exists(pool, capture_id).await? {
+        if !exists(pool, owner, capture_id).await? {
             return Ok(None);
         }
-        Ok(Some(Self::list(pool, capture_id).await?))
+        Ok(Some(Self::list(pool, owner, capture_id).await?))
     }
 
     /// Assets of the page's newest capture (empty if it has none);
     /// `None` if the page does not exist.
     pub(crate) async fn for_latest_capture(
         pool: &SqlitePool,
+        owner: i64,
         page_id: PageId,
     ) -> Result<Option<Vec<Self>>> {
-        if !page::exists(pool, page_id).await? {
+        if !page::exists(pool, owner, page_id).await? {
             return Ok(None);
         }
-        let assets = match latest_id(pool, page_id).await? {
-            Some(capture_id) => Self::list(pool, capture_id).await?,
+        let assets = match latest_id(pool, owner, page_id).await? {
+            Some(capture_id) => Self::list(pool, owner, capture_id).await?,
             None => Vec::new(),
         };
         Ok(Some(assets))

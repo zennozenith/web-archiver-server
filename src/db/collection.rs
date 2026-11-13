@@ -1,4 +1,4 @@
-//! Collections: nested folders that group links.
+//! Collections: flat, per-user folders that group links.
 
 use serde::Serialize;
 use sqlx::{FromRow, Result, SqliteExecutor, SqlitePool};
@@ -19,12 +19,14 @@ id_type! {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CollectionRecord {
     pub id: CollectionId,
+    pub owner_user_id: i64,
     pub name: String,
     pub emoji: String,
     pub description: String,
     pub color: String,
-    pub parent_id: Option<CollectionId>,
     pub public: bool,
+    pub is_builtin: bool,
+    pub created_at: i64,
     pub link_count: i64,
 }
 
@@ -35,7 +37,6 @@ pub(crate) struct CollectionInput<'a> {
     pub emoji: &'a str,
     pub description: &'a str,
     pub color: &'a str,
-    pub parent_id: Option<CollectionId>,
     pub public: bool,
 }
 
@@ -45,170 +46,159 @@ pub(crate) struct CollectionInput<'a> {
 
 macro_rules! collection_select {
     () => {
-        "SELECT c.id, c.name, c.emoji, c.description, c.color, c.parent_id,
-                c.public, c.created_at,
-                (SELECT COUNT(*) FROM page p WHERE p.collection_id = c.id) AS link_count
-         FROM collection c"
+        "SELECT c.id, c.owner_user_id, c.name, c.emoji, c.description, c.color, c.public,
+                c.is_builtin, c.created_at,
+                (SELECT COUNT(*) FROM pages p WHERE p.collection_id = c.id) AS link_count
+         FROM collections c"
     };
 }
 
 impl CollectionRecord {
-    pub(crate) async fn list(pool: &SqlitePool) -> Result<Vec<Self>> {
+    pub(crate) async fn list(pool: &SqlitePool, owner: i64) -> Result<Vec<Self>> {
         sqlx::query_as(concat!(
             collection_select!(),
-            " ORDER BY c.name COLLATE NOCASE, c.id"
+            " WHERE c.owner_user_id = ?
+              ORDER BY c.is_builtin DESC, c.name COLLATE NOCASE, c.id"
         ))
+        .bind(owner)
         .fetch_all(pool)
         .await
     }
 
     pub(crate) async fn load<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: CollectionId,
     ) -> Result<Option<Self>> {
-        sqlx::query_as(concat!(collection_select!(), " WHERE c.id = ?"))
-            .bind(id)
-            .fetch_optional(executor)
-            .await
+        sqlx::query_as(concat!(
+            collection_select!(),
+            " WHERE c.owner_user_id = ? AND c.id = ?"
+        ))
+        .bind(owner)
+        .bind(id)
+        .fetch_optional(executor)
+        .await
+    }
+
+    /// Loads a public collection without knowing its owner.
+    pub(crate) async fn load_public(pool: &SqlitePool, id: CollectionId) -> Result<Option<Self>> {
+        sqlx::query_as(concat!(
+            collection_select!(),
+            " WHERE c.id = ? AND c.public = 1"
+        ))
+        .bind(id)
+        .fetch_optional(pool)
+        .await
     }
 
     pub(crate) async fn exists<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: CollectionId,
     ) -> Result<bool> {
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM collection WHERE id = ?)")
-            .bind(id)
-            .fetch_one(executor)
-            .await
+        sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM collections WHERE owner_user_id = ? AND id = ?)",
+        )
+        .bind(owner)
+        .bind(id)
+        .fetch_one(executor)
+        .await
     }
 
     // ───────────────────────────────────────────────────────────────────────
     // Mutations
     // ───────────────────────────────────────────────────────────────────────
 
-    pub(crate) async fn create(pool: &SqlitePool, input: &CollectionInput<'_>) -> Result<Self> {
+    pub(crate) async fn create(
+        pool: &SqlitePool,
+        owner: i64,
+        input: &CollectionInput<'_>,
+    ) -> Result<Self> {
         let id: CollectionId = sqlx::query_scalar(
-            "INSERT INTO collection (name, emoji, description, color, parent_id, public)
+            "INSERT INTO collections (owner_user_id, name, emoji, description, color, public)
              VALUES (?, ?, ?, ?, ?, ?)
              RETURNING id",
         )
+        .bind(owner)
         .bind(input.name)
         .bind(input.emoji)
         .bind(input.description)
         .bind(input.color)
-        .bind(input.parent_id)
         .bind(input.public)
         .fetch_one(pool)
         .await?;
 
-        Self::load(pool, id).await?.ok_or(sqlx::Error::RowNotFound)
+        Self::load(pool, owner, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)
     }
 
-    // TODO: if needed, partial update could be implemented. See PendingUpdate
     /// Returns `None` if the collection does not exist.
     pub(crate) async fn update(
         pool: &SqlitePool,
+        owner: i64,
         id: CollectionId,
         input: &CollectionInput<'_>,
     ) -> Result<Option<Self>> {
         let updated: Option<CollectionId> = sqlx::query_scalar(
-            "UPDATE collection
-             SET name = ?, emoji = ?, description = ?, color = ?, parent_id = ?, public = ?
-             WHERE id = ?
+            "UPDATE collections
+             SET name = ?, emoji = ?, description = ?, color = ?, public = ?
+             WHERE owner_user_id = ? AND id = ?
              RETURNING id",
         )
         .bind(input.name)
         .bind(input.emoji)
         .bind(input.description)
         .bind(input.color)
-        .bind(input.parent_id)
         .bind(input.public)
+        .bind(owner)
         .bind(id)
         .fetch_optional(pool)
         .await?;
 
         match updated {
-            Some(updated_id) => Self::load(pool, updated_id).await,
+            Some(updated_id) => Self::load(pool, owner, updated_id).await,
             None => Ok(None),
         }
     }
 
-    /// Deletes the collection, the links filed directly under it, and detaches
-    /// any child collections. Returns `false` if the collection did not exist.
-    pub(crate) async fn delete(pool: &SqlitePool, id: CollectionId) -> Result<bool, AppError> {
-        if id == CollectionId::new(0) {
-            return Err(AppError::invalid(
-                "preserve_collection_0",
-                "Cannot delete collection 0",
+    /// Deletes the collection. Pages filed in it become unorganized through the
+    /// `ON DELETE SET NULL` foreign key. The built-in collection is protected.
+    pub(crate) async fn delete(
+        pool: &SqlitePool,
+        owner: i64,
+        id: CollectionId,
+    ) -> Result<bool, AppError> {
+        let Some(record) = Self::load(pool, owner, id).await? else {
+            return Ok(false);
+        };
+        if record.is_builtin {
+            return Err(AppError::Conflict(
+                "the built-in Archive collection cannot be deleted".into(),
             ));
         }
 
-        let mut tx = pool.begin().await?;
-
-        // TODO: No need to delete pages also
-        // // Captures of other pages that redirected into this collection stay,
-        // // but lose the dangling reference.
-        // sqlx::query(
-        //     "UPDATE capture SET redirect_page_id = NULL
-        //      WHERE redirect_page_id IN (SELECT id FROM page WHERE collection_id = ?)",
-        // )
-        // .bind(id)
-        // .execute(&mut *tx)
-        // .await?;
-
-        // sqlx::query(
-        //     "DELETE FROM capture WHERE page_id IN (SELECT id FROM page WHERE collection_id = ?)",
-        // )
-        // .bind(id)
-        // .execute(&mut *tx)
-        // .await?;
-
-        // sqlx::query("DELETE FROM page WHERE collection_id = ?")
-        //     .bind(id)
-        //     .execute(&mut *tx)
-        //     .await?;
-
-        sqlx::query("UPDATE collection SET parent_id = NULL WHERE parent_id = ?")
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
-
-        let deleted = sqlx::query("DELETE FROM collection WHERE id = ?")
-            .bind(id)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected()
-            > 0;
-
-        tx.commit().await?;
-        Ok(deleted)
-    }
-
-    pub(crate) async fn set_public(
-        pool: &SqlitePool,
-        id: CollectionId,
-        public: bool,
-    ) -> Result<bool> {
-        let result = sqlx::query("UPDATE collection SET public = ? WHERE id = ?")
-            .bind(public)
+        let result = sqlx::query("DELETE FROM collections WHERE owner_user_id = ? AND id = ?")
+            .bind(owner)
             .bind(id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected() > 0)
     }
-}
 
-pub(crate) async fn non_empty_parent(
-    pool: &SqlitePool,
-    id: Option<CollectionId>,
-    current: Option<CollectionId>,
-) -> Result<Option<CollectionId>> {
-    match id {
-        Some(parent)
-            if Some(parent) != current && CollectionRecord::exists(pool, parent).await? =>
-        {
-            Ok(Some(parent))
-        }
-        _ => Ok(None),
+    pub(crate) async fn set_public(
+        pool: &SqlitePool,
+        owner: i64,
+        id: CollectionId,
+        public: bool,
+    ) -> Result<bool> {
+        let result =
+            sqlx::query("UPDATE collections SET public = ? WHERE owner_user_id = ? AND id = ?")
+                .bind(public)
+                .bind(owner)
+                .bind(id)
+                .execute(pool)
+                .await?;
+        Ok(result.rows_affected() > 0)
     }
 }

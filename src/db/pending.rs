@@ -6,11 +6,11 @@ use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqliteExecut
 use crate::{
     db::{
         helper::{CreateOutcome, Cursor, CursorPage, id_type},
+        page::PageId,
         tag::Tag,
     },
-    limit::Limit,
-    tag::TagName,
-    url_canon::CanonicalUrl,
+    infra::TagName,
+    util::{limit::Limit, url_canon::CanonicalUrl},
 };
 
 /// Column list shared by every query that materializes a [`PendingRecord`].
@@ -39,7 +39,7 @@ pub(crate) enum PendingStatus {
     Failed,
 }
 
-/// A row of the `pending` table.
+/// A row of the `pending_items` table.
 #[derive(Debug, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PendingRecord {
@@ -67,13 +67,15 @@ pub(crate) struct PendingItem {
 impl PendingRecord {
     pub(crate) async fn load<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: PendingId,
     ) -> Result<Option<Self>> {
         sqlx::query_as(concat!(
             "SELECT ",
             pending_columns!(),
-            " FROM pending WHERE id = ?"
+            " FROM pending_items WHERE owner_user_id = ? AND id = ?"
         ))
+        .bind(owner)
         .bind(id)
         .fetch_optional(executor)
         .await
@@ -81,20 +83,26 @@ impl PendingRecord {
 
     pub(crate) async fn exists<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: PendingId,
     ) -> Result<bool> {
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pending WHERE id = ?)")
-            .bind(id)
-            .fetch_one(executor)
-            .await
+        sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM pending_items WHERE owner_user_id = ? AND id = ?)",
+        )
+        .bind(owner)
+        .bind(id)
+        .fetch_one(executor)
+        .await
     }
 
     /// Current status, or `None` if the item does not exist.
     pub(crate) async fn status_of<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: PendingId,
     ) -> Result<Option<PendingStatus>> {
-        sqlx::query_scalar("SELECT status FROM pending WHERE id = ?")
+        sqlx::query_scalar("SELECT status FROM pending_items WHERE owner_user_id = ? AND id = ?")
+            .bind(owner)
             .bind(id)
             .fetch_optional(executor)
             .await
@@ -106,49 +114,57 @@ impl PendingRecord {
     /// Shared by the single and bulk create endpoints.
     pub(crate) async fn enqueue(
         conn: &mut SqliteConnection,
+        owner: i64,
         url: &CanonicalUrl,
         tags: &[TagName],
     ) -> Result<CreateOutcome<PendingId>> {
         let inserted: Option<PendingId> = sqlx::query_scalar(
-            "INSERT INTO pending (url) VALUES (?)
-             ON CONFLICT(url) DO NOTHING
+            "INSERT INTO pending_items (owner_user_id, url) VALUES (?, ?)
+             ON CONFLICT(owner_user_id, url) DO NOTHING
              RETURNING id",
         )
+        .bind(owner)
         .bind(&url.url)
         .fetch_optional(&mut *conn)
         .await?;
 
         if let Some(id) = inserted {
-            Self::replace_tags(&mut *conn, id, tags).await?;
+            Self::replace_tags(&mut *conn, owner, id, tags).await?;
             return Ok(CreateOutcome::Created(id));
         }
 
         // TODO: merge the requested tags into the existing item.
-        let id = sqlx::query_scalar("SELECT id FROM pending WHERE url = ?")
-            .bind(&url.url)
-            .fetch_one(&mut *conn)
-            .await?;
+        let id =
+            sqlx::query_scalar("SELECT id FROM pending_items WHERE owner_user_id = ? AND url = ?")
+                .bind(owner)
+                .bind(&url.url)
+                .fetch_one(&mut *conn)
+                .await?;
         Ok(CreateOutcome::Existing(id))
     }
 
     /// Replaces the item's tag set with `names`, creating missing tags.
     pub(crate) async fn replace_tags(
         conn: &mut SqliteConnection,
+        owner: i64,
         id: PendingId,
         names: &[TagName],
     ) -> Result<()> {
-        sqlx::query("DELETE FROM pending_tag WHERE pending_id = ?")
+        sqlx::query("DELETE FROM pending_item_tags WHERE pending_item_id = ?")
             .bind(id)
             .execute(&mut *conn)
             .await?;
 
         for name in names {
-            let tag_id = Tag::get_or_create_id(&mut *conn, name).await?;
-            sqlx::query("INSERT OR IGNORE INTO pending_tag (pending_id, tag_id) VALUES (?, ?)")
-                .bind(id)
-                .bind(tag_id)
-                .execute(&mut *conn)
-                .await?;
+            let tag_id = Tag::get_or_create_id(&mut *conn, owner, name).await?;
+            sqlx::query(
+                "INSERT OR IGNORE INTO pending_item_tags (pending_item_id, tag_id)
+                 VALUES (?, ?)",
+            )
+            .bind(id)
+            .bind(tag_id)
+            .execute(&mut *conn)
+            .await?;
         }
         Ok(())
     }
@@ -156,28 +172,38 @@ impl PendingRecord {
     /// Atomically takes the oldest queued item and marks it `in_progress`.
     ///
     /// A single `UPDATE ... RETURNING` guarantees two workers never claim the same row.
+    /// `owner` scopes the queue to one user; `None` claims across users (admin workers).
     pub(crate) async fn claim_next<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: Option<i64>,
+        now: i64,
     ) -> Result<Option<PendingId>> {
-        sqlx::query_scalar(
-            "UPDATE pending SET status = 'in_progress'
-             WHERE id = (SELECT id FROM pending WHERE status = 'queued'
-                         ORDER BY created_at, id LIMIT 1)
-             RETURNING id",
-        )
-        .fetch_optional(executor)
-        .await
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+            "UPDATE pending_items
+             SET status = 'in_progress', locked_at = ",
+        );
+        qb.push_bind(now).push(", attempts = attempts + 1 WHERE id = (SELECT id FROM pending_items WHERE status = 'queued' AND next_attempt_at <= ")
+            .push_bind(now);
+        if let Some(owner) = owner {
+            qb.push(" AND owner_user_id = ").push_bind(owner);
+        }
+        qb.push(" ORDER BY next_attempt_at, id LIMIT 1) RETURNING id");
+
+        qb.build_query_scalar().fetch_optional(executor).await
     }
 
     /// Moves a `failed` item back to `queued`. Returns `false` if it was not failed.
     pub(crate) async fn retry<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: PendingId,
     ) -> Result<bool> {
         let result = sqlx::query(
-            "UPDATE pending SET status = 'queued', last_error = NULL
-             WHERE id = ? AND status = 'failed'",
+            "UPDATE pending_items SET status = 'queued', last_error = NULL,
+                    next_attempt_at = CAST(round(unixepoch('subsec') * 1000) AS INTEGER)
+             WHERE owner_user_id = ? AND id = ? AND status = 'failed'",
         )
+        .bind(owner)
         .bind(id)
         .execute(executor)
         .await?;
@@ -187,14 +213,17 @@ impl PendingRecord {
     /// Marks an `in_progress` item as failed. Returns `false` if it was not in progress.
     pub(crate) async fn mark_failed<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: PendingId,
         error: &str,
     ) -> Result<bool> {
         let result = sqlx::query(
-            "UPDATE pending SET status = 'failed', attempts = attempts + 1, last_error = ?
-             WHERE id = ? AND status = 'in_progress'",
+            "UPDATE pending_items
+             SET status = 'failed', last_error = ?, locked_at = NULL
+             WHERE owner_user_id = ? AND id = ? AND status = 'in_progress'",
         )
         .bind(error)
+        .bind(owner)
         .bind(id)
         .execute(executor)
         .await?;
@@ -204,36 +233,78 @@ impl PendingRecord {
     /// Deletes an item unless a worker is processing it. Returns `true` if deleted.
     pub(crate) async fn delete<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         id: PendingId,
     ) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM pending WHERE id = ? AND status != 'in_progress'")
-            .bind(id)
-            .execute(executor)
-            .await?;
+        let result = sqlx::query(
+            "DELETE FROM pending_items
+             WHERE owner_user_id = ? AND id = ? AND status != 'in_progress'",
+        )
+        .bind(owner)
+        .bind(id)
+        .execute(executor)
+        .await?;
         Ok(result.rows_affected() > 0)
     }
 
     /// Counts items with the given status.
     pub(crate) async fn count_with_status<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         status: PendingStatus,
     ) -> Result<i64> {
-        sqlx::query_scalar("SELECT COUNT(*) FROM pending WHERE status = ?")
-            .bind(status)
-            .fetch_one(executor)
-            .await
+        sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pending_items WHERE owner_user_id = ? AND status = ?",
+        )
+        .bind(owner)
+        .bind(status)
+        .fetch_one(executor)
+        .await
     }
 
     /// Deletes every item with `status`; returns how many were removed.
     pub(crate) async fn delete_all_with_status<'e>(
         executor: impl SqliteExecutor<'e>,
+        owner: i64,
         status: PendingStatus,
     ) -> Result<u64> {
-        let result = sqlx::query("DELETE FROM pending WHERE status = ?")
-            .bind(status)
-            .execute(executor)
-            .await?;
+        let result =
+            sqlx::query("DELETE FROM pending_items WHERE owner_user_id = ? AND status = ?")
+                .bind(owner)
+                .bind(status)
+                .execute(executor)
+                .await?;
         Ok(result.rows_affected())
+    }
+
+    /// Copies a pending item's tags onto the page and removes it from the queue.
+    ///
+    /// The pending row must belong to `owner`; a missing row is a no-op.
+    pub(crate) async fn complete_into_page(
+        conn: &mut SqliteConnection,
+        owner: i64,
+        pending_id: PendingId,
+        page_id: PageId,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO page_tags (page_id, tag_id)
+             SELECT ?, pit.tag_id
+               FROM pending_item_tags pit
+               JOIN pending_items pi ON pi.id = pit.pending_item_id
+              WHERE pi.id = ? AND pi.owner_user_id = ?",
+        )
+        .bind(page_id)
+        .bind(pending_id)
+        .bind(owner)
+        .execute(&mut *conn)
+        .await?;
+
+        sqlx::query("DELETE FROM pending_items WHERE id = ? AND owner_user_id = ?")
+            .bind(pending_id)
+            .bind(owner)
+            .execute(&mut *conn)
+            .await?;
+        Ok(())
     }
 
     /// Call once at startup: anything left `in_progress` belongs to a dead worker.
@@ -242,10 +313,12 @@ impl PendingRecord {
         reason = "startup recovery hook for deployments with external workers"
     )]
     pub(crate) async fn requeue_stalled<'e>(executor: impl SqliteExecutor<'e>) -> Result<u64> {
-        let result =
-            sqlx::query("UPDATE pending SET status = 'queued' WHERE status = 'in_progress'")
-                .execute(executor)
-                .await?;
+        let result = sqlx::query(
+            "UPDATE pending_items SET status = 'queued', locked_at = NULL
+             WHERE status = 'in_progress'",
+        )
+        .execute(executor)
+        .await?;
         Ok(result.rows_affected())
     }
 }
@@ -264,8 +337,13 @@ pub(crate) struct PendingUpdate<'a> {
 }
 
 impl PendingUpdate<'_> {
-    pub(crate) async fn apply(self, conn: &mut SqliteConnection, id: PendingId) -> Result<()> {
-        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("UPDATE pending SET ");
+    pub(crate) async fn apply(
+        self,
+        conn: &mut SqliteConnection,
+        owner: i64,
+        id: PendingId,
+    ) -> Result<()> {
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("UPDATE pending_items SET ");
         let mut sets = qb.separated(", ");
         let has_status = self.status.is_some();
         let has_url = self.url.is_some();
@@ -282,12 +360,15 @@ impl PendingUpdate<'_> {
         }
 
         if has_status || has_url {
-            qb.push(" WHERE id = ").push_bind(id);
+            qb.push(" WHERE owner_user_id = ")
+                .push_bind(owner)
+                .push(" AND id = ")
+                .push_bind(id);
             qb.build().execute(&mut *conn).await?;
         }
 
         if let Some(tags) = self.tags {
-            PendingRecord::replace_tags(&mut *conn, id, tags).await?;
+            PendingRecord::replace_tags(&mut *conn, owner, id, tags).await?;
         }
         Ok(())
     }
@@ -305,8 +386,8 @@ struct PendingTagJoin {
 }
 
 impl PendingItem {
-    pub(crate) async fn load(pool: &SqlitePool, id: PendingId) -> Result<Option<Self>> {
-        let Some(record) = PendingRecord::load(pool, id).await? else {
+    pub(crate) async fn load(pool: &SqlitePool, owner: i64, id: PendingId) -> Result<Option<Self>> {
+        let Some(record) = PendingRecord::load(pool, owner, id).await? else {
             return Ok(None);
         };
         Ok(Self::hydrate(pool, vec![record]).await?.pop())
@@ -322,10 +403,10 @@ impl PendingItem {
         }
 
         let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
-            "SELECT pt.pending_id, t.id, t.name, t.color, t.created_at
-             FROM pending_tag pt
-             JOIN tag t ON t.id = pt.tag_id
-             WHERE pt.pending_id IN (",
+            "SELECT pit.pending_item_id AS pending_id, t.id, t.name, t.color, t.created_at
+             FROM pending_item_tags pit
+             JOIN tags t ON t.id = pit.tag_id
+             WHERE pit.pending_item_id IN (",
         );
         let mut ids = qb.separated(", ");
         for record in &records {
@@ -352,11 +433,12 @@ impl PendingItem {
             .collect())
     }
 
-    /// Newest-first keyset pagination for `GET /api/pending`.
+    /// Newest-first keyset pagination for the queue.
     ///
     /// `after` is the cursor returned with the previous page.
     pub(crate) async fn list(
         pool: &SqlitePool,
+        owner: i64,
         status: Option<PendingStatus>,
         after: Option<Cursor>,
         limit: Limit,
@@ -366,8 +448,9 @@ impl PendingItem {
         let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(concat!(
             "SELECT ",
             pending_columns!(),
-            " FROM pending WHERE 1 = 1"
+            " FROM pending_items WHERE owner_user_id = "
         ));
+        qb.push_bind(owner);
         if let Some(after) = after {
             qb.push(" AND id < ").push_bind(after.get());
         }
@@ -391,5 +474,12 @@ impl PendingItem {
             items,
             next_cursor: page.next_cursor,
         })
+    }
+
+    /// All of the owner's items (used by the HTML pages and bulk operations).
+    pub(crate) async fn all(pool: &SqlitePool, owner: i64) -> Result<Vec<Self>> {
+        Self::list(pool, owner, None, None, Limit::MAX)
+            .await
+            .map(|page| page.items)
     }
 }

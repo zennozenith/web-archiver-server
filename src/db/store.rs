@@ -4,10 +4,8 @@
 use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
-    blob_store::BlobStore,
-    compress::{self, Compression},
     error::{AppError, Result, join_err},
-    hash::Blake3Hash,
+    infra::{Blake3Hash, BlobStore, Compression, compress},
 };
 
 pub(crate) enum Location {
@@ -47,7 +45,7 @@ pub(crate) async fn prepare_blob(
     .await
     .map_err(join_err)?;
 
-    let existed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content WHERE hash = ?)")
+    let existed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM contents WHERE hash = ?)")
         .bind(hash)
         .fetch_one(pool)
         .await?;
@@ -93,7 +91,7 @@ pub(crate) async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -
             Location::File(r) => (None, Some(r.as_str())),
         };
         sqlx::query(
-            "INSERT INTO content (hash, mime_type, size_original, size_stored, compression_id, data, storage_ref)
+            "INSERT INTO contents (hash, mime_type, size_original, size_stored, compression_id, data, storage_ref)
              VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(hash) DO NOTHING",
         )
@@ -108,7 +106,7 @@ pub(crate) async fn insert_blob(conn: &mut SqliteConnection, b: &PreparedBlob) -
         .await?;
     }
 
-    sqlx::query_scalar("SELECT id FROM content WHERE hash = ?")
+    sqlx::query_scalar("SELECT id FROM contents WHERE hash = ?")
         .bind(b.hash)
         .fetch_optional(&mut *conn)
         .await?

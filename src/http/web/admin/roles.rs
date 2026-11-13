@@ -10,7 +10,10 @@ use crate::{
     http::{
         extract::web_user::WebUser,
         htmx::{PageError, Render},
-        web::view::{Section, Shell, pct_encode, role_class},
+        web::{
+            account::AccountOverview,
+            view::{Section, Shell, pct_encode, role_class},
+        },
     },
     service::admin,
 };
@@ -105,7 +108,7 @@ pub(super) async fn page(
         .collect();
 
     Ok(Render(RolesTpl {
-        shell: Shell::new(&user, Section::Roles),
+        shell: Shell::new::<AccountOverview>(&user, Section::Roles),
         can_users: user.can(Permission::USERS_READ),
         cards,
         matrix,

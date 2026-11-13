@@ -11,11 +11,6 @@ pub(crate) struct NewAccount {
     pub display_name: Option<String>,
 }
 
-pub(crate) struct CreatedAccount {
-    pub user_id: i64,
-    pub public_id: String,
-}
-
 #[derive(
     Debug,
     strum::Display,

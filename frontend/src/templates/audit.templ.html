@@ -7,15 +7,28 @@
 
 <div class="flex items-center gap-2">
   <label class="input w-full sm:w-96">
-    <svg viewBox="0 0 24 24" class="size-4 opacity-60" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
-    <input type="search" name="q" class="grow" placeholder="Filter by action or e-mail" value="{{ q }}" autocomplete="off"
-           hx-get="/audit/rows" hx-target="#audit-body" hx-trigger="input changed delay:300ms, search">
+    <svg viewBox="0 0 24 24" class="size-4 opacity-60" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </svg>
+    <input type="search" name="q" class="grow" placeholder="Filter by action or e-mail" value="{{ q }}"
+      autocomplete="off" hx-get="/admin/audit/rows" hx-target="#audit-body"
+      hx-trigger="input changed delay:300ms, search">
   </label>
 </div>
 
 <div class="mt-4 overflow-x-auto rounded-xl border border-line bg-surface">
   <table class="table">
-    <thead><tr><th>When</th><th>Action</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead>
+    <thead>
+      <tr>
+        <th>When</th>
+        <th>Action</th>
+        <th>Actor</th>
+        <th>Target</th>
+        <th>Details</th>
+      </tr>
+    </thead>
     <tbody id="audit-body">
       {% include "partials/audit_rows.templ.html" %}
     </tbody>

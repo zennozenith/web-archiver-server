@@ -8,7 +8,10 @@
 <div class="grid gap-5 lg:grid-cols-5">
   <section class="rounded-xl border border-line bg-surface p-5 lg:col-span-2">
     <div class="flex items-center gap-4">
-      <div class="avatar avatar-placeholder"><div class="w-14 rounded-full bg-brand-soft text-brand"><span class="text-lg font-medium">{{ me.initials }}</span></div></div>
+      <div class="avatar avatar-placeholder">
+        <div class="w-14 rounded-full bg-brand-soft text-brand"><span class="text-lg font-medium">{{ me.initials
+            }}</span></div>
+      </div>
       <div class="min-w-0">
         <div class="truncate font-display text-lg font-semibold">{{ me.name }}</div>
         <div class="truncate text-sm text-dim">{{ me.secondary }}</div>
@@ -19,14 +22,25 @@
       {% for r in me.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{% endfor %}
     </div>
     <dl class="mt-5 space-y-3 text-sm">
-      <div><dt class="text-xs text-faint">Member since</dt><dd><time datetime="{{ me.created.iso }}" data-local>{{ me.created.text }}</time></dd></div>
-      <div><dt class="text-xs text-faint">Last sign-in</dt><dd><time datetime="{{ me.last_login.iso }}" data-local>{{ me.last_login.text }}</time></dd></div>
-      <div><dt class="text-xs text-faint">Profile updated</dt><dd><time datetime="{{ profile.updated.iso }}" data-local>{{ profile.updated.text }}</time></dd></div>
+      <div>
+        <dt class="text-xs text-faint">Member since</dt>
+        <dd><time datetime="{{ me.created.iso }}" data-local>{{ me.created.text }}</time></dd>
+      </div>
     </dl>
-    <h2 class="mt-6 text-sm font-semibold text-dim">Your permissions</h2>
-    <div class="mt-2 flex flex-wrap gap-1">
-      {% for p in permissions %}<span class="badge badge-outline badge-sm font-data">{{ p }}</span>{% endfor %}
-    </div>
+    <dl class="mt-4 grid grid-cols-3 gap-3 text-sm">
+      <div class="col-span-3">
+        <dt class="text-xs text-faint">Last sign-in</dt>
+        <dd><time datetime="{{ mine.last_login.iso }}" data-local>{{ mine.last_login.text }}</time></dd>
+      </div>
+      <div class="col-span-1">
+        <dt class="text-xs text-faint">Sessions</dt>
+        <dd class="text-lg font-semibold tabular-nums">{{ mine.sessions }}</dd>
+      </div>
+      <div class="col-span-2">
+        <dt class="text-xs text-faint">API keys</dt>
+        <dd class="text-lg font-semibold tabular-nums">{{ mine.api_keys }}</dd>
+      </div>
+    </dl>
   </section>
 
   <section class="rounded-xl border border-line bg-surface p-5 lg:col-span-3">
@@ -38,20 +52,36 @@
         <input class="input w-full" name="display_name" value="{{ profile.display_name }}" maxlength="80">
       </fieldset>
       <div class="grid gap-3 sm:grid-cols-2">
-        <fieldset class="fieldset"><legend class="fieldset-legend">First name</legend><input class="input w-full" name="first_name" value="{{ profile.first_name }}"></fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Last name</legend><input class="input w-full" name="last_name" value="{{ profile.last_name }}"></fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">First name</legend><input class="input w-full" name="first_name"
+            value="{{ profile.first_name }}">
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Last name</legend><input class="input w-full" name="last_name"
+            value="{{ profile.last_name }}">
+        </fieldset>
       </div>
       <div class="grid gap-3 sm:grid-cols-3">
-        <fieldset class="fieldset"><legend class="fieldset-legend">Birth date</legend><input class="input w-full" type="date" name="birth_date" value="{{ profile.birth_date }}"></fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Locale</legend><input class="input w-full" name="locale" value="{{ profile.locale }}" placeholder="en"></fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Time zone</legend><input class="input w-full" name="timezone" value="{{ profile.timezone }}" placeholder="UTC"></fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Birth date</legend><input class="input w-full" type="date" name="birth_date"
+            value="{{ profile.birth_date }}">
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Locale</legend><input class="input w-full" name="locale"
+            value="{{ profile.locale }}" placeholder="en">
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Time zone</legend><input class="input w-full" name="timezone"
+            value="{{ profile.timezone }}" placeholder="UTC">
+        </fieldset>
       </div>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Bio</legend>
         <textarea class="textarea h-24 w-full" name="bio" maxlength="500">{{ profile.bio }}</textarea>
       </fieldset>
       <div class="flex justify-end">
-        <button class="btn btn-primary" type="submit"><span class="loading loading-spinner loading-sm htmx-indicator"></span>Save changes</button>
+        <button class="btn btn-primary" type="submit"><span
+            class="loading loading-spinner loading-sm htmx-indicator"></span>Save changes</button>
       </div>
     </form>
     {% else %}

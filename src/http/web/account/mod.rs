@@ -5,6 +5,8 @@ mod overview;
 mod profile;
 mod sessions;
 
+pub(super) use overview::AccountOverview;
+
 use axum::{
     Router,
     routing::{delete, get},

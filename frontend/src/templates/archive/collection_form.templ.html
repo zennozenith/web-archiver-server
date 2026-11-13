@@ -1,0 +1,17 @@
+{% extends "base.templ.html" %}
+{% block content %}
+<div class="page-header mb-6">
+  <h1 class="font-display text-2xl font-semibold">{{ form_title }}</h1>
+</div>
+<form class="flex max-w-lg flex-col gap-4" hx-{{ method }}="{{ form_action }}" hx-swap="none" @htmx:after:request="$ok($event) && (location.href = '{{ redirect_to }}')">
+  <fieldset class="fieldset"><legend class="fieldset-legend">Name</legend><input name="name" required value="{{ name }}" class="input w-full" /></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Emoji</legend><input name="emoji" value="{{ emoji }}" class="input w-full sm:w-32" maxlength="16" placeholder="📁" /></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Description</legend><textarea name="description" rows="3" class="textarea w-full">{{ description }}</textarea></fieldset>
+  <fieldset class="fieldset"><legend class="fieldset-legend">Color</legend><input type="color" name="color" value="{{ color }}" class="h-10 w-16 cursor-pointer rounded border border-line bg-transparent p-1" aria-label="Collection color" /></fieldset>
+  <label class="label cursor-pointer justify-start gap-2"><input type="checkbox" name="public" value="true" class="checkbox checkbox-sm" {% if public %}checked{% endif %} /> Public collection</label>
+  <div class="flex gap-2 pt-2">
+    <a href="/collections" class="btn btn-ghost">Cancel</a>
+    <button class="btn btn-primary">{{ submit_label }}</button>
+  </div>
+</form>
+{% endblock %}

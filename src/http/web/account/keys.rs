@@ -10,6 +10,7 @@ use crate::{
         extract::{body::AppPath, web_user::WebUser},
         htmx::{ActionError, Fragments, PageError, Render, ToastKind},
         web::{
+            account::overview::AccountOverview,
             form::ActionForm,
             view::{Section, Shell, Stamp},
         },
@@ -99,7 +100,7 @@ pub(super) async fn page(
         })
         .collect();
     Ok(Render(KeysTpl {
-        shell: Shell::new(&user, Section::Keys),
+        shell: Shell::new::<AccountOverview>(&user, Section::Keys),
         keys: load_keys(&ctx, &user).await?,
         scopes,
     }))

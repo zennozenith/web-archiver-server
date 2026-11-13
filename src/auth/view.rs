@@ -14,7 +14,7 @@ fn split_csv(csv: Option<&str>) -> Vec<String> {
     })
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Clone, Debug, FromRow)]
 pub(crate) struct UserView {
     pub public_id: String,
     pub email: Option<String>,

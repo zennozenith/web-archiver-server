@@ -1,0 +1,12 @@
+{% extends "base.templ.html" %}
+{% block content %}
+<div class="page-header mb-6">
+  <h1 class="font-display text-2xl font-semibold"><span aria-hidden="true">{{ collection.emoji }}</span> {{ collection.name }}</h1>
+  <p class="text-sm text-dim">Public collection · {{ collection.link_count }} links</p>
+</div>
+<div class="link-grid" data-view="grid">
+  {% for link in links %}{% include "archive/_link_card.templ.html" %}{% else %}
+  <div class="empty-state"><p class="title">This collection is empty</p></div>
+  {% endfor %}
+</div>
+{% endblock %}

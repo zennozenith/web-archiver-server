@@ -90,15 +90,13 @@ impl From<ProfileView> for ProfileDto {
 pub(crate) struct MeDto {
     user: UserDto,
     profile: ProfileDto,
-    permissions: Vec<String>,
 }
 
 impl From<Me> for MeDto {
     fn from(me: Me) -> Self {
         Self {
-            user: me.user.into(),
+            user: me.mine.user.into(),
             profile: me.profile.into(),
-            permissions: me.permissions,
         }
     }
 }

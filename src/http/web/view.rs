@@ -4,8 +4,8 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 
 use crate::{
-    auth::{AuthUser, Permission, UserView},
-    util::time::{ms_to_dt, opt_ms_to_dt as _},
+    auth::{AuthUser, UserView},
+    util::time::ms_to_dt,
 };
 
 use std::fmt::Write;
@@ -13,17 +13,25 @@ use std::fmt::Write;
 pub(crate) const PAGE_SIZE: i64 = 15;
 
 /// Inner markup of 24x24 stroke icons (rendered with `|safe`; static strings only).
-mod icons {
-    pub(super) const GRID: &str = r#"<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>"#;
-    pub(super) const USERS: &str = r#"<circle cx="9" cy="8" r="3.25"/><path d="M3 19.5c0-3.3 2.7-5.75 6-5.75s6 2.45 6 5.75"/><circle cx="17.25" cy="9.25" r="2.5"/><path d="M17.5 14.2c2.2.2 3.9 1.9 3.9 4.3"/>"#;
-    pub(super) const SHIELD: &str = r#"<path d="M12 3.5l7.5 2.8v5.4c0 4.4-3.1 7.6-7.5 8.8-4.4-1.2-7.5-4.4-7.5-8.8V6.3z"/><path d="M9 12l2.2 2.2L15.2 10"/>"#;
-    pub(super) const LEDGER: &str = r#"<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>"#;
-    pub(super) const USER: &str =
+pub(crate) mod icons {
+    pub(crate) const GRID: &str = r#"<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>"#;
+    pub(crate) const USERS: &str = r#"<circle cx="9" cy="8" r="3.25"/><path d="M3 19.5c0-3.3 2.7-5.75 6-5.75s6 2.45 6 5.75"/><circle cx="17.25" cy="9.25" r="2.5"/><path d="M17.5 14.2c2.2.2 3.9 1.9 3.9 4.3"/>"#;
+    pub(crate) const SHIELD: &str = r#"<path d="M12 3.5l7.5 2.8v5.4c0 4.4-3.1 7.6-7.5 8.8-4.4-1.2-7.5-4.4-7.5-8.8V6.3z"/><path d="M9 12l2.2 2.2L15.2 10"/>"#;
+    pub(crate) const LEDGER: &str = r#"<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>"#;
+    pub(crate) const USER: &str =
         r#"<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/>"#;
-    pub(super) const MONITOR: &str =
+    pub(crate) const MONITOR: &str =
         r#"<rect x="3" y="4.5" width="18" height="11.5" rx="2"/><path d="M8.5 20h7M12 16v4"/>"#;
-    pub(super) const KEY: &str =
+    pub(crate) const KEY: &str =
         r#"<circle cx="8" cy="15.5" r="4"/><path d="M11 12.5l9-9M16.5 7l3 3"/>"#;
+    pub(crate) const LINK: &str = r#"<path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/>"#;
+    pub(crate) const FOLDERS: &str = r#"<path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l1.5 2H19a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/>"#;
+    pub(crate) const CLOCK: &str = r#"<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>"#;
+    pub(crate) const TAG: &str =
+        r#"<path d="M4 4h8l8 8-8 8-8-8z"/><circle cx="8.5" cy="8.5" r="1.5"/>"#;
+    pub(crate) const PIN: &str = r#"<path d="M9 4h6l-1 5 3 3v2H7v-2l3-3zM12 14v6"/>"#;
+    pub(crate) const INBOX: &str =
+        r#"<path d="M4 5h16v10h-4l-2 2h-4l-2-2H4z"/><path d="M4 12h4l1.5 2h5L16 12h4"/>"#;
 }
 
 // ------------------------------------------------------------------ app shell
@@ -38,6 +46,13 @@ pub(crate) enum Section {
     Profile,
     Sessions,
     Keys,
+    Archive,
+    Links,
+    Pinned,
+    Unorganized,
+    Collections,
+    Pending,
+    Tags,
 }
 
 impl Section {
@@ -50,6 +65,13 @@ impl Section {
             Self::Profile => "Profile",
             Self::Sessions => "Sessions",
             Self::Keys => "API keys",
+            Self::Archive => "Web archive",
+            Self::Links => "All links",
+            Self::Pinned => "Pinned links",
+            Self::Unorganized => "Unorganized",
+            Self::Collections => "Collections",
+            Self::Pending => "Pending queue",
+            Self::Tags => "Tags",
         }
     }
 }
@@ -74,13 +96,20 @@ pub(crate) struct NavGroup {
 pub(crate) struct Shell {
     pub(crate) title: &'static str,
     pub(crate) groups: Vec<NavGroup>,
+    pub(crate) account_href: &'static str,
     pub(crate) me_name: String,
     pub(crate) me_roles: String,
     pub(crate) me_initials: String,
+    /// Anonymous visitors see the content without the signed-in navigation.
+    pub(crate) guest: bool,
+}
+
+pub(crate) trait NavProvider {
+    fn groups(user: &AuthUser, active: Section) -> Vec<NavGroup>;
 }
 
 impl Shell {
-    pub(crate) fn new(user: &AuthUser, active: Section) -> Self {
+    pub(crate) fn new<N: NavProvider>(user: &AuthUser, active: Section) -> Self {
         let me_name = user
             .email
             .clone()
@@ -88,69 +117,31 @@ impl Shell {
             .unwrap_or_else(|| "Signed in".to_owned());
         Self {
             title: active.title(),
-            groups: nav_groups(user, active),
+            account_href: if user.is_super() {
+                "/account"
+            } else {
+                "/account/profile"
+            },
+            groups: N::groups(user, active),
             me_initials: initials(&me_name),
             me_roles: user.roles.join(", "),
             me_name,
+            guest: false,
         }
     }
-}
 
-fn nav_groups(user: &AuthUser, active: Section) -> Vec<NavGroup> {
-    let item =
-        |section: Section, href: &'static str, label: &'static str, icon: &'static str| NavItem {
-            href,
-            label,
-            icon,
-            active: section == active,
-        };
-
-    let mut groups = vec![NavGroup {
-        label: "Overview",
-        items: vec![item(
-            Section::Dashboard,
-            "/account",
-            "Dashboard",
-            icons::GRID,
-        )],
-    }];
-
-    let mut admin = Vec::new();
-    if user.can(Permission::USERS_READ) {
-        admin.push(item(Section::Users, "/admin/users", "Users", icons::USERS));
+    /// Shell for pages that do not require sign-in (e.g. a shared collection).
+    pub(crate) const fn public(title: &'static str) -> Self {
+        Self {
+            title,
+            account_href: "/account/profile",
+            groups: Vec::new(),
+            me_name: String::new(),
+            me_roles: String::new(),
+            me_initials: String::new(),
+            guest: true,
+        }
     }
-    if user.can(Permission::ROLES_READ) {
-        admin.push(item(Section::Roles, "/admin/roles", "Roles", icons::SHIELD));
-    }
-    if user.can(Permission::AUDIT_READ) {
-        admin.push(item(
-            Section::Audit,
-            "/admin/audit",
-            "Audit log",
-            icons::LEDGER,
-        ));
-    }
-    if !admin.is_empty() {
-        groups.push(NavGroup {
-            label: "Administration",
-            items: admin,
-        });
-    }
-
-    groups.push(NavGroup {
-        label: "My account",
-        items: vec![
-            item(Section::Profile, "/account/profile", "Profile", icons::USER),
-            item(
-                Section::Sessions,
-                "/account/sessions",
-                "Sessions",
-                icons::MONITOR,
-            ),
-            item(Section::Keys, "/account/keys", "API keys", icons::KEY),
-        ],
-    });
-    groups
 }
 
 // -------------------------------------------------------------------- helpers

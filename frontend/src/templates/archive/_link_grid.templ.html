@@ -1,0 +1,8 @@
+{% if links.is_empty() %}
+<div class="empty-state">
+  <p class="title">No links found</p>
+  <p>Try a different search, or save a new link.</p>
+</div>
+{% else %}
+{% for link in links %}{% include "archive/_link_card.templ.html" %}{% endfor %}
+{% endif %}

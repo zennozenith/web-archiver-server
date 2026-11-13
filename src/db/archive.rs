@@ -6,10 +6,13 @@ use std::{
 
 use futures::{StreamExt, stream};
 use serde::Serialize;
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
-    db::store::{insert_blob, prepare_blob},
+    db::{
+        capture::CaptureId,
+        store::{insert_blob, prepare_blob},
+    },
     infra::{
         Blake3Hash, BlobStore, downloader,
         extractor::{css, html},
@@ -313,4 +316,27 @@ pub(crate) async fn collect_assets(
     }
 
     Ok((collector.saved, collector.summary))
+}
+
+/// Writes the asset rows for a capture. Duplicate URLs are ignored.
+pub(crate) async fn insert_assets(
+    conn: &mut SqliteConnection,
+    capture_id: CaptureId,
+    assets: &[PreparedAsset],
+) -> Result<()> {
+    for asset in assets {
+        sqlx::query(
+            "INSERT OR IGNORE INTO capture_assets
+                (capture_id, content_id, url, kind, status_code)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(capture_id)
+        .bind(asset.content_id)
+        .bind(&asset.url)
+        .bind(asset.kind)
+        .bind(asset.status_code)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
 }

@@ -1,0 +1,91 @@
+{% extends "base.templ.html" %}
+{% block content %}
+<div class="page-header mb-6 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="font-display text-2xl font-semibold">Pending queue</h1>
+    <p class="text-sm text-dim">URLs waiting to be archived.</p>
+  </div>
+  <span class="badge badge-ghost tabular-nums">{{ counts.total }} items</span>
+</div>
+
+{% if can_write %}
+<div class="mb-6 grid gap-4 lg:grid-cols-2">
+  <section class="rounded-xl border border-line bg-surface p-4">
+    <h2 class="text-base font-semibold">Add a link</h2>
+    <form class="mt-3 flex flex-col gap-3" hx-post="/pending" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+      <fieldset class="fieldset"><legend class="fieldset-legend">URL</legend><input name="url" type="url" required placeholder="https://example.com" class="input w-full" /></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Tags <span class="font-normal text-faint">(optional)</span></legend><input name="tags" type="text" placeholder="design, reading" class="input w-full" /></fieldset>
+      <button type="submit" class="btn btn-primary btn-sm self-start">Add to queue</button>
+    </form>
+  </section>
+
+  <section class="rounded-xl border border-line bg-surface p-4">
+    <h2 class="text-base font-semibold">Bulk add</h2>
+    <form class="mt-3 flex flex-col gap-3" hx-post="/pending/bulk" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+      <fieldset class="fieldset"><legend class="fieldset-legend">URLs</legend><textarea name="items" rows="5" required class="textarea w-full font-mono text-sm" placeholder="https://example.com&#10;https://example.com/article | design, reading"></textarea><p class="label">One URL per line. Tags after <code>|</code>, comma separated.</p></fieldset>
+      <button type="submit" class="btn btn-primary btn-sm self-start">Add all</button>
+    </form>
+  </section>
+</div>
+{% endif %}
+
+<div role="tablist" class="tabs tabs-box tabs-sm mb-4 w-fit">
+  <a role="tab" href="/pending" class="tab px-3 {% if all_active %}tab-active{% endif %}">All <span class="ml-1 badge badge-ghost badge-sm tabular-nums">{{ counts.total }}</span></a>
+  <a role="tab" href="/pending?status=queued" class="tab px-3 {% if queued_active %}tab-active{% endif %}">Queued <span class="ml-1 badge badge-info badge-sm tabular-nums">{{ counts.queued }}</span></a>
+  <a role="tab" href="/pending?status=in_progress" class="tab px-3 {% if in_progress_active %}tab-active{% endif %}">In progress <span class="ml-1 badge badge-warning badge-sm tabular-nums">{{ counts.in_progress }}</span></a>
+  <a role="tab" href="/pending?status=failed" class="tab px-3 {% if failed_active %}tab-active{% endif %}">Failed <span class="ml-1 badge badge-error badge-sm tabular-nums">{{ counts.failed }}</span></a>
+</div>
+
+<div class="flex flex-col gap-2">
+  {% for item in pending %}
+  <article id="pending-{{ item.id }}" class="rounded-xl border border-line bg-surface p-4" x-data="{ editing: false }">
+    <div class="flex flex-wrap items-start gap-2">
+      <div class="min-w-0 flex-1">
+        <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="block truncate font-medium link link-hover">{{ item.url }}</a>
+        <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dim">
+          <span class="badge {{ item.status_class }} badge-sm">{{ item.status_label }}</span>
+          <time datetime="{{ item.added.iso }}" data-local>Added {{ item.added.text }}</time>
+          {% if item.attempts > 0 %}<span>{{ item.attempts }} attempts</span>{% endif %}
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+          {% for tag in item.tags %}<a href="{{ tag.href }}" class="badge badge-ghost badge-sm hover:border-primary"># {{ tag.name }}</a>{% else %}<span class="text-xs text-faint">No tags</span>{% endfor %}
+        </div>
+        {% if let Some(error) = item.last_error %}<p class="mt-2 rounded bg-error/10 px-2 py-1 text-xs text-error">{{ error }}</p>{% endif %}
+      </div>
+      {% if can_write %}
+      <div class="flex shrink-0 items-center gap-1">
+        {% if item.retryable %}<button type="button" class="btn btn-ghost btn-xs" hx-post="/pending/{{ item.id }}/retry" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">Retry</button>{% endif %}
+        <button type="button" class="btn btn-ghost btn-xs" @click="editing = !editing">Edit</button>
+        <button type="button" class="btn btn-ghost btn-xs text-error" hx-delete="/pending/{{ item.id }}" hx-confirm="Remove this URL from the queue?" hx-target="closest article" hx-swap="outerHTML">Delete</button>
+      </div>
+      {% endif %}
+    </div>
+    {% if can_write %}
+    <form x-show="editing" x-cloak class="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3" hx-patch="/pending/{{ item.id }}" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+      <fieldset class="fieldset min-w-56 flex-1"><legend class="fieldset-legend">URL</legend><input name="url" type="url" required value="{{ item.url }}" class="input input-sm w-full" /></fieldset>
+      <fieldset class="fieldset min-w-48 flex-1"><legend class="fieldset-legend">Tags</legend><input name="tags" type="text" value="{{ item.tags_csv }}" class="input input-sm w-full" /></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Status</legend>
+        {% if item.in_progress %}<span class="badge badge-warning badge-sm h-8">Managed by worker</span>
+        {% else %}
+        <select name="status" class="select select-sm">
+          <option value="queued" {% if item.is_queued %}selected{% endif %}>Queued</option>
+          <option value="failed" {% if item.is_failed %}selected{% endif %}>Failed</option>
+        </select>
+        {% endif %}
+      </fieldset>
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    </form>
+    {% endif %}
+  </article>
+  {% else %}
+  <div class="empty-state"><p class="title">Nothing queued</p><p>Add a URL above, or capture a page with the browser extension.</p></div>
+  {% endfor %}
+</div>
+
+{% if can_write && (counts.queued > 0 || counts.failed > 0) %}
+<div class="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+  {% if counts.queued > 0 %}<button type="button" class="btn btn-ghost btn-sm text-error" hx-delete="/pending?status=queued" hx-confirm="Remove all queued items?" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">Clear queued ({{ counts.queued }})</button>{% endif %}
+  {% if counts.failed > 0 %}<button type="button" class="btn btn-ghost btn-sm text-error" hx-delete="/pending?status=failed" hx-confirm="Remove all failed items?" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">Clear failed ({{ counts.failed }})</button>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

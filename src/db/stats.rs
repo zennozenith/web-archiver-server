@@ -50,19 +50,19 @@ pub(crate) struct Stats {
 pub(crate) async fn stats(pool: &SqlitePool) -> Result<Stats> {
     let t: Totals = sqlx::query_as(
         "SELECT
-           (SELECT COUNT(*) FROM page)    AS pages,
-           (SELECT COUNT(*) FROM capture) AS captures,
-           (SELECT COUNT(*) FROM content) AS content_items,
-           (SELECT COUNT(*) FROM capture_asset) AS assets,
-           (SELECT COUNT(*) FROM tag) AS tags,
-           (SELECT COUNT(*) FROM pending) AS pendings,
-           COALESCE((SELECT SUM(size_stored)   FROM content), 0) AS stored_bytes,
-           COALESCE((SELECT SUM(size_original) FROM content), 0) AS unique_original_bytes,
-           COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.content_id), 0)
-         + COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.original_content_id
+           (SELECT COUNT(*) FROM pages)    AS pages,
+           (SELECT COUNT(*) FROM captures) AS captures,
+           (SELECT COUNT(*) FROM contents) AS content_items,
+           (SELECT COUNT(*) FROM capture_assets) AS assets,
+           (SELECT COUNT(*) FROM tags) AS tags,
+           (SELECT COUNT(*) FROM pending_items) AS pendings,
+           COALESCE((SELECT SUM(size_stored)   FROM contents), 0) AS stored_bytes,
+           COALESCE((SELECT SUM(size_original) FROM contents), 0) AS unique_original_bytes,
+           COALESCE((SELECT SUM(ct.size_original) FROM captures c JOIN contents ct ON ct.id = c.content_id), 0)
+         + COALESCE((SELECT SUM(ct.size_original) FROM captures c JOIN contents ct ON ct.id = c.original_content_id
                      WHERE c.original_content_id IS NOT c.content_id), 0)
-         + COALESCE((SELECT SUM(ct.size_original) FROM capture c JOIN content ct ON ct.id = c.screenshot_content_id), 0)
-         + COALESCE((SELECT SUM(ct.size_original) FROM capture_asset ca JOIN content ct ON ct.id = ca.content_id), 0)
+         + COALESCE((SELECT SUM(ct.size_original) FROM captures c JOIN contents ct ON ct.id = c.screenshot_content_id), 0)
+         + COALESCE((SELECT SUM(ct.size_original) FROM capture_assets ca JOIN contents ct ON ct.id = ca.content_id), 0)
            AS logical_bytes",
     )
     .fetch_one(pool)
@@ -73,7 +73,7 @@ pub(crate) async fn stats(pool: &SqlitePool) -> Result<Stats> {
         .map(|s| (s.to_owned(), 0))
         .collect();
     let rows: Vec<(String, i64)> =
-        sqlx::query_as("SELECT status, COUNT(*) FROM pending GROUP BY status")
+        sqlx::query_as("SELECT status, COUNT(*) FROM pending_items GROUP BY status")
             .fetch_all(pool)
             .await?;
     queue.extend(rows);
@@ -107,12 +107,14 @@ pub(crate) async fn health(pool: &SqlitePool) -> Result<()> {
 //
 // DB first, files second: a crash in between leaves an orphan file, never a row pointing at nothing.
 pub(crate) async fn gc_content(pool: &SqlitePool, store: &BlobStore) -> Result<GCStat, AppError> {
+    let cutoff = crate::util::time::now_ms().saturating_sub(crate::util::time::HOUR_MS);
     let refs: Vec<Option<String>> = sqlx::query_scalar(
-        "DELETE FROM content
-         WHERE created_at < unixepoch() - 3600
+        "DELETE FROM contents
+         WHERE created_at < ?
            AND ref_count <= 0
          RETURNING storage_ref",
     )
+    .bind(cutoff)
     .fetch_all(pool)
     .await?;
 
@@ -121,7 +123,7 @@ pub(crate) async fn gc_content(pool: &SqlitePool, store: &BlobStore) -> Result<G
     for r in refs.into_iter().flatten() {
         // Skip if the same hash was re-archived (new row, same path) while we were deleting.
         let reused: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content WHERE storage_ref = ?)")
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM contents WHERE storage_ref = ?)")
                 .bind(&r)
                 .fetch_one(pool)
                 .await?;

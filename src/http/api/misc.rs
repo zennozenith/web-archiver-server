@@ -1,32 +1,28 @@
+//! Health, global installation statistics and maintenance.
+
 use axum::{
     Router,
     extract::State,
     routing::{get, post},
 };
 use serde_json::json;
-use sqlx::SqlitePool;
 
-use crate::{db::stats, http::extract::body::AppJson, infra::BlobStore, prelude::*};
+use crate::{
+    app::AppState, auth::AuthUser, db::stats, error::Result, http::extract::body::AppJson, service,
+};
 
-// GET /api/health  (unauthenticated)
-pub(super) async fn health(State(pool): State<SqlitePool>) -> Result<AppJson<serde_json::Value>> {
-    stats::health(&pool).await?;
+/// GET /api/health (unauthenticated)
+pub(super) async fn health(State(ctx): State<AppState>) -> Result<AppJson<serde_json::Value>> {
+    service::misc::health(&ctx).await?;
     Ok(AppJson(json!({ "status": "ok" })))
 }
 
-// GET /api/stats
-async fn stats(State(pool): State<SqlitePool>) -> Result<AppJson<stats::Stats>> {
-    let stat = stats::stats(&pool).await?;
-    Ok(AppJson(stat))
+async fn stats(State(ctx): State<AppState>, user: AuthUser) -> Result<AppJson<stats::Stats>> {
+    Ok(AppJson(service::misc::stats(&ctx, &user).await?))
 }
 
-// POST /api/maintenance/gc
-async fn gc_content(
-    State(pool): State<SqlitePool>,
-    State(store): State<BlobStore>,
-) -> Result<AppJson<stats::GCStat>> {
-    let gc_stat = stats::gc_content(&pool, &store).await?;
-    Ok(AppJson(gc_stat))
+async fn gc_content(State(ctx): State<AppState>, user: AuthUser) -> Result<AppJson<stats::GCStat>> {
+    Ok(AppJson(service::misc::gc(&ctx, &user).await?))
 }
 
 pub(super) fn routes() -> Router<AppState> {

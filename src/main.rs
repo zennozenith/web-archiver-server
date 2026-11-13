@@ -22,9 +22,6 @@ mod infra;
 mod service;
 mod util;
 
-// mod tag;
-// mod template;
-
 #[expect(clippy::too_many_lines, reason = "")]
 #[tokio::main]
 async fn main() {

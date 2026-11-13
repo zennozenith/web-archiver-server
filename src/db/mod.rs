@@ -6,22 +6,22 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use crate::{config::DatabaseSettings, util::time::DAY_MS};
 
 pub(crate) mod api_key;
+pub(crate) mod archive;
+pub(crate) mod audit;
+pub(crate) mod auth;
+pub(crate) mod capture;
+pub(crate) mod collection;
+pub(crate) mod content;
+pub(crate) mod helper;
+pub(crate) mod page;
+pub(crate) mod pending;
+pub(crate) mod permission;
 pub(crate) mod profile;
 pub(crate) mod role;
 pub(crate) mod session;
-// pub(crate) mod archive;
-pub(crate) mod audit;
-pub(crate) mod auth;
-// pub(crate) mod capture;
-// pub(crate) mod collection;
-// pub(crate) mod content;
-// pub(crate) mod helper;
-// pub(crate) mod page;
-// pub(crate) mod pending;
 pub(crate) mod stats;
-// pub(crate) mod store;
-// pub(crate) mod tag;
-pub(crate) mod permission;
+pub(crate) mod store;
+pub(crate) mod tag;
 pub(crate) mod user;
 
 pub(crate) async fn create_pool(

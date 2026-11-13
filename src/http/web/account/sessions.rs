@@ -8,7 +8,10 @@ use crate::{
     http::{
         extract::{body::AppPath, web_user::WebUser},
         htmx::{ActionError, Fragments, PageError, Render, ToastKind},
-        web::view::{Section, Shell, Stamp},
+        web::{
+            account::overview::AccountOverview,
+            view::{Section, Shell, Stamp},
+        },
     },
     service::me,
 };
@@ -95,7 +98,7 @@ pub(super) async fn page(
     WebUser(user): WebUser,
 ) -> Result<Render<SessionsTpl>, PageError> {
     Ok(Render(SessionsTpl {
-        shell: Shell::new(&user, Section::Sessions),
+        shell: Shell::new::<AccountOverview>(&user, Section::Sessions),
         sessions: load(&ctx, &user).await?,
     }))
 }

@@ -10,17 +10,11 @@ use crate::{
         stats::{DayCount, SecurityCounts, UserCounts},
         user::UserSearch,
     },
-    error::Result,
+    error::{AppError, ForbiddenReason, Result},
     util::time::now_ms,
 };
 
 const RECENT: i64 = 6;
-
-pub(crate) struct Mine {
-    pub user: UserView,
-    pub sessions: usize,
-    pub api_keys: usize,
-}
 
 pub(crate) struct Security {
     pub counts: SecurityCounts,
@@ -28,7 +22,7 @@ pub(crate) struct Security {
 }
 
 pub(crate) struct Overview {
-    pub mine: Mine,
+    pub user: UserView,
     pub users: Option<UserCounts>,
     pub recent_users: Vec<UserView>,
     pub security: Option<Security>,
@@ -36,17 +30,12 @@ pub(crate) struct Overview {
 }
 
 pub(crate) async fn overview(ctx: &AppState, actor: &AuthUser) -> Result<Overview> {
+    if !actor.is_super() {
+        return Err(AppError::Forbidden(ForbiddenReason::Permission));
+    }
+
     let now = now_ms();
-    let (user, sessions, keys) = tokio::try_join!(
-        db::user::find(&ctx.db, actor.id),
-        db::session::list_for_user(&ctx.db, actor.id),
-        db::api_key::list_for_user(&ctx.db, actor.id),
-    )?;
-    let mine = Mine {
-        user,
-        sessions: sessions.len(),
-        api_keys: keys.len(),
-    };
+    let user = db::user::find(&ctx.db, actor.id).await?;
 
     let (users, recent_users) = if actor.can(Permission::USERS_READ) {
         let counts = db::stats::user_counts(&ctx.db, now).await?;
@@ -66,7 +55,7 @@ pub(crate) async fn overview(ctx: &AppState, actor: &AuthUser) -> Result<Overvie
     };
 
     Ok(Overview {
-        mine,
+        user,
         users,
         recent_users,
         security,

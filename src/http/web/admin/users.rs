@@ -20,6 +20,7 @@ use crate::{
         },
         htmx::{ActionError, Fragments, HxHeaders, PageError, Render, ToastKind},
         web::{
+            account::AccountOverview,
             form::ActionForm,
             view::{
                 Caps, PAGE_SIZE, Pager, Section, Shell, Stamp, StatusOption, UserItem, pct_encode,
@@ -27,7 +28,7 @@ use crate::{
             },
         },
     },
-    service::{self, admin},
+    service::admin,
     util::time::now_ms,
 };
 
@@ -146,7 +147,7 @@ pub(super) async fn page(
         })
         .collect();
     Ok(Render(UsersTpl {
-        shell: Shell::new(&user, Section::Users),
+        shell: Shell::new::<AccountOverview>(&user, Section::Users),
         filters: Filters {
             statuses: status_options(&query.status),
             q: query.q,

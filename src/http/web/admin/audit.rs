@@ -10,7 +10,10 @@ use crate::{
     http::{
         extract::{body::AppQuery, web_user::WebUser},
         htmx::{ActionError, PageError, Render},
-        web::view::{Section, Shell, Stamp, pct_encode},
+        web::{
+            account::AccountOverview,
+            view::{Section, Shell, Stamp, pct_encode},
+        },
     },
     service::admin,
 };
@@ -112,7 +115,7 @@ pub(super) async fn page(
 ) -> Result<Render<AuditTpl>, PageError> {
     let audit = load(&ctx, &user, &query.q, None).await?;
     Ok(Render(AuditTpl {
-        shell: Shell::new(&user, Section::Audit),
+        shell: Shell::new::<AccountOverview>(&user, Section::Audit),
         q: query.q,
         audit,
     }))

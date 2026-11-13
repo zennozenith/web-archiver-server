@@ -15,6 +15,12 @@ use crate::{
     util::time::now_ms,
 };
 
+pub(crate) struct Mine {
+    pub user: UserView,
+    pub sessions: usize,
+    pub api_keys: usize,
+}
+
 /// Permissions the actor holds, i.e. the scopes they may put on a new key.
 pub(crate) async fn available_scopes(
     ctx: &AppState,
@@ -28,27 +34,27 @@ pub(crate) async fn available_scopes(
 }
 
 pub(crate) struct Me {
-    pub user: UserView,
+    pub mine: Mine,
     pub profile: ProfileView,
-    pub permissions: Vec<String>,
 }
 
 pub(crate) async fn get_me(ctx: &AppState, actor: &AuthUser) -> Result<Me> {
     actor.require(Permission::PROFILE_READ)?;
 
-    let (user, profile) = tokio::try_join!(
+    let (user, profile, sessions, keys) = tokio::try_join!(
         db::user::find(&ctx.db, actor.id),
         db::profile::find(&ctx.db, actor.id),
+        db::session::list_for_user(&ctx.db, actor.id),
+        db::api_key::list_for_user(&ctx.db, actor.id),
     )?;
 
-    let mut permissions: Vec<String> = actor.permissions().map(str::to_owned).collect();
-    permissions.sort_unstable();
-
-    Ok(Me {
+    let mine = Mine {
         user,
-        profile,
-        permissions,
-    })
+        sessions: sessions.len(),
+        api_keys: keys.len(),
+    };
+
+    Ok(Me { mine, profile })
 }
 
 pub(crate) async fn update_profile(
