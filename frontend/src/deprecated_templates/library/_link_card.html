@@ -1,0 +1,92 @@
+{# One link. Needs `link`. Lays out as a card in a grid and as a row when the container has
+data-view="list". #}
+<article class="link-card card card-border bg-base-100 group-data-[view=list]/results:card-side">
+  <figure
+    class="relative aspect-video shrink-0 bg-base-300 group-data-[view=list]/results:aspect-auto group-data-[view=list]/results:w-28 sm:group-data-[view=list]/results:w-44"
+  >
+    <a
+      href="/links/{{ link.id }}"
+      tabindex="-1"
+      aria-hidden="true"
+      class="grid size-full place-items-center"
+    >
+      <span class="icon-[lucide--link] absolute size-6 text-base-content/20"></span>
+      <img
+        src="{{ link.thumb }}"
+        alt=""
+        loading="lazy"
+        class="relative size-full object-cover"
+        @error="$el.remove()"
+        x-init="if ($el.complete && !$el.naturalWidth) $el.remove()"
+      />
+    </a>
+  </figure>
+
+  <div class="card-body min-w-0 gap-1 p-4 group-data-[view=list]/results:py-3">
+    <div class="flex items-start justify-between gap-2">
+      <h3 class="card-title min-w-0 text-base leading-snug">
+        <a href="/links/{{ link.id }}" class="hover:text-primary">{{ link.display_title }}</a>
+      </h3>
+
+      <div class="dropdown dropdown-end">
+        <button
+          type="button"
+          tabindex="0"
+          class="btn btn-ghost btn-xs btn-square -mr-1"
+          aria-label="Link actions"
+        >
+          <span class="icon-[lucide--ellipsis] size-4"></span>
+        </button>
+        <ul
+          tabindex="0"
+          class="dropdown-content menu menu-sm z-10 w-40 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
+        >
+          <li>
+            <button
+              type="button"
+              hx-post="/links/{{ link.id }}/pin"
+              hx-swap="none"
+              @htmx:after:request="$ok($event) && location.reload()"
+            >
+              <span class="icon-[lucide--pin] size-4"></span>{% if link.pinned %}Unpin{% else
+              %}Pin{% endif %}
+            </button>
+          </li>
+          <li>
+            <a href="/links/{{ link.id }}?edit=1"
+              ><span class="icon-[lucide--pencil] size-4"></span>Edit</a
+            >
+          </li>
+          <li>
+            <button
+              type="button"
+              class="text-error"
+              hx-delete="/links/{{ link.id }}"
+              hx-confirm="Delete this link?"
+              hx-target="closest .link-card"
+              hx-swap="outerHTML"
+            >
+              <span class="icon-[lucide--trash-2] size-4"></span>Delete
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5 truncate text-sm text-base-content/60">
+      {% if link.pinned %}<span
+        class="icon-[lucide--pin] size-3.5 shrink-0 text-primary"
+        title="Pinned"
+      ></span
+      >{% endif %}
+      <span class="truncate">{{ link.domain }}</span>
+    </div>
+
+    <div class="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-base-content/60">
+      <a href="{{ link.collection_href }}" class="truncate hover:text-base-content"
+        >{{ link.collection_emoji }} {{ link.collection_name }}</a
+      >
+      <time class="shrink-0 tabular-nums">{{ link.date }}</time>
+    </div>
+  </div>
+</article>

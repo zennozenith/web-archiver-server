@@ -1,4 +1,4 @@
-use sqlx::{Result, SqliteExecutor};
+use sqlx::{Result, SqliteExecutor, SqlitePool, prelude::FromRow};
 
 use crate::auth::RoleView;
 
@@ -55,4 +55,41 @@ pub(crate) async fn revoke<'e>(
     .execute(ex)
     .await?;
     Ok(res.rows_affected() > 0)
+}
+
+#[derive(Debug, FromRow)]
+pub(crate) struct RoleSummary {
+    pub name: String,
+    pub description: Option<String>,
+    pub is_system: bool,
+    pub members: i64,
+    /// Comma-separated; use [`RoleSummary::permissions`].
+    permissions: Option<String>,
+}
+
+impl RoleSummary {
+    pub(crate) fn permissions(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .permissions
+            .as_deref()
+            .map_or_else(Vec::new, |s| s.split(',').map(str::to_owned).collect());
+        out.sort();
+        out
+    }
+}
+
+pub(crate) async fn summaries(pool: &SqlitePool, now: i64) -> sqlx::Result<Vec<RoleSummary>> {
+    sqlx::query_as(
+        "SELECT r.name, r.description, r.is_system,
+                (SELECT COUNT(*) FROM user_roles ur JOIN users u ON u.id = ur.user_id
+                  WHERE ur.role_id = r.id AND u.deleted_at IS NULL
+                    AND (ur.expires_at IS NULL OR ur.expires_at > ?)) AS members,
+                (SELECT group_concat(p.name) FROM role_permissions rp
+                   JOIN permissions p ON p.id = rp.permission_id
+                  WHERE rp.role_id = r.id) AS permissions
+           FROM roles r ORDER BY r.id",
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await
 }

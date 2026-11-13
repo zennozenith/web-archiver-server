@@ -1,0 +1,8 @@
+{# Cards (or an empty state). Also the response body of GET /links/search. #} {% if links.is_empty()
+%}
+<div class="empty-state">
+  <span class="icon-[lucide--search-x]"></span>
+  <p class="title">No links found</p>
+  <p>Try a different search, or save a new link.</p>
+</div>
+{% else %} {% for link in links %}{% include "library/_link_card.html" %}{% endfor %} {% endif %}

@@ -1,6 +1,6 @@
 //! SQL for the `users` table / `v_users` view (admin and self-service reads).
 
-use sqlx::{Result, SqliteExecutor};
+use sqlx::{Result, SqliteExecutor, SqlitePool, prelude::FromRow};
 
 use crate::auth::{AccountStatus, UserFilter, UserView};
 
@@ -90,4 +90,80 @@ pub(crate) async fn soft_delete<'e>(
     .execute(ex)
     .await?;
     Ok(res.rows_affected() > 0)
+}
+
+/// Directory filters. Empty `q` matches everyone.
+#[derive(Debug, Default)]
+pub(crate) struct UserSearch<'a> {
+    pub q: &'a str,
+    pub status: Option<&'a str>,
+    pub role: Option<&'a str>,
+}
+
+macro_rules! user_filter {
+    () => {
+        "(?1 = '%%' OR email LIKE ?1 OR username LIKE ?1 OR display_name LIKE ?1) \
+         AND (?2 IS NULL OR status = ?2) \
+         AND (?3 IS NULL OR id IN (SELECT user_id FROM v_user_roles WHERE role = ?3))"
+    };
+}
+
+pub(crate) async fn count(pool: &SqlitePool, s: &UserSearch<'_>) -> sqlx::Result<i64> {
+    sqlx::query_scalar(concat!(
+        "SELECT COUNT(*) FROM v_users WHERE ",
+        user_filter!()
+    ))
+    .bind(format!("%{}%", s.q.trim()))
+    .bind(s.status)
+    .bind(s.role)
+    .fetch_one(pool)
+    .await
+}
+
+pub(crate) async fn search(
+    pool: &SqlitePool,
+    s: &UserSearch<'_>,
+    limit: i64,
+    offset: i64,
+) -> sqlx::Result<Vec<UserView>> {
+    sqlx::query_as(concat!(
+        user_select!(),
+        " WHERE ",
+        user_filter!(),
+        " ORDER BY created_at DESC LIMIT ?4 OFFSET ?5"
+    ))
+    .bind(format!("%{}%", s.q.trim()))
+    .bind(s.status)
+    .bind(s.role)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+}
+
+/// Admin-only details that don't belong in the public user view.
+#[derive(Debug, FromRow)]
+pub(crate) struct UserExtra {
+    pub login_count: i64,
+    pub last_login_ip: Option<String>,
+    pub status_reason: Option<String>,
+    pub failed_attempts: Option<i64>,
+    pub locked_until: Option<i64>,
+    pub sessions: i64,
+    pub api_keys: i64,
+}
+
+pub(crate) async fn extra(pool: &SqlitePool, user_id: i64) -> sqlx::Result<UserExtra> {
+    sqlx::query_as(
+        "SELECT u.login_count, u.last_login_ip, u.status_reason,
+                c.failed_attempts, c.locked_until,
+                (SELECT COUNT(*) FROM v_active_sessions s WHERE s.user_id = u.id) AS sessions,
+                (SELECT COUNT(*) FROM api_keys k
+                  WHERE k.user_id = u.id AND k.revoked_at IS NULL) AS api_keys
+           FROM users u LEFT JOIN user_credentials c ON c.user_id = u.id
+          WHERE u.id = ? AND u.deleted_at IS NULL",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
 }

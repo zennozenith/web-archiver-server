@@ -12,10 +12,10 @@ use serde_json::{Value, json};
 use sqlx::SqlitePool;
 
 use crate::{
-    auth::{AccountStatus, ClientInfo, NewAccount, ResetToken, VerifyToken},
+    auth::{ClientInfo, NewAccount, ResetToken, VerifyToken},
     http::{
         cookie::SessionCookie,
-        dto::auth::LoginRequest,
+        dto::auth::{LoginRequest, RegisterResponse},
         extract::body::{AppJson, JsonOrForm},
     },
     prelude::*,
@@ -24,22 +24,21 @@ use crate::{
 
 // ---------------------------------------------------------------- register
 
-/// Creates user + credentials + role in one transaction. New accounts are
-/// `pending` until they verify their e-mail.
+/// Starts registration. New accounts are `pending` until they verify their
+/// e-mail.
+///
+/// The response is identical whether the address is new or already
+/// registered, so it can't be used to enumerate accounts. Nothing from the
+/// created account (ids, status) may be added here.
 async fn register(
     State(ctx): State<AppState>,
     AppJson(req): AppJson<NewAccount>,
-) -> Result<(StatusCode, Json<Value>)> {
-    let created = service::auth::create_account(&ctx, req).await?;
+) -> Result<(StatusCode, AppJson<RegisterResponse>)> {
+    // `None` (e-mail already registered) is deliberately indistinguishable
+    // from a fresh account.
+    service::auth::create_account(&ctx, req).await?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({
-            "public_id": created.public_id,
-            "status": AccountStatus::Pending,
-            "message": "Account created. Verify your e-mail before logging in.",
-        })),
-    ))
+    Ok((StatusCode::ACCEPTED, AppJson(RegisterResponse::new())))
 }
 
 // ------------------------------------------------------------ verify e-mail
@@ -76,7 +75,7 @@ async fn login(
 
     let token = service::auth::login(&ctx, &client, req.into()).await?;
     Ok((
-        [(header::SET_COOKIE, SessionCookie::set(&token))],
+        [(header::SET_COOKIE, SessionCookie::issue(&token)?)],
         StatusCode::NO_CONTENT,
     ))
 }

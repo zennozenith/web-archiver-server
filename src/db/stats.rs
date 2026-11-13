@@ -1,9 +1,10 @@
 use std::{collections::BTreeMap, time::Duration};
 
+use chrono::{Days, NaiveDate, Utc};
 use serde::Serialize;
-use sqlx::{Result, SqlitePool, prelude::FromRow};
+use sqlx::{FromRow, Result, SqlitePool};
 
-use crate::{infra::BlobStore, prelude::*};
+use crate::{infra::BlobStore, prelude::*, util::time::DAY_MS};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -136,4 +137,93 @@ pub(crate) async fn gc_content(pool: &SqlitePool, store: &BlobStore) -> Result<G
         files_deleted,
         tmp_removed,
     })
+}
+
+#[derive(Debug, FromRow)]
+pub(crate) struct UserCounts {
+    pub total: i64,
+    pub new_week: i64,
+    pub unverified: i64,
+    pub active: i64,
+    pub pending: i64,
+    pub suspended: i64,
+    pub deactivated: i64,
+}
+
+pub(crate) async fn user_counts(pool: &SqlitePool, now: i64) -> sqlx::Result<UserCounts> {
+    sqlx::query_as(
+        "SELECT COUNT(*) AS total,
+                COALESCE(SUM(created_at >= ?), 0)       AS new_week,
+                COALESCE(SUM(email IS NOT NULL AND email_verified_at IS NULL), 0) AS unverified,
+                COALESCE(SUM(status = 'active'), 0)      AS active,
+                COALESCE(SUM(status = 'pending'), 0)     AS pending,
+                COALESCE(SUM(status = 'suspended'), 0)   AS suspended,
+                COALESCE(SUM(status = 'deactivated'), 0) AS deactivated
+           FROM users WHERE deleted_at IS NULL",
+    )
+    .bind(now.saturating_sub(DAY_MS.saturating_mul(7)))
+    .fetch_one(pool)
+    .await
+}
+
+#[derive(Debug, FromRow)]
+pub(crate) struct SecurityCounts {
+    pub active_sessions: i64,
+    pub failed_day: i64,
+    pub locked: i64,
+}
+
+pub(crate) async fn security_counts(pool: &SqlitePool, now: i64) -> sqlx::Result<SecurityCounts> {
+    sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM v_active_sessions) AS active_sessions,
+                (SELECT COUNT(*) FROM login_attempts
+                  WHERE success = 0 AND created_at >= ?1) AS failed_day,
+                (SELECT COUNT(*) FROM user_credentials c JOIN users u ON u.id = c.user_id
+                  WHERE u.deleted_at IS NULL AND c.locked_until > ?2) AS locked",
+    )
+    .bind(now.saturating_sub(DAY_MS))
+    .bind(now)
+    .fetch_one(pool)
+    .await
+}
+
+#[derive(Debug)]
+pub(crate) struct DayCount {
+    pub date: NaiveDate,
+    pub ok: i64,
+    pub failed: i64,
+}
+
+/// Sign-ins per day for the last seven days (UTC), oldest first, zero-filled.
+pub(crate) async fn login_days(pool: &SqlitePool) -> sqlx::Result<Vec<DayCount>> {
+    let today = Utc::now().date_naive();
+    let days: Vec<NaiveDate> = (0..7u64)
+        .rev()
+        .filter_map(|n| today.checked_sub_days(Days::new(n)))
+        .collect();
+    let since = days
+        .first()
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map_or(0, |dt| dt.and_utc().timestamp_millis());
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT date(created_at / 1000, 'unixepoch'),
+                COALESCE(SUM(success), 0), COALESCE(SUM(1 - success), 0)
+           FROM login_attempts WHERE created_at >= ? GROUP BY 1",
+    )
+    .bind(since)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(days
+        .into_iter()
+        .map(|date| {
+            let key = date.format("%Y-%m-%d").to_string();
+            let (ok, failed) = rows
+                .iter()
+                .find(|(d, ..)| *d == key)
+                .map_or((0, 0), |&(_, ok, failed)| (ok, failed));
+            DayCount { date, ok, failed }
+        })
+        .collect())
 }

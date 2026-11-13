@@ -1,0 +1,11 @@
+<div id="new-key" hx-swap-oob="innerHTML">
+  <div class="alert alert-warning alert-soft mb-5 items-start" role="alert" x-data="{ copied: false }" x-init="document.getElementById('new-key-form')?.reset()">
+    <div class="min-w-0 flex-1">
+      <p class="font-semibold">Copy your new key now. It won't be shown again.</p>
+      <code x-ref="key" class="mt-2 block break-all rounded-md bg-surface p-2 font-data text-sm">{{ key }}</code>
+    </div>
+    <button type="button" class="btn btn-sm"
+            @click="navigator.clipboard.writeText($refs.key.textContent.trim()); copied = true; setTimeout(() => copied = false, 1500)"
+            x-text="copied ? 'Copied' : 'Copy'">Copy</button>
+  </div>
+</div>

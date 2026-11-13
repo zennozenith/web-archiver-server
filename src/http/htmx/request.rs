@@ -1,7 +1,4 @@
-#![expect(
-    dead_code,
-    reason = "htmx request/response helpers cover the full protocol; not every variant is used yet"
-)]
+//! Parsing of htmx request headers.
 
 use std::convert::Infallible;
 
@@ -11,96 +8,110 @@ use axum::{
     http::{HeaderMap, request::Parts},
 };
 
+use super::{
+    HtmxResponse,
+    header::{self, name},
+};
 use crate::prelude::*;
 
-// ───────────────────────── Request side ─────────────────────────
-
+/// Value of the `HX-Request-Type` header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RequestType {
-    /// Target is `body`, or `hx-select` is used: send a whole page.
+    /// The target is `body`, or `hx-select` is used: send a whole page.
     Full,
-    /// Target is any other element: send a fragment.
+    /// The target is any other element: send a fragment.
     Partial,
 }
 
-/// Parsed htmx 4 request headers. Always extracts successfully, so it is
-/// safe to use on routes that serve both normal browser and htmx requests.
+/// Parsed htmx 4 request headers.
+///
+/// Extraction never fails, so this is safe on routes that serve both plain
+/// browser requests and htmx requests.
 #[expect(
     clippy::struct_excessive_bools,
     reason = "mirrors the boolean htmx request headers"
 )]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct HtmxRequest {
+    /// `HX-Request`: the request was issued by htmx.
     pub is_htmx: bool,
+    /// `HX-Boosted`: the request comes from a boosted link or form.
     pub boosted: bool,
+    /// `HX-History-Restore-Request`: htmx is restoring history after a miss.
     pub history_restore: bool,
+    /// `HX-Request-Type`, when sent.
     pub request_type: Option<RequestType>,
+    /// `HX-Target`: identifier of the swap target.
     pub target: Option<String>,
+    /// `HX-Source`: identifier of the element that triggered the request.
     pub source: Option<String>,
+    /// `HX-Current-URL`: the browser's current URL.
     pub current_url: Option<String>,
 }
 
-fn hdr<'a>(h: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    h.get(name).and_then(|v| v.to_str().ok())
-}
-
-fn hdr_true(h: &HeaderMap, name: &str) -> bool {
-    hdr(h, name) == Some("true")
-}
-
 impl HtmxRequest {
+    /// Builds a request description from raw headers.
     pub(crate) fn from_headers(h: &HeaderMap) -> Self {
+        let owned = |n| header::get(h, n).map(str::to_owned);
         Self {
-            is_htmx: hdr_true(h, "hx-request"),
-            boosted: hdr_true(h, "hx-boosted"),
-            history_restore: hdr_true(h, "hx-history-restore-request"),
-            request_type: match hdr(h, "hx-request-type") {
+            is_htmx: header::is_true(h, name::REQUEST),
+            boosted: header::is_true(h, name::BOOSTED),
+            history_restore: header::is_true(h, name::HISTORY_RESTORE_REQUEST),
+            request_type: match header::get(h, name::REQUEST_TYPE) {
                 Some("full") => Some(RequestType::Full),
                 Some("partial") => Some(RequestType::Partial),
                 _ => None,
             },
-            target: hdr(h, "hx-target").map(str::to_owned),
-            source: hdr(h, "hx-source").map(str::to_owned),
-            current_url: hdr(h, "hx-current-url").map(str::to_owned),
+            target: owned(name::TARGET),
+            source: owned(name::SOURCE),
+            current_url: owned(name::CURRENT_URL),
         }
     }
 
-    /// True only when a fragment should be returned. A history restore needs
-    /// the full page even though `HX-Request` is set.
+    /// Whether the response should be a fragment.
+    ///
+    /// A history restore always needs the full page, even though
+    /// `HX-Request` is set.
     pub(crate) fn wants_partial(&self) -> bool {
         self.is_htmx && !self.history_restore && self.request_type == Some(RequestType::Partial)
     }
 
-    /// Pick the right response variant. Closures are lazy, so only the
-    /// needed template is rendered.
+    /// Picks the full-page or fragment variant from pre-rendered strings.
+    /// The closures are lazy, so only the needed one runs.
     pub(crate) fn render(
         &self,
         full: impl FnOnce() -> String,
         partial: impl FnOnce() -> String,
-    ) -> super::HtmxResponse {
+    ) -> HtmxResponse {
         if self.wants_partial() {
-            super::HtmxResponse::partial(partial())
+            HtmxResponse::partial(partial())
         } else {
-            super::HtmxResponse::full(full())
+            HtmxResponse::full(full())
         }
     }
 
-    /// Choose full page or fragment. Only the chosen template is built and rendered.
+    /// Like [`render`](Self::render), but takes askama templates. Only the
+    /// chosen template is built and rendered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the chosen template fails to render.
     pub(crate) fn render_tpl<F: Template, P: Template>(
         &self,
         full: impl FnOnce() -> F,
         partial: impl FnOnce() -> P,
-    ) -> Result<super::HtmxResponse, AppError> {
+    ) -> Result<HtmxResponse, AppError> {
         if self.wants_partial() {
-            super::HtmxResponse::partial_tpl(&partial())
+            HtmxResponse::partial_tpl(&partial())
         } else {
-            super::HtmxResponse::full_tpl(&full())
+            HtmxResponse::full_tpl(&full())
         }
     }
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for HtmxRequest {
     type Rejection = Infallible;
+
     fn from_request_parts(
         parts: &mut Parts,
         _: &S,

@@ -1,397 +1,380 @@
-//! Owned view models handed to Askama. Nothing here borrows from the database.
+//! Display-ready view-models shared by the templates. Everything here is plain
+//! data (strings, numbers, flags) so the templates stay free of logic.
 
-use chrono::{DateTime, Utc};
-use sqlx::{Result, SqlitePool};
+use chrono::{DateTime, SecondsFormat, Utc};
 
 use crate::{
-    db::{
-        collection::{CollectionId, CollectionRecord},
-        page::{HighlightRecord, PageItem, PageRecord},
-        pending::{PendingId, PendingItem, PendingStatus},
-        tag::{Tag, TagSummary},
-    },
-    tag::TagId,
-    time::ago_timestamp,
+    auth::{AuthUser, Permission, UserView},
+    util::time::{ms_to_dt, opt_ms_to_dt as _},
 };
 
-const PLACEHOLDER_THUMB: &str = "/static/vite/images/hero.png";
+use std::fmt::Write;
 
-// ───────────────────────────────────────────────────────────────────────────
-// Shared page context
-// ───────────────────────────────────────────────────────────────────────────
+pub(crate) const PAGE_SIZE: i64 = 15;
 
-pub(crate) struct Page {
-    pub csrf_token: String,
-    pub nav_collections: Vec<NavCollection>,
-    pub nav_tags: Vec<NavTag>,
-    pub all_collections: Vec<CollectionOption>,
-    pub active: String,
-    /// Links that are not filed in a collection.
-    pub unorganized_count: i64,
-    /// Items waiting to be archived.
-    pub pending_count: i64,
+/// Inner markup of 24x24 stroke icons (rendered with `|safe`; static strings only).
+mod icons {
+    pub(super) const GRID: &str = r#"<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>"#;
+    pub(super) const USERS: &str = r#"<circle cx="9" cy="8" r="3.25"/><path d="M3 19.5c0-3.3 2.7-5.75 6-5.75s6 2.45 6 5.75"/><circle cx="17.25" cy="9.25" r="2.5"/><path d="M17.5 14.2c2.2.2 3.9 1.9 3.9 4.3"/>"#;
+    pub(super) const SHIELD: &str = r#"<path d="M12 3.5l7.5 2.8v5.4c0 4.4-3.1 7.6-7.5 8.8-4.4-1.2-7.5-4.4-7.5-8.8V6.3z"/><path d="M9 12l2.2 2.2L15.2 10"/>"#;
+    pub(super) const LEDGER: &str = r#"<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>"#;
+    pub(super) const USER: &str =
+        r#"<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/>"#;
+    pub(super) const MONITOR: &str =
+        r#"<rect x="3" y="4.5" width="18" height="11.5" rx="2"/><path d="M8.5 20h7M12 16v4"/>"#;
+    pub(super) const KEY: &str =
+        r#"<circle cx="8" cy="15.5" r="4"/><path d="M11 12.5l9-9M16.5 7l3 3"/>"#;
 }
 
-pub(crate) struct NavCollection {
-    pub id: CollectionId,
-    pub name: String,
-    pub emoji: String,
-    pub link_count: i64,
+// ------------------------------------------------------------------ app shell
+
+/// Which sidebar entry is highlighted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Section {
+    Dashboard,
+    Users,
+    Roles,
+    Audit,
+    Profile,
+    Sessions,
+    Keys,
 }
 
-pub(crate) struct NavTag {
-    pub name: String,
-    pub slug: String,
-    pub count: i64,
+impl Section {
+    pub(crate) const fn title(self) -> &'static str {
+        match self {
+            Self::Dashboard => "Dashboard",
+            Self::Users => "Users",
+            Self::Roles => "Roles & permissions",
+            Self::Audit => "Audit log",
+            Self::Profile => "Profile",
+            Self::Sessions => "Sessions",
+            Self::Keys => "API keys",
+        }
+    }
 }
 
-pub(crate) struct CollectionOption {
-    pub id: CollectionId,
-    pub name: String,
-    pub emoji: String,
-    pub selected: bool,
+#[derive(Debug, Clone)]
+pub(crate) struct NavItem {
+    pub(crate) href: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) icon: &'static str,
+    pub(crate) active: bool,
 }
 
-pub(crate) struct CollectionView {
-    pub id: CollectionId,
-    pub name: String,
-    pub emoji: String,
-    pub description: String,
-    pub color: String,
-    pub link_count: i64,
-    pub public: bool,
-    pub parent_id: Option<CollectionId>,
-    pub share_url: String,
+#[derive(Debug, Clone)]
+pub(crate) struct NavGroup {
+    pub(crate) label: &'static str,
+    pub(crate) items: Vec<NavItem>,
 }
 
-pub(crate) struct TagView {
-    pub id: TagId,
-    pub name: String,
-    pub slug: String,
-    pub count: i64,
+/// Everything `base.html` needs: page title, permission-filtered navigation
+/// and the signed-in user's chip.
+#[derive(Debug, Clone)]
+pub(crate) struct Shell {
+    pub(crate) title: &'static str,
+    pub(crate) groups: Vec<NavGroup>,
+    pub(crate) me_name: String,
+    pub(crate) me_roles: String,
+    pub(crate) me_initials: String,
 }
 
-pub(crate) struct HighlightView {
+impl Shell {
+    pub(crate) fn new(user: &AuthUser, active: Section) -> Self {
+        let me_name = user
+            .email
+            .clone()
+            .or_else(|| user.username.clone())
+            .unwrap_or_else(|| "Signed in".to_owned());
+        Self {
+            title: active.title(),
+            groups: nav_groups(user, active),
+            me_initials: initials(&me_name),
+            me_roles: user.roles.join(", "),
+            me_name,
+        }
+    }
+}
+
+fn nav_groups(user: &AuthUser, active: Section) -> Vec<NavGroup> {
+    let item =
+        |section: Section, href: &'static str, label: &'static str, icon: &'static str| NavItem {
+            href,
+            label,
+            icon,
+            active: section == active,
+        };
+
+    let mut groups = vec![NavGroup {
+        label: "Overview",
+        items: vec![item(Section::Dashboard, "/", "Dashboard", icons::GRID)],
+    }];
+
+    let mut admin = Vec::new();
+    if user.can(Permission::USERS_READ) {
+        admin.push(item(Section::Users, "/admin/users", "Users", icons::USERS));
+    }
+    if user.can(Permission::ROLES_READ) {
+        admin.push(item(Section::Roles, "/admin/roles", "Roles", icons::SHIELD));
+    }
+    if user.can(Permission::AUDIT_READ) {
+        admin.push(item(
+            Section::Audit,
+            "/admin/audit",
+            "Audit log",
+            icons::LEDGER,
+        ));
+    }
+    if !admin.is_empty() {
+        groups.push(NavGroup {
+            label: "Administration",
+            items: admin,
+        });
+    }
+
+    groups.push(NavGroup {
+        label: "My account",
+        items: vec![
+            item(Section::Profile, "/account/profile", "Profile", icons::USER),
+            item(
+                Section::Sessions,
+                "/account/sessions",
+                "Sessions",
+                icons::MONITOR,
+            ),
+            item(Section::Keys, "/account/keys", "API keys", icons::KEY),
+        ],
+    });
+    groups
+}
+
+// -------------------------------------------------------------------- helpers
+
+/// A timestamp prepared for `<time datetime=".." data-local>`: the UTC text is
+/// the fallback, `app.js` swaps in the browser's local time.
+#[derive(Debug, Clone)]
+pub(crate) struct Stamp {
+    pub iso: String,
     pub text: String,
-    pub color: String,
 }
 
-#[derive(Clone)]
-pub(crate) struct FormatView {
-    pub key: String,
-    pub label: String,
-    pub icon: String,
+impl Stamp {
+    fn from_dt(dt: DateTime<Utc>) -> Self {
+        Self {
+            iso: dt.to_rfc3339_opts(SecondsFormat::Secs, true),
+            text: dt.format("%-d %b %Y, %H:%M UTC").to_string(),
+        }
+    }
+
+    pub(crate) fn from_ms(ms: i64) -> Self {
+        Self::from_dt(ms_to_dt(ms))
+    }
+
+    /// No timestamp: shows `text` (e.g. "Never") and is left alone by `app.js`.
+    pub(crate) fn missing(text: &str) -> Self {
+        Self {
+            iso: String::new(),
+            text: text.to_owned(),
+        }
+    }
+
+    pub(crate) fn from_opt_ms(ms: Option<i64>, missing: &str) -> Self {
+        ms.map_or_else(|| Self::missing(missing), Self::from_ms)
+    }
 }
 
-pub(crate) struct PageView {
-    pub id: crate::db::page::PageId,
-    pub display_title: String,
-    pub url: String,
-    pub domain: String,
-    pub description: String,
-    pub collection_id: Option<CollectionId>,
-    pub collection_name: String,
-    pub collection_emoji: String,
-    pub collection_href: String,
-    pub date: String,
-    pub thumb: String,
-    pub pinned: bool,
-    pub tags: Vec<TagView>,
-    pub tags_csv: String,
-    pub formats: Vec<FormatView>,
-    pub highlights: Vec<HighlightView>,
+pub(crate) fn status_class(status: &str) -> &'static str {
+    match status {
+        "active" => "badge-success",
+        "pending" => "badge-warning",
+        "suspended" => "badge-error",
+        _ => "badge-neutral",
+    }
 }
 
-pub(crate) struct Section {
-    pub title: String,
-    pub href: String,
-    pub links: Vec<PageView>,
+pub(crate) fn role_class(role: &str) -> &'static str {
+    match role {
+        "super_admin" => "badge-primary",
+        "admin" => "badge-secondary",
+        "moderator" => "badge-accent",
+        _ => "badge-neutral",
+    }
 }
 
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each flag controls a separate action or form field"
-)]
-pub(crate) struct PendingView {
-    pub id: PendingId,
-    pub url: String,
-    pub status_label: &'static str,
+/// Up to two capital letters from a display name / e-mail.
+pub(crate) fn initials(name: &str) -> String {
+    let s: String = name
+        .split_whitespace()
+        .filter_map(|w| w.chars().next())
+        .take(2)
+        .flat_map(char::to_uppercase)
+        .collect();
+    if s.is_empty() { "?".to_owned() } else { s }
+}
+
+/// Percent-encodes a query-string value (RFC 3986 unreserved characters stay).
+pub(crate) fn pct_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(char::from(b));
+        } else {
+            let _throw_away = write!(out, "%{b:02X}");
+        }
+    }
+    out
+}
+
+/// Which actions the viewer may take (kept as a list so structs stay small).
+/// Templates ask `caps.has("write")`.
+#[derive(Debug, Clone)]
+pub(crate) struct Caps {
+    granted: Vec<&'static str>,
+}
+
+impl Caps {
+    pub(crate) const fn new(granted: Vec<&'static str>) -> Self {
+        Self { granted }
+    }
+
+    pub(crate) fn has(&self, key: &str) -> bool {
+        self.granted.contains(&key)
+    }
+}
+
+// ----------------------------------------------------------------- user views
+
+#[derive(Debug, Clone)]
+pub(crate) struct RoleChip {
+    pub name: String,
+    pub class: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UserItem {
+    pub public_id: String,
+    pub name: String,
+    pub secondary: String,
+    pub initials: String,
+    pub status: String,
     pub status_class: &'static str,
-    pub attempts: i64,
-    pub last_error: Option<String>,
-    pub date: String,
-    pub tags: Vec<TagView>,
-    pub tags_csv: String,
-    pub is_queued: bool,
-    pub is_failed: bool,
-    pub retryable: bool,
-    pub in_progress: bool,
+    pub verified: bool,
+    pub roles: Vec<RoleChip>,
+    pub last_login: Stamp,
+    pub created: Stamp,
+    pub is_self: bool,
+    pub locale: String,
+    pub timezone: String,
 }
 
-#[derive(Default)]
-pub(crate) struct PendingCounts {
-    pub queued: i64,
-    pub in_progress: i64,
-    pub failed: i64,
-    pub total: i64,
-}
+impl UserItem {
+    pub(crate) fn new(u: UserView, viewer: &str) -> Self {
+        let roles_list = u.roles();
+        let status = u.status.to_string();
+        let name = u
+            .display_name
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| u.username.clone())
+            .or_else(|| u.email.clone())
+            .unwrap_or_else(|| "Unnamed user".to_owned());
+        let secondary = u
+            .email
+            .clone()
+            .or_else(|| u.username.as_ref().map(|n| format!("@{n}")))
+            .or_else(|| u.phone_e164.clone())
+            .unwrap_or_default();
+        let roles = roles_list
+            .into_iter()
+            .map(|r| RoleChip {
+                class: role_class(&r),
+                name: r,
+            })
+            .collect();
 
-impl PendingCounts {
-    pub(crate) fn from_items(items: &[PendingItem]) -> Self {
-        let mut counts = Self::default();
-        for item in items {
-            counts.total = counts.total.saturating_add(1);
-            match item.record.status {
-                PendingStatus::Queued => counts.queued = counts.queued.saturating_add(1),
-                PendingStatus::InProgress => {
-                    counts.in_progress = counts.in_progress.saturating_add(1);
-                }
-                PendingStatus::Failed => counts.failed = counts.failed.saturating_add(1),
-            }
+        Self {
+            initials: initials(&name),
+            verified: u.email_verified_at.is_some(),
+            created: Stamp::from_ms(u.created_at),
+            last_login: Stamp::from_opt_ms(u.last_login_at, "Never"),
+            is_self: u.public_id == viewer,
+            status_class: status_class(&status),
+            public_id: u.public_id,
+            locale: u.locale.unwrap_or_default(),
+            timezone: u.timezone.unwrap_or_default(),
+            status,
+            name,
+            secondary,
+            roles,
         }
-        counts
     }
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Builders
-// ───────────────────────────────────────────────────────────────────────────
+#[derive(Debug, Clone)]
+pub(crate) struct StatusOption {
+    pub(crate) value: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) selected: bool,
+}
 
-impl Page {
-    pub(crate) async fn load(pool: &SqlitePool, active: &str) -> Result<Self> {
-        let collections = CollectionRecord::list(pool).await?;
-        let tags = TagSummary::list(pool).await?;
-        let unorganized_count = crate::db::page::count_unorganized(pool).await?;
-        let pending_count =
-            crate::db::pending::PendingRecord::count_with_status(pool, PendingStatus::Queued)
-                .await?;
+const STATUSES: [(&str, &str); 4] = [
+    ("active", "Active"),
+    ("pending", "Pending verification"),
+    ("suspended", "Suspended"),
+    ("deactivated", "Deactivated"),
+];
 
-        Ok(Self {
-            // There is no login in this single-user build, but templates keep
-            // a CSRF header slot for deployments that add one later.
-            csrf_token: "local".to_owned(),
-            nav_collections: collections
-                .iter()
-                .map(|collection| NavCollection {
-                    id: collection.id,
-                    name: collection.name.clone(),
-                    emoji: collection.emoji.clone(),
-                    link_count: collection.link_count,
-                })
-                .collect(),
-            nav_tags: tags
-                .iter()
-                .map(|tag| NavTag {
-                    name: tag.name.to_string(),
-                    slug: tag.name.to_string(),
-                    count: tag.page_count,
-                })
-                .collect(),
-            all_collections: collections
-                .iter()
-                .map(|collection| CollectionOption::from_record(collection, false))
-                .collect(),
-            active: active.to_owned(),
-            unorganized_count,
-            pending_count,
+pub(crate) fn status_options(selected: &str) -> Vec<StatusOption> {
+    STATUSES
+        .iter()
+        .map(|&(value, label)| StatusOption {
+            value,
+            label,
+            selected: value == selected,
         })
-    }
+        .collect()
 }
 
-impl CollectionOption {
-    pub(crate) fn from_record(record: &CollectionRecord, selected: bool) -> Self {
-        Self {
-            id: record.id,
-            name: record.name.clone(),
-            emoji: record.emoji.clone(),
-            selected,
-        }
-    }
+// -------------------------------------------------------------------- pager
+
+#[derive(Debug, Clone)]
+pub(crate) struct Pager {
+    pub(crate) page: i64,
+    pub(crate) total: i64,
+    pub(crate) from: i64,
+    pub(crate) to: i64,
+    pub(crate) has_prev: bool,
+    pub(crate) has_next: bool,
+    pub(crate) prev_qs: String,
+    pub(crate) next_qs: String,
 }
 
-impl CollectionView {
-    pub(crate) fn from_record(record: CollectionRecord) -> Self {
-        Self {
-            id: record.id,
-            name: record.name,
-            emoji: record.emoji,
-            description: record.description,
-            color: record.color,
-            link_count: record.link_count,
-            public: record.public,
-            parent_id: record.parent_id,
-            share_url: format!("/public/collections/{}", record.id),
-        }
-    }
-}
-
-impl TagView {
-    pub(crate) fn from_summary(tag: &TagSummary) -> Self {
-        Self {
-            id: tag.id,
-            name: tag.name.to_string(),
-            slug: tag.name.to_string(),
-            count: tag.page_count,
-        }
-    }
-
-    pub(crate) fn from_tag(tag: &Tag) -> Self {
-        Self {
-            id: tag.id,
-            name: tag.name.to_string(),
-            slug: tag.name.to_string(),
-            count: 0,
-        }
-    }
-}
-
-impl PendingView {
-    pub(crate) fn from_item(item: &PendingItem) -> Self {
-        let record = &item.record;
-        let (status_label, status_class) = match record.status {
-            PendingStatus::Queued => ("Queued", "badge-info"),
-            PendingStatus::InProgress => ("In progress", "badge-warning"),
-            PendingStatus::Failed => ("Failed", "badge-error"),
+impl Pager {
+    /// `base_qs` is either empty or ends with `&` (e.g. `q=ann&status=active&`).
+    pub(crate) fn new(total: i64, page: i64, per_page: i64, base_qs: &str) -> Self {
+        let pages = total
+            .saturating_add(per_page.saturating_sub(1))
+            .checked_div(per_page)
+            .unwrap_or(1)
+            .max(1);
+        let page = page.clamp(1, pages);
+        let from = if total == 0 {
+            0
+        } else {
+            page.saturating_sub(1)
+                .saturating_mul(per_page)
+                .saturating_add(1)
         };
-        let tags: Vec<TagView> = item.tags.iter().map(TagView::from_tag).collect();
-        let tags_csv = item
-            .tags
-            .iter()
-            .map(|tag| tag.name.to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-
+        let to = page.saturating_mul(per_page).min(total);
         Self {
-            id: record.id,
-            url: record.url.clone(),
-            status_label,
-            status_class,
-            attempts: record.attempts,
-            last_error: record.last_error.clone(),
-            date: ago_timestamp(record.created_at),
-            tags,
-            tags_csv,
-            is_queued: record.status == PendingStatus::Queued,
-            is_failed: record.status == PendingStatus::Failed,
-            retryable: record.status == PendingStatus::Failed,
-            in_progress: record.status == PendingStatus::InProgress,
+            page,
+            total,
+            from,
+            to,
+            has_prev: page > 1,
+            has_next: page < pages,
+            prev_qs: format!("{base_qs}page={}", page.saturating_sub(1)),
+            next_qs: format!("{base_qs}page={}", page.saturating_add(1)),
         }
     }
-}
-
-impl HighlightView {
-    fn from_record(record: &HighlightRecord) -> Self {
-        Self {
-            text: record.text.clone(),
-            color: record.color.clone(),
-        }
-    }
-}
-
-impl PageView {
-    pub(crate) fn from_item(item: &PageItem, highlights: &[HighlightRecord]) -> Self {
-        let record = &item.record;
-
-        let (collection_name, collection_emoji, collection_href) =
-            record.collection_id.map_or_else(
-                || {
-                    (
-                        "Unorganized".to_owned(),
-                        "📥".to_owned(),
-                        "/collections".to_owned(),
-                    )
-                },
-                |id| {
-                    (
-                        record
-                            .collection_name
-                            .clone()
-                            .unwrap_or_else(|| "Collection".to_owned()),
-                        record
-                            .collection_emoji
-                            .clone()
-                            .unwrap_or_else(|| "📁".to_owned()),
-                        format!("/collections/{id}"),
-                    )
-                },
-            );
-
-        let thumb = match record.thumbnail_content_id {
-            Some(_) => format!("/api/page/{}/thumbnail", record.id),
-            _ if record.has_screenshot => {
-                format!("/api/page/{}/latest/screenshot", record.id)
-            }
-            _ => PLACEHOLDER_THUMB.to_owned(),
-        };
-
-        let tags: Vec<TagView> = item.tags.iter().map(TagView::from_tag).collect();
-        let tags_csv = item
-            .tags
-            .iter()
-            .map(|tag| tag.name.to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        Self {
-            id: record.id,
-            display_title: record.display_title.clone(),
-            url: record.url.clone(),
-            domain: domain_of(record),
-            description: record.description.clone(),
-            collection_id: record.collection_id,
-            collection_name,
-            collection_emoji,
-            collection_href,
-            date: format_date(record.created_at),
-            thumb,
-            pinned: record.pinned,
-            tags,
-            tags_csv,
-            formats: formats_of(record),
-            highlights: highlights.iter().map(HighlightView::from_record).collect(),
-        }
-    }
-}
-
-fn domain_of(record: &PageRecord) -> String {
-    record
-        .host
-        .strip_prefix("www.")
-        .unwrap_or(&record.host)
-        .to_owned()
-}
-
-fn formats_of(record: &PageRecord) -> Vec<FormatView> {
-    let readable = FormatView {
-        key: "readable".to_owned(),
-        label: "Readable".to_owned(),
-        icon: "📖".to_owned(),
-    };
-
-    let mut formats = vec![readable];
-
-    if record.has_html {
-        formats.push(FormatView {
-            key: "webpage".to_owned(),
-            label: "Webpage".to_owned(),
-            icon: "🌐".to_owned(),
-        });
-    }
-
-    if record.has_screenshot {
-        formats.push(FormatView {
-            key: "screenshot".to_owned(),
-            label: "Screenshot".to_owned(),
-            icon: "🖼".to_owned(),
-        });
-    }
-
-    formats
-}
-
-fn format_date(timestamp: i64) -> String {
-    DateTime::<Utc>::from_timestamp(timestamp, 0).map_or_else(
-        || "Unknown date".to_owned(),
-        |date| date.format("%b %-d, %Y").to_string(),
-    )
 }

@@ -3,11 +3,17 @@ use crate::error::AppError;
 use std::{fmt, ops::Deref, str::FromStr};
 
 /// Escapes `%`, `_` and `\` so user text is matched literally by `LIKE ... ESCAPE '\'`.
-pub(crate) fn escape_like(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
+pub(crate) fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len().saturating_add(2));
+    out.push('%');
+    for c in s.chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('%');
+    out
 }
 
 // ───────────────────────────────────────────────────────────────────────────

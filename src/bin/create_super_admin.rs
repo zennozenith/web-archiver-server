@@ -54,9 +54,21 @@ async fn run() -> BoxResult<()> {
 
     println!("\n=== Create super admin ===\n");
 
-    let email = prompt_email(&pool).await?;
-    let username = prompt_username(&pool).await?;
-    let display_name = prompt_optional("Display name (optional): ")?;
+    let email = if let Some(v) = args.email {
+        v
+    } else {
+        prompt_email(&pool).await?
+    };
+    let username = if args.username.is_some() {
+        args.username
+    } else {
+        prompt_username(&pool).await?
+    };
+    let display_name = if args.display_name.is_some() {
+        args.display_name
+    } else {
+        prompt_optional("Display name (optional): ")?
+    };
     let password = prompt_password()?;
 
     println!("\nAbout to create:");
@@ -94,11 +106,17 @@ async fn run() -> BoxResult<()> {
 struct Args {
     database: String,
     migrate: bool,
+    email: Option<String>,
+    username: Option<String>,
+    display_name: Option<String>,
 }
 
 fn parse_args() -> BoxResult<Args> {
     let mut database = std::env::var("DATABASE_URL").ok();
     let mut migrate = false;
+    let mut email = None;
+    let mut username = None;
+    let mut display_name = None;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -107,6 +125,9 @@ fn parse_args() -> BoxResult<Args> {
                 database = Some(it.next().ok_or("--database requires a value")?);
             }
             "--migrate" => migrate = true,
+            "--email" => email = it.next(),
+            "--username" => username = it.next(),
+            "--display-name" => display_name = it.next(),
             "--help" | "-h" => {
                 println!(
                     "Usage: create_super_admin [--database <url|path>] [--migrate]\n\n\
@@ -121,6 +142,9 @@ fn parse_args() -> BoxResult<Args> {
     Ok(Args {
         database: database.unwrap_or_else(|| "sqlite://app.db".to_string()),
         migrate,
+        email,
+        username,
+        display_name,
     })
 }
 

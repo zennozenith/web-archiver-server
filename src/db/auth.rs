@@ -430,6 +430,18 @@ pub(crate) async fn delete_session(
 
 // ==========================================================================
 
+/// Whether a user (in any status, including soft-deleted) already owns `email`.
+///
+/// Used after a unique violation to tell an e-mail clash from a username
+/// clash. Match the collation of your unique index here (e.g. `COLLATE NOCASE`
+/// or `lower(email)`), otherwise the check can disagree with the constraint.
+pub(crate) async fn email_exists(conn: &mut SqliteConnection, email: &str) -> sqlx::Result<bool> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)")
+        .bind(email)
+        .fetch_one(conn)
+        .await
+}
+
 /// Inserts a `pending` user. The `trg_users_create_profile` trigger also
 /// creates the empty profile row.
 pub(crate) async fn insert_pending_user(

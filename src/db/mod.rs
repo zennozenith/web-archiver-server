@@ -21,6 +21,7 @@ pub(crate) mod auth;
 pub(crate) mod stats;
 // pub(crate) mod store;
 // pub(crate) mod tag;
+pub(crate) mod permission;
 pub(crate) mod user;
 
 pub(crate) async fn create_pool(

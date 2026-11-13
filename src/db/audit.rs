@@ -41,3 +41,50 @@ pub(crate) async fn list(pool: &SqlitePool, limit: i64) -> Result<Vec<AuditEntry
 
     Ok(rows)
 }
+
+macro_rules! audit_select {
+    () => {
+        "SELECT a.id, a.action, actor.email AS actor_email,
+        target.email AS target_email, a.details, a.created_at
+        FROM audit_log a
+        LEFT JOIN users actor  ON actor.id  = a.actor_user_id
+        LEFT JOIN users target ON target.id = a.target_user_id"
+    };
+}
+
+pub(crate) async fn search(
+    pool: &SqlitePool,
+    q: &str,
+    before: Option<i64>,
+    limit: i64,
+) -> sqlx::Result<Vec<AuditEntry>> {
+    sqlx::query_as(concat!(
+        audit_select!(),
+        " WHERE (?1 = '' OR a.action LIKE '%' || ?1 || '%'
+                         OR actor.email LIKE '%' || ?1 || '%'
+                         OR target.email LIKE '%' || ?1 || '%')
+            AND (?2 IS NULL OR a.id < ?2)
+          ORDER BY a.id DESC LIMIT ?3"
+    ))
+    .bind(q)
+    .bind(before)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+pub(crate) async fn for_user(
+    pool: &SqlitePool,
+    user_id: i64,
+    limit: i64,
+) -> sqlx::Result<Vec<AuditEntry>> {
+    sqlx::query_as(concat!(
+        audit_select!(),
+        " WHERE a.target_user_id = ?1 OR a.actor_user_id = ?1
+          ORDER BY a.id DESC LIMIT ?2"
+    ))
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}

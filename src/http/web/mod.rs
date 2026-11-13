@@ -1,5 +1,27 @@
+//! Server-rendered HTML routes.
+//!
+//! Stack: askama templates, htmx 4, daisyUI 5 + Tailwind 4, Alpine.js.
+//! Handlers here only translate HTTP to `service::*` calls and service
+//! results to view-models; permission checks, safety rules and audit entries
+//! live in the service layer.
+//!
+//! | Area        | Module        | Error type                        |
+//! |-------------|---------------|-----------------------------------|
+//! | sign in etc.| [`auth`]      | `WebError` (inline alert)         |
+//! | `/admin/*`  | [`admin`]     | `PageError` / `ActionError`       |
+//! | `/account/*`| [`account`]   | `PageError` / `ActionError`       |
+//! | `/`         | [`dashboard`] | `PageError`                       |
+
+mod account;
+mod admin;
+mod alert;
+mod auth;
+mod dashboard;
+mod error;
+mod form;
+mod view;
+
 // mod actions;
-// mod auth_pages;
 // mod error;
 // mod serve;
 // mod user;
@@ -7,7 +29,6 @@
 // mod fragments;
 // mod pages;
 // mod templates;
-// mod view;
 
 use axum::middleware;
 use axum::{
@@ -20,9 +41,13 @@ use crate::{AppState, error::AppError};
 
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
-    // .nest("/archive", web_archive::router())
-    // .merge(auth_pages::router())
+        .route("/", get(dashboard::page))
+        .merge(auth::router())
+        .merge(account::router())
+        .nest("/admin", admin::router())
+    // .merge(account::router())
     // .route("/", get(root))
+    // .nest("/archive", web_archive::router())
     // .route("/dashboard", get(pages::dashboard))
     // // links
     // .route("/links", get(pages::links).post(actions::create_link))

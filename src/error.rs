@@ -150,6 +150,17 @@ impl AppError {
             message: message.into(),
         }
     }
+
+    /// Message safe to show a client. Server errors are logged with their full
+    /// cause and replaced with a generic message, so internals never leak.
+    pub(crate) fn public_message(&self, status: StatusCode) -> String {
+        if status.is_server_error() {
+            tracing::error!(error = ?self, %status, "request failed");
+            "internal server error".to_owned()
+        } else {
+            self.to_string()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]

@@ -1,10 +1,9 @@
 use axum::extract::{FromRef, FromRequestParts};
 use http::{HeaderMap, header, request::Parts};
-use secrecy::SecretString;
 use sqlx::SqlitePool;
 
 use crate::{
-    auth::{AuthUser, Credential, SessionToken},
+    auth::{ApiKeyToken, AuthUser, Credential, SessionToken},
     error::AppError,
     http::cookie::{SessionCookie, cookie_value},
     service,
@@ -17,9 +16,13 @@ fn credential(headers: &HeaderMap) -> Option<Credential> {
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(str::trim);
 
-    if let Some(key) = bearer {
-        return Some(Credential::ApiKey(SecretString::from(key.to_owned())));
+    if let Some(cred) = bearer
+        .and_then(|key| ApiKeyToken::try_from(key.to_owned()).ok())
+        .map(Credential::ApiKey)
+    {
+        return Some(cred);
     }
+
     cookie_value(headers, SessionCookie::KEY)
         .and_then(|t| SessionToken::try_from(t).ok())
         .map(Credential::Session)

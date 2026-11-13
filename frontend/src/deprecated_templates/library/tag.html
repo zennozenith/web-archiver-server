@@ -1,0 +1,21 @@
+{% extends "layouts/app.html" %} {% block title %}# {{ tag.name }}{% endblock %} {% block content %}
+<div class="page-header">
+  <h1 class="page-title">
+    <span class="icon-[lucide--tag]"></span># {{ tag.name }}
+    <span class="badge badge-ghost tabular-nums">{{ tag.count }}</span>
+  </h1>
+  <a href="/tags" class="btn btn-ghost btn-sm"
+    ><span class="icon-[lucide--chevron-left] size-4"></span>All tags</a
+  >
+</div>
+
+<div id="results" class="link-grid group/results" data-view="grid">
+  {% for link in links %}{% include "library/_link_card.html" %}{% endfor %}
+</div>
+{% if links.is_empty() %}
+<div class="empty-state">
+  <span class="icon-[lucide--tag]"></span>
+  <p class="title">No links with this tag yet</p>
+  <p>Add the tag to a link from its detail page.</p>
+</div>
+{% endif %} {% endblock %}

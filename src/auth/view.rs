@@ -3,7 +3,7 @@
 
 use sqlx::FromRow;
 
-use crate::{auth::AccountStatus, prelude::*};
+use crate::{auth::AccountStatus, prelude::*, util::escape_like};
 
 fn split_csv(csv: Option<&str>) -> Vec<String> {
     csv.map_or_default(|s| {
@@ -129,7 +129,7 @@ impl UserFilter {
         let pattern = search
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .map(like_contains);
+            .map(escape_like);
 
         let status = match status.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => Some(
@@ -146,18 +146,4 @@ impl UserFilter {
             offset: offset.unwrap_or(0).max(0),
         })
     }
-}
-
-/// `%text%` with `%`, `_` and `\` escaped (the query uses `ESCAPE '\'`).
-fn like_contains(s: &str) -> String {
-    let mut out = String::with_capacity(s.len().saturating_add(2));
-    out.push('%');
-    for c in s.chars() {
-        if matches!(c, '%' | '_' | '\\') {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out.push('%');
-    out
 }

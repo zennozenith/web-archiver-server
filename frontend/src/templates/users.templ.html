@@ -1,0 +1,28 @@
+{% extends "base.templ.html" %}
+{% block content %}
+<div class="mb-5">
+  <h1 class="font-display text-2xl font-semibold">Users</h1>
+  <p class="text-sm text-dim">Search, review and manage accounts.</p>
+</div>
+
+<form id="user-filters" class="flex flex-wrap items-center gap-2"
+      hx-get="/users/table" hx-target="#users-results" hx-trigger="input delay:300ms, submit">
+  <label class="input w-full sm:w-80">
+    <svg viewBox="0 0 24 24" class="size-4 opacity-60" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+    <input type="search" name="q" class="grow" placeholder="Search name, e-mail or username" value="{{ filters.q }}" autocomplete="off">
+  </label>
+  <select name="status" class="select w-auto" aria-label="Filter by status">
+    <option value=""{% if filters.status.is_empty() %} selected{% endif %}>All statuses</option>
+    {% for o in filters.statuses %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+  </select>
+  <select name="role" class="select w-auto" aria-label="Filter by role">
+    <option value="">All roles</option>
+    {% for r in filters.roles %}<option value="{{ r.name }}"{% if r.selected %} selected{% endif %}>{{ r.name }}</option>{% endfor %}
+  </select>
+  <span class="loading loading-spinner loading-sm htmx-indicator"></span>
+</form>
+
+<div id="users-results" class="mt-4">
+  {% include "partials/users_table.templ.html" %}
+</div>
+{% endblock %}

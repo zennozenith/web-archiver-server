@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Router,
     extract::State,
     routing::{delete, get, put},
 };
@@ -21,65 +21,65 @@ use crate::{
     service,
 };
 
-async fn get_me(State(ctx): State<AppState>, user: AuthUser) -> Result<Json<MeDto>> {
+async fn get_me(State(ctx): State<AppState>, user: AuthUser) -> Result<AppJson<MeDto>> {
     let me = service::me::get_me(&ctx, &user).await?;
-    Ok(Json(me.into()))
+    Ok(AppJson(me.into()))
 }
 
 async fn update_profile(
     State(ctx): State<AppState>,
     user: AuthUser,
     AppJson(req): AppJson<ProfileRequest>,
-) -> Result<Json<OkDto>> {
+) -> Result<AppJson<OkDto>> {
     service::me::update_profile(&ctx, &user, req.into()).await?;
-    Ok(Json(OkDto::new()))
+    Ok(AppJson(OkDto::new()))
 }
 
-async fn list_sessions(State(ctx): State<AppState>, user: AuthUser) -> Result<Json<Value>> {
+async fn list_sessions(State(ctx): State<AppState>, user: AuthUser) -> Result<AppJson<Value>> {
     let sessions: Vec<SessionDto> = service::me::list_sessions(&ctx, &user)
         .await?
         .into_iter()
         .map(Into::into)
         .collect();
-    Ok(Json(json!({ "sessions": sessions })))
+    Ok(AppJson(json!({ "sessions": sessions })))
 }
 
 async fn revoke_session(
     State(ctx): State<AppState>,
     user: AuthUser,
     AppPath(public_id): AppPath<String>,
-) -> Result<Json<OkDto>> {
+) -> Result<AppJson<OkDto>> {
     service::me::revoke_session(&ctx, &user, &public_id).await?;
-    Ok(Json(OkDto::new()))
+    Ok(AppJson(OkDto::new()))
 }
 
-async fn list_api_keys(State(ctx): State<AppState>, user: AuthUser) -> Result<Json<Value>> {
+async fn list_api_keys(State(ctx): State<AppState>, user: AuthUser) -> Result<AppJson<Value>> {
     let keys: Vec<ApiKeyDto> = service::me::list_api_keys(&ctx, &user)
         .await?
         .into_iter()
         .map(Into::into)
         .collect();
-    Ok(Json(json!({ "api_keys": keys })))
+    Ok(AppJson(json!({ "api_keys": keys })))
 }
 
 async fn create_api_key(
     State(ctx): State<AppState>,
     user: AuthUser,
     AppJson(req): AppJson<CreateKeyRequest>,
-) -> Result<Json<CreatedApiKeyDto>> {
+) -> Result<AppJson<CreatedApiKeyDto>> {
     let new_key = NewApiKey::try_from(req)?;
     let created = service::me::create_api_key(&ctx, &user, new_key).await?;
     // The plaintext key is shown exactly once.
-    Ok(Json(created.into()))
+    Ok(AppJson(created.into()))
 }
 
 async fn revoke_api_key(
     State(ctx): State<AppState>,
     user: AuthUser,
     AppPath(public_id): AppPath<String>,
-) -> Result<Json<OkDto>> {
+) -> Result<AppJson<OkDto>> {
     service::me::revoke_api_key(&ctx, &user, &public_id).await?;
-    Ok(Json(OkDto::new()))
+    Ok(AppJson(OkDto::new()))
 }
 
 pub(super) fn routes() -> Router<AppState> {

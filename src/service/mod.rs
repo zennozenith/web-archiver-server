@@ -2,4 +2,5 @@
 
 pub(crate) mod admin;
 pub(crate) mod auth;
+pub(crate) mod dashboard;
 pub(crate) mod me;

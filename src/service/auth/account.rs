@@ -15,22 +15,52 @@ use crate::{
 
 /// Creates user, profile name, credentials, role and verification token in one
 /// transaction. New accounts are `pending` until they verify their e-mail.
-pub(crate) async fn create_account(ctx: &AppState, account: NewAccount) -> Result<CreatedAccount> {
+///
+/// Returns `Ok(None)` when the e-mail is already registered. The existing
+/// owner is notified by e-mail instead. Callers must answer exactly as they
+/// would for `Some(_)` and must not expose anything from [`CreatedAccount`],
+/// or the response reveals which addresses have accounts.
+///
+/// # Errors
+///
+/// A taken username is reported as [`AppError::Conflict`].
+pub(crate) async fn create_account(
+    ctx: &AppState,
+    account: NewAccount,
+) -> Result<Option<CreatedAccount>> {
     // Hash before opening the transaction: Argon2 is slow and must not hold
-    // SQLite's write lock.
+    // SQLite's write lock. It also runs for duplicates, which keeps the
+    // expensive part of both paths equally slow.
     let password_hash = hash_password(account.password).await?;
     let now = now_ms();
 
     let mut tx = ctx.db.begin().await?;
 
-    let (user_id, public_id) = db::auth::insert_pending_user(
+    let inserted = db::auth::insert_pending_user(
         &mut tx,
         &account.email,
         account.username.as_deref(),
         now,
         TERMS_VERSION,
     )
-    .await?;
+    .await;
+
+    let (user_id, public_id) = match inserted {
+        Ok(row) => row,
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+            if db::auth::email_exists(&mut tx, &account.email).await? {
+                drop(tx); // roll back
+                super::mail::dispatch(
+                    ctx,
+                    super::mail::already_registered(&ctx.public_url, &account.email),
+                );
+                return Ok(None);
+            }
+            // Not the e-mail, so it can only be the username.
+            return Err(AppError::Conflict("username already taken".into()));
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     db::auth::set_display_name(&mut tx, user_id, account.display_name.as_deref()).await?;
     db::auth::insert_credentials(&mut tx, user_id, &password_hash).await?;
@@ -52,7 +82,7 @@ pub(crate) async fn create_account(ctx: &AppState, account: NewAccount) -> Resul
     );
     audit(&ctx.db, Some(user_id), Some(user_id), "user.created", None).await;
 
-    Ok(CreatedAccount { user_id, public_id })
+    Ok(Some(CreatedAccount { user_id, public_id }))
 }
 
 pub(crate) async fn verify_email(pool: &SqlitePool, token: VerifyToken) -> Result<()> {

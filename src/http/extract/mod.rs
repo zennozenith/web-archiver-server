@@ -7,3 +7,4 @@ pub(crate) mod auth_user;
 pub(crate) mod body;
 pub(crate) mod client;
 pub(crate) mod pagination;
+pub(crate) mod web_user;

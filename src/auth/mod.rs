@@ -55,7 +55,7 @@ impl Permission {
 pub(crate) enum Credential {
     Session(SessionToken),
     // TODO: replace with ApiKeyToken
-    ApiKey(SecretString),
+    ApiKey(ApiKeyToken),
 }
 
 #[derive(Debug, Clone, Serialize)]

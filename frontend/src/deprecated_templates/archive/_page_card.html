@@ -1,0 +1,151 @@
+{# One archived page. Needs the destructured PageCardTemplate fields (see index.html). #}
+
+<article
+  id="page-{{ id }}"
+  data-search="{{ search }}"
+  x-show="matches($el.dataset.search)"
+  class="card card-border bg-base-100"
+>
+  <div class="card-body gap-3 p-4">
+    <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
+      <div class="min-w-0 flex-1">
+        <a
+          href="/api/page/{{ id }}/latest/html"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="block truncate font-serif text-lg leading-snug font-semibold hover:text-primary"
+          >{{ display_title }}</a
+        >
+        <a
+          href="{{ url }}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="block truncate text-xs text-base-content/50 hover:underline"
+          >{{ url }}</a
+        >
+      </div>
+
+      <div class="flex shrink-0 items-center gap-3 text-xs text-base-content/50">
+        {% if pinned %} <span class="icon-[lucide--pin] size-3"></span> {% endif %}
+        <span class="hidden md:inline">{{ host }}</span>
+        <time class="hidden whitespace-nowrap tabular-nums sm:inline">{{ last_captured }}</time>
+        <span class="badge badge-outline badge-sm tabular-nums">{{ version_label }}</span>
+        <button
+          type="button"
+          hx-delete="/api/page/{{ id }}"
+          hx-swap="none"
+          hx-confirm="Delete this page and all {{ capture_count }} captured version(s)?"
+          @htmx:after:request="$ok($event) && $el.closest('article').remove()"
+          class="btn btn-ghost btn-xs btn-square text-error"
+          aria-label="Delete page and all versions"
+          title="Delete all versions"
+        >
+          <span class="icon-[lucide--trash-2] size-4"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-1.5">
+      <div id="page-tags-{{ id }}">
+        {% for tag in tags %}
+        <span class="badge badge-ghost gap-1">
+          {{ tag.name }}
+          <button
+            type="button"
+            hx-delete="/api/page/{{ id }}/tag/{{ tag.id }}"
+            hx-swap="none"
+            hx-confirm="Remove this tag?"
+            @htmx:after:request="$ok($event) && $el.parentElement.remove()"
+            aria-label="Remove tag {{ tag.name }}"
+            class="cursor-pointer text-base-content/40 hover:text-error"
+          >
+            ×
+          </button>
+        </span>
+        {% endfor %}
+      </div>
+
+      <form
+        hx-post="/archive/page/{{ id }}/tag"
+        hx-swap="none"
+        @htmx:after:request="$ok($event) && $el.reset()"
+        class="join"
+      >
+        <input
+          type="text"
+          name="name"
+          required
+          class="input input-xs join-item w-28"
+          placeholder="add tag…"
+          aria-label="Add tag to {{ display_title }}"
+        />
+        <button class="btn btn-xs join-item" type="submit" aria-label="Add tag">+</button>
+      </form>
+    </div>
+
+    <details class="group rounded-field border border-base-300 bg-base-200/40">
+      <summary
+        class="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-xs text-base-content/70 select-none"
+      >
+        <span
+          class="icon-[lucide--chevron-right] size-3.5 transition-transform group-open:rotate-90"
+        ></span>
+        Captures
+        <span class="badge badge-ghost badge-xs tabular-nums">{{ capture_count }}</span>
+      </summary>
+      <div id="captures-{{ id }}" class="border-t border-base-300">
+        {% for capture in captures %}
+        <div
+          class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-base-300 px-3 py-1.5 text-xs last:border-b-0"
+        >
+          <span class="badge badge-ghost badge-sm tabular-nums">v{{ capture.version }}</span>
+          <span class="min-w-32 flex-1 truncate" title="{{ capture.title }}"
+            >{{ capture.title }}</span
+          >
+          <span class="whitespace-nowrap text-base-content/50 tabular-nums"
+            >{{ capture.captured_at }}</span
+          >
+          <span class="text-base-content/40 tabular-nums">HTTP {{ capture.status }}</span>
+          {% if capture.has_html %}
+          <a
+            href="/api/capture/{{ capture.id }}/html"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="link link-primary whitespace-nowrap"
+            >open</a
+          >
+          <a
+            href="/api/capture/{{ capture.id }}/html/original"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="link whitespace-nowrap text-base-content/50"
+            >original</a
+          >
+          {% endif %} {% if capture.has_screenshot %}
+          <a
+            href="/api/capture/{{ capture.id }}/screenshot"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="link whitespace-nowrap text-base-content/50"
+            >screenshot</a
+          >
+          {% endif %}
+
+          <button
+            type="button"
+            hx-delete="/api/capture/{{ capture.id }}"
+            hx-swap="none"
+            hx-confirm="Delete this capture {{ capture.version }}, captured {{ capture.captured_at }}?"
+            @htmx:after:request="$ok($event) && $el.parentElement.remove()"
+            class="btn btn-ghost btn-xs btn-square text-error"
+            aria-label="Delete capture version"
+            title="Delete capture"
+          >
+            <span class="icon-[lucide--trash-2] size-3"></span>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+</article>

@@ -1,0 +1,59 @@
+{% extends "layouts/app.html" %} {% block title %}Dashboard{% endblock %} {% block content %}
+<div class="page-header flex justify-between">
+  <h1 class="page-title"><span class="icon-[lucide--house]"></span>Dashboard</h1>
+  <a href="/archive" target="_blank"
+    >Archive Dashboard <span class="icon-[lucide--external-link] size-4"></span
+  ></a>
+</div>
+
+<div
+  class="stats stats-vertical mb-8 w-full border border-base-300 bg-base-100 sm:stats-horizontal"
+>
+  <a href="/links" class="stat hover:bg-base-200/60">
+    <div class="stat-figure text-base-content/40">
+      <span class="icon-[lucide--link] size-7"></span>
+    </div>
+    <div class="stat-title">Links</div>
+    <div class="stat-value font-serif tabular-nums">{{ stats.pages }}</div>
+  </a>
+  <a href="/collections" class="stat hover:bg-base-200/60">
+    <div class="stat-figure text-base-content/40">
+      <span class="icon-[lucide--folders] size-7"></span>
+    </div>
+    <div class="stat-title">Collections</div>
+    <div class="stat-value font-serif tabular-nums">{{ stats.collections }}</div>
+  </a>
+  <a href="/tags" class="stat hover:bg-base-200/60">
+    <div class="stat-figure text-base-content/40">
+      <span class="icon-[lucide--tags] size-7"></span>
+    </div>
+    <div class="stat-title">Tags</div>
+    <div class="stat-value font-serif tabular-nums">{{ stats.tags }}</div>
+  </a>
+  <a href="/pinned" class="stat hover:bg-base-200/60">
+    <div class="stat-figure text-base-content/40">
+      <span class="icon-[lucide--pin] size-7"></span>
+    </div>
+    <div class="stat-title">Pinned</div>
+    <div class="stat-value font-serif tabular-nums">{{ stats.pinned }}</div>
+  </a>
+</div>
+
+{# Links saved from the "New link" dialog are prepended here; hidden while empty. #}
+<div id="results" class="link-grid group/results mb-8 empty:hidden" data-view="grid"></div>
+
+{% for section in sections %}
+<section class="mb-8">
+  <div class="mb-3 flex items-baseline justify-between">
+    <h2 class="text-lg font-semibold">{{ section.title }}</h2>
+    <a href="{{ section.href }}" class="link link-hover inline-flex items-center gap-1 text-sm">
+      View all <span class="icon-[lucide--chevron-right] size-4"></span>
+    </a>
+  </div>
+  <div class="group/results flex snap-x gap-4 overflow-x-auto pb-3" data-view="grid">
+    {% for link in section.links %}
+    <div class="w-64 shrink-0 snap-start *:h-full">{% include "library/_link_card.html" %}</div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %} {% endblock %}

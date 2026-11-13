@@ -172,7 +172,7 @@ impl From<CreatedApiKey> for CreatedApiKeyDto {
 
 // --------------------------------------------------------------- requests
 
-#[derive(Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub(crate) struct ProfileRequest {
     pub display_name: Option<String>,
     pub first_name: Option<String>,

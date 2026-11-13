@@ -9,11 +9,23 @@ use crate::{
         ApiKeyToken, ApiKeyView, AuthUser, CreatedApiKey, NewApiKey, Permission, ProfileUpdate,
         ProfileView, SessionView, UserView,
     },
-    db::{self, api_key::InsertApiKey, audit::audit},
+    db::{self, api_key::InsertApiKey, audit::audit, permission::PermissionInfo},
     error::{AppError, ForbiddenReason, Result},
     infra::sha256_hex,
     util::time::now_ms,
 };
+
+/// Permissions the actor holds, i.e. the scopes they may put on a new key.
+pub(crate) async fn available_scopes(
+    ctx: &AppState,
+    actor: &AuthUser,
+) -> Result<Vec<PermissionInfo>> {
+    Ok(db::permission::all(&ctx.db)
+        .await?
+        .into_iter()
+        .filter(|p| actor.has(&p.name))
+        .collect())
+}
 
 pub(crate) struct Me {
     pub user: UserView,

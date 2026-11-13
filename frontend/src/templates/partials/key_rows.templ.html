@@ -1,0 +1,19 @@
+{% for k in keys %}
+<tr>
+  <td>
+    <div class="font-medium">{{ k.name }}</div>
+    <div class="font-data text-xs text-faint">{{ k.prefix }}…</div>
+  </td>
+  <td><div class="flex max-w-xs flex-wrap gap-1">{% for sc in k.scopes %}<span class="badge badge-outline badge-sm font-data">{{ sc }}</span>{% endfor %}</div></td>
+  <td class="whitespace-nowrap text-sm"><time datetime="{{ k.last_used.iso }}" data-local>{{ k.last_used.text }}</time></td>
+  <td class="whitespace-nowrap text-sm"><time datetime="{{ k.expires.iso }}" data-local>{{ k.expires.text }}</time></td>
+  <td class="text-right">
+    <button type="button" class="btn btn-sm btn-outline btn-error"
+            hx-delete="/account/keys/{{ k.public_id }}" hx-target="#keys-body"
+            hx-confirm="Revoke {{ k.name }}? Anything using it stops working immediately.">Revoke</button>
+  </td>
+</tr>
+{% endfor %}
+{% if keys.is_empty() %}
+<tr><td colspan="5" class="py-14 text-center text-dim">No API keys yet.</td></tr>
+{% endif %}
