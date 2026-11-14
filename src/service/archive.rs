@@ -7,15 +7,15 @@ use serde_json::Value;
 
 use crate::{
     app::AppState,
-    auth::{AuthUser, Permission},
     db::{
         archive::{AssetSummary, collect_assets, insert_assets},
         capture::NewCapture,
         page::{PageId, PageRecord},
-        pending::{PendingId, PendingRecord},
+        pending::{PendingId, PendingRow},
         store::{insert_blob, prepare_blob},
     },
     error::{AppError, Resource, Result},
+    identity::{AuthUser, Permission},
     infra::{Image, extractor::html},
     util::{NonEmptyString, time::now_ms},
 };
@@ -62,7 +62,7 @@ fn meta_title(meta: Option<&Value>) -> Option<NonEmptyString> {
     reason = "the archive transaction is intentionally kept in one readable flow"
 )]
 pub(crate) async fn archive(
-    ctx: &AppState,
+    state: &AppState,
     actor: &AuthUser,
     page_id: PageId,
     upload: ArchiveUpload,
@@ -75,7 +75,7 @@ pub(crate) async fn archive(
         ));
     }
 
-    let page = PageRecord::load(&ctx.db, actor.id, page_id)
+    let page = PageRecord::load(&state.db, actor.id, page_id)
         .await?
         .ok_or(AppError::NotFound(Resource::Page))?;
     let page_url = url::Url::parse(&page.url).map_err(AppError::internal)?;
@@ -87,7 +87,14 @@ pub(crate) async fn archive(
 
     // Network I/O happens before the write transaction.
     let (assets, asset_summary) = if upload.save_assets {
-        collect_assets(&ctx.db, &ctx.store, &ctx.http, &page_url, &upload.html).await?
+        collect_assets(
+            &state.db,
+            &state.store,
+            &state.http,
+            &page_url,
+            &upload.html,
+        )
+        .await?
     } else {
         (Vec::new(), AssetSummary::default())
     };
@@ -98,21 +105,21 @@ pub(crate) async fn archive(
         .collect();
     let rewritten = html::rewrite_resources(&upload.html, &page_url, &replacements);
 
-    let original_blob = prepare_blob(&ctx.db, &ctx.store, upload.html, "text/html").await?;
+    let original_blob = prepare_blob(&state.db, &state.store, upload.html, "text/html").await?;
     let served_blob = match rewritten {
-        Some(bytes) => Some(prepare_blob(&ctx.db, &ctx.store, bytes, "text/html").await?),
+        Some(bytes) => Some(prepare_blob(&state.db, &state.store, bytes, "text/html").await?),
         None => None,
     };
     let shot_blob = match upload.screenshot {
         Some(image) => {
             let format = image.format();
             let data = image.into_data();
-            Some(prepare_blob(&ctx.db, &ctx.store, data, format.mime_type()).await?)
+            Some(prepare_blob(&state.db, &state.store, data, format.mime_type()).await?)
         }
         None => None,
     };
 
-    let mut tx = ctx.db.begin().await?;
+    let mut tx = state.db.begin().await?;
 
     let original_id = insert_blob(&mut tx, &original_blob).await?;
     let html_id = match &served_blob {
@@ -141,11 +148,11 @@ pub(crate) async fn archive(
     insert_assets(&mut tx, capture_id, &assets).await?;
 
     if let Some(pending_id) = upload.pending_id
-        && PendingRecord::load(&mut *tx, actor.id, pending_id)
+        && PendingRow::load(&mut *tx, actor.id, pending_id)
             .await?
             .is_some()
     {
-        PendingRecord::complete_into_page(&mut tx, actor.id, pending_id, page_id).await?;
+        PendingRow::complete_into_page(&mut tx, actor.id, pending_id, page_id).await?;
     }
 
     tx.commit().await?;

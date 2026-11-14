@@ -3,14 +3,14 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
     app::AppState,
-    auth::{
+    db::{self, audit::audit, auth::NewAuthToken},
+    error::{AppError, Result},
+    identity::{
         NewAccount, TokenPurpose, VerifyToken,
         policy::{DEFAULT_ROLE, TERMS_VERSION},
     },
-    db::{self, audit::audit, auth::NewAuthToken},
-    error::{AppError, Result},
     infra::{hash_password, sha256_hex},
-    util::time::{DAY_MS, add_ms, now_ms},
+    util::time::{DAY, add_ms, now_ms},
 };
 
 /// Creates user, profile name, credentials, role and verification token in one
@@ -24,14 +24,14 @@ use crate::{
 /// # Errors
 ///
 /// A taken username is reported as [`AppError::Conflict`].
-pub(crate) async fn create_account(ctx: &AppState, account: NewAccount) -> Result<()> {
+pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Result<()> {
     // Hash before opening the transaction: Argon2 is slow and must not hold
     // SQLite's write lock. It also runs for duplicates, which keeps the
     // expensive part of both paths equally slow.
     let password_hash = hash_password(account.password).await?;
     let now = now_ms();
 
-    let mut tx = ctx.db.begin().await?;
+    let mut tx = state.db.begin().await?;
 
     let inserted = db::auth::insert_pending_user(
         &mut tx,
@@ -48,8 +48,8 @@ pub(crate) async fn create_account(ctx: &AppState, account: NewAccount) -> Resul
             if db::auth::email_exists(&mut tx, &account.email).await? {
                 drop(tx); // roll back
                 super::mail::dispatch(
-                    ctx,
-                    super::mail::already_registered(&ctx.public_url, &account.email),
+                    state,
+                    super::mail::already_registered(&state.public_url, &account.email),
                 );
                 return Ok(());
             }
@@ -74,10 +74,17 @@ pub(crate) async fn create_account(ctx: &AppState, account: NewAccount) -> Resul
 
     // Send only after commit: never mail a link that failed to persist.
     super::mail::dispatch(
-        ctx,
-        super::mail::verification(&ctx.public_url, &account.email, &verify_token),
+        state,
+        super::mail::verification(&state.public_url, &account.email, &verify_token),
     );
-    audit(&ctx.db, Some(user_id), Some(user_id), "user.created", None).await;
+    audit(
+        &state.db,
+        Some(user_id),
+        Some(user_id),
+        "user.created",
+        None,
+    )
+    .await;
 
     Ok(())
 }
@@ -123,7 +130,7 @@ async fn issue_verify_token(
             purpose: TokenPurpose::VerifyEmail,
             token_hash: &sha256_hex(token.expose_secret()),
             target: Some(email),
-            expires_at: add_ms(now, DAY_MS),
+            expires_at: add_ms(now, DAY),
         },
     )
     .await?;

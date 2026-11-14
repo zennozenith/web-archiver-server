@@ -11,8 +11,8 @@ use tower::limit::ConcurrencyLimitLayer;
 use tower_http::{timeout::TimeoutLayer, trace::TraceLayer};
 
 use crate::{
-    http::{api, asset, web},
     infra::{BlobStore, Mailer},
+    transport::{api, asset, web},
 };
 
 /// Hard cap for a whole request body. Thumbnails and capture HTML are the

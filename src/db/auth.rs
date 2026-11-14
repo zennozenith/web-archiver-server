@@ -1,11 +1,11 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Duration};
 
 use secrecy::ExposeSecret as _;
 use sqlx::{FromRow, Result, SqliteConnection, SqliteExecutor, SqlitePool};
 
 use crate::{
-    auth::{
-        AccountStatus, AuthIdentityRow, ClientInfo, SESSION_TTL_MS, SessionToken, TokenPurpose,
+    identity::{
+        AccountStatus, AuthIdentityRow, ClientInfo, SESSION_TTL, SessionToken, TokenPurpose,
     },
     infra::sha256_hex,
     util::time::add_ms,
@@ -352,7 +352,7 @@ pub(crate) async fn record_bad_password(
     user_id: i64,
     now: i64,
     max_failed_attempts: i64,
-    lockout_ms: i64,
+    lockout: Duration,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE user_credentials
@@ -363,7 +363,7 @@ pub(crate) async fn record_bad_password(
     )
     .bind(now)
     .bind(max_failed_attempts)
-    .bind(add_ms(now, lockout_ms))
+    .bind(add_ms(now, lockout))
     .bind(user_id)
     .execute(pool)
     .await?;
@@ -407,7 +407,7 @@ pub(crate) async fn create_session(
     .bind(client_info.ip.to_string())
     .bind(&client_info.user_agent)
     .bind(now)
-    .bind(add_ms(now, SESSION_TTL_MS))
+    .bind(add_ms(now, SESSION_TTL))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;

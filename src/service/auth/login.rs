@@ -1,11 +1,12 @@
 use secrecy::{ExposeSecret as _, SecretString};
 use serde_json::json;
+use sqlx::SqlitePool;
 use tokio::sync::OnceCell;
 
 use crate::{
-    auth::{AccountStatus, ClientInfo, LoginCredentials, SessionToken, policy},
     db::{self, audit::audit},
     error::ForbiddenReason,
+    identity::{AccountStatus, ClientInfo, LoginCredentials, SessionToken, policy},
     infra::{hash_password, random_id, sha256_hex, verify_password},
     prelude::*,
     service::auth::attempt::AttemptLog,
@@ -30,7 +31,7 @@ async fn burn_verify(password: SecretString) {
 }
 
 pub(crate) async fn login(
-    ctx: &AppState,
+    pool: &SqlitePool,
     client: &ClientInfo,
     creds: LoginCredentials,
 ) -> Result<SessionToken> {
@@ -38,9 +39,9 @@ pub(crate) async fn login(
     let identifier = creds.identifier().to_owned();
     let password = creds.into_password();
 
-    let attempt = AttemptLog::new(&ctx.db, &identifier, client);
+    let attempt = AttemptLog::new(pool, &identifier, client);
 
-    let Some(user) = db::auth::find_login_user(&ctx.db, &identifier).await? else {
+    let Some(user) = db::auth::find_login_user(pool, &identifier).await? else {
         burn_verify(password.clone()).await;
         return Err(attempt
             .failed(None, "unknown_user", AppError::InvalidCredentials)
@@ -58,11 +59,11 @@ pub(crate) async fn login(
     }
     if !verify_password(password, user.password_hash).await {
         db::auth::record_bad_password(
-            &ctx.db,
+            pool,
             user.id,
             now,
             policy::MAX_FAILED_ATTEMPTS,
-            policy::LOCKOUT_MS,
+            policy::LOCKOUT,
         )
         .await?;
         return Err(attempt
@@ -82,11 +83,11 @@ pub(crate) async fn login(
     let token_hash = sha256_hex(token.expose_secret());
     let token_id = random_id()?;
 
-    db::auth::create_session(&ctx.db, user.id, client, &token_id, &token_hash, now).await?;
+    db::auth::create_session(pool, user.id, client, &token_id, &token_hash, now).await?;
 
     attempt.succeeded(user.id).await;
     audit(
-        &ctx.db,
+        pool,
         Some(user.id),
         Some(user.id),
         "auth.login",
@@ -97,10 +98,10 @@ pub(crate) async fn login(
     Ok(token)
 }
 
-pub(crate) async fn logout(ctx: &AppState, session_token: SessionToken) -> Result<()> {
+pub(crate) async fn logout(pool: &SqlitePool, session_token: SessionToken) -> Result<()> {
     let now = now_ms();
 
-    db::auth::delete_session(&ctx.db, session_token, now)
+    db::auth::delete_session(pool, session_token, now)
         .await
         .map_err(AppError::from)
 }

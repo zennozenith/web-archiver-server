@@ -7,7 +7,7 @@ use sqlx::{FromRow, Result, SqlitePool};
 use crate::{
     infra::BlobStore,
     prelude::*,
-    util::time::{DAY_MS, today},
+    util::time::{DAY, HOUR, days_ms, duration_ms, now_ms, today},
 };
 
 #[derive(Serialize)]
@@ -111,7 +111,7 @@ pub(crate) async fn health(pool: &SqlitePool) -> Result<()> {
 //
 // DB first, files second: a crash in between leaves an orphan file, never a row pointing at nothing.
 pub(crate) async fn gc_content(pool: &SqlitePool, store: &BlobStore) -> Result<GCStat, AppError> {
-    let cutoff = crate::util::time::now_ms().saturating_sub(crate::util::time::HOUR_MS);
+    let cutoff = now_ms().saturating_sub(duration_ms(HOUR));
     let refs: Vec<Option<String>> = sqlx::query_scalar(
         "DELETE FROM contents
          WHERE created_at < ?
@@ -167,7 +167,7 @@ pub(crate) async fn user_counts(pool: &SqlitePool, now: i64) -> sqlx::Result<Use
                 COALESCE(SUM(status = 'deactivated'), 0) AS deactivated
            FROM users WHERE deleted_at IS NULL",
     )
-    .bind(now.saturating_sub(DAY_MS.saturating_mul(7)))
+    .bind(now.saturating_sub(days_ms(7)))
     .fetch_one(pool)
     .await
 }
@@ -187,7 +187,7 @@ pub(crate) async fn security_counts(pool: &SqlitePool, now: i64) -> sqlx::Result
                 (SELECT COUNT(*) FROM user_credentials c JOIN users u ON u.id = c.user_id
                   WHERE u.deleted_at IS NULL AND c.locked_until > ?2) AS locked",
     )
-    .bind(now.saturating_sub(DAY_MS))
+    .bind(now.saturating_sub(duration_ms(DAY)))
     .bind(now)
     .fetch_one(pool)
     .await

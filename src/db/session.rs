@@ -1,6 +1,6 @@
 use sqlx::{Result, SqliteExecutor};
 
-use crate::auth::SessionView;
+use crate::identity::SessionView;
 
 pub(crate) async fn list_for_user<'e>(
     ex: impl SqliteExecutor<'e>,

@@ -2,7 +2,7 @@
 
 use sqlx::{Result, SqliteExecutor, SqlitePool, prelude::FromRow};
 
-use crate::auth::{AccountStatus, UserFilter, UserView};
+use crate::identity::{AccountStatus, UserFilter, UserView};
 
 /// Base query over `v_users` (live users + profile, never credentials), with
 /// the active roles folded into one comma separated column.

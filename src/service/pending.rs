@@ -4,14 +4,14 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::{
-    app::AppState,
-    auth::{AuthUser, Permission},
     db::{
         self,
-        helper::{CreateOutcome, Cursor, CursorPage},
-        pending::{PendingId, PendingItem, PendingRecord, PendingStatus, PendingUpdate},
+        create::CreateOutcome,
+        cursor::{Cursor, CursorPage},
+        pending::{PendingId, PendingResponse, PendingRow, PendingStatus, PendingUpdate},
     },
     error::{AppError, Resource, Result},
+    identity::{AuthUser, Permission},
     infra::{TagName, parse_tag_names},
     util::{
         limit::Limit,
@@ -34,7 +34,7 @@ async fn conflict_or_not_found(
     id: PendingId,
     conflict_message: &str,
 ) -> Result<AppError> {
-    Ok(if PendingRecord::exists(pool, owner, id).await? {
+    Ok(if PendingRow::exists(pool, owner, id).await? {
         AppError::Conflict(conflict_message.into())
     } else {
         AppError::NotFound(Resource::PendingItem)
@@ -42,15 +42,15 @@ async fn conflict_or_not_found(
 }
 
 pub(crate) async fn list(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     status: Option<PendingStatus>,
     cursor: Option<Cursor>,
     limit: Option<Limit>,
-) -> Result<CursorPage<PendingItem>> {
+) -> Result<CursorPage<PendingResponse>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Ok(PendingItem::list(
-        &ctx.db,
+    Ok(PendingResponse::list(
+        pool,
         actor.id,
         status,
         cursor,
@@ -59,22 +59,26 @@ pub(crate) async fn list(
     .await?)
 }
 
-pub(crate) async fn get(ctx: &AppState, actor: &AuthUser, id: PendingId) -> Result<PendingItem> {
+pub(crate) async fn get(
+    pool: &SqlitePool,
+    actor: &AuthUser,
+    id: PendingId,
+) -> Result<PendingResponse> {
     actor.require(Permission::ARCHIVE_READ)?;
-    PendingItem::get(&ctx.db, actor.id, id).await
+    PendingResponse::get(pool, actor.id, id).await
 }
 
 pub(crate) async fn create(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     url: &str,
     tags: &[String],
-) -> Result<PendingItem> {
+) -> Result<PendingResponse> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     let (url, tags) = parse_new(url, tags)?;
 
-    let mut tx = ctx.db.begin().await?;
-    let id = match PendingRecord::enqueue(&mut tx, actor.id, &url, &tags).await? {
+    let mut tx = pool.begin().await?;
+    let id = match PendingRow::enqueue(&mut tx, actor.id, &url, &tags).await? {
         CreateOutcome::Created(id) => id,
         CreateOutcome::Existing(existing_id) => {
             return Err(AppError::Duplicate {
@@ -85,18 +89,18 @@ pub(crate) async fn create(
     };
     tx.commit().await?;
 
-    PendingItem::get(&ctx.db, actor.id, id).await
+    PendingResponse::get(pool, actor.id, id).await
 }
 
 #[expect(clippy::too_many_arguments, reason = "mirrors the API patch fields")]
 pub(crate) async fn patch(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     id: PendingId,
     status: Option<PendingStatus>,
     url: Option<&str>,
     tags: Option<&[String]>,
-) -> Result<PendingItem> {
+) -> Result<PendingResponse> {
     actor.require(Permission::ARCHIVE_WRITE)?;
 
     if status == Some(PendingStatus::InProgress) {
@@ -109,8 +113,8 @@ pub(crate) async fn patch(
     let tags = tags.map(parse_tag_names).transpose()?;
     let url = url.map(canonicalize_url).transpose()?.map(|url| url.url);
 
-    let mut tx = ctx.db.begin().await?;
-    let current = PendingRecord::status_of(&mut *tx, actor.id, id)
+    let mut tx = pool.begin().await?;
+    let current = PendingRow::status_of(&mut *tx, actor.id, id)
         .await?
         .ok_or(AppError::NotFound(Resource::PendingItem))?;
 
@@ -129,69 +133,69 @@ pub(crate) async fn patch(
     .await?;
     tx.commit().await?;
 
-    PendingItem::get(&ctx.db, actor.id, id).await
+    PendingResponse::get(pool, actor.id, id).await
 }
 
-pub(crate) async fn retry(ctx: &AppState, actor: &AuthUser, id: PendingId) -> Result<PendingItem> {
+pub(crate) async fn retry(
+    pool: &SqlitePool,
+    actor: &AuthUser,
+    id: PendingId,
+) -> Result<PendingResponse> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if !PendingRecord::retry(&ctx.db, actor.id, id).await? {
-        return Err(conflict_or_not_found(
-            &ctx.db,
-            actor.id,
-            id,
-            "only failed items can be retried",
-        )
-        .await?);
+    if !PendingRow::retry(pool, actor.id, id).await? {
+        return Err(
+            conflict_or_not_found(pool, actor.id, id, "only failed items can be retried").await?,
+        );
     }
-    PendingItem::get(&ctx.db, actor.id, id).await
+    PendingResponse::get(pool, actor.id, id).await
 }
 
 /// Atomically claims the actor's oldest queued item.
-pub(crate) async fn claim(ctx: &AppState, actor: &AuthUser) -> Result<Option<PendingItem>> {
+pub(crate) async fn claim(pool: &SqlitePool, actor: &AuthUser) -> Result<Option<PendingResponse>> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    let Some(id) = PendingRecord::claim_next(&ctx.db, Some(actor.id), now_ms()).await? else {
+    let Some(id) = PendingRow::claim_next(pool, Some(actor.id), now_ms()).await? else {
         return Ok(None);
     };
-    Ok(PendingItem::load(&ctx.db, actor.id, id).await?)
+    Ok(PendingResponse::load(pool, actor.id, id).await?)
 }
 
 pub(crate) async fn fail(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     id: PendingId,
     error: &str,
-) -> Result<PendingItem> {
+) -> Result<PendingResponse> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     let error: String = error.chars().take(MAX_ERROR_CHARS).collect();
 
-    if !PendingRecord::mark_failed(&ctx.db, actor.id, id, &error).await? {
-        return Err(conflict_or_not_found(&ctx.db, actor.id, id, "item is not in progress").await?);
+    if !PendingRow::mark_failed(pool, actor.id, id, &error).await? {
+        return Err(conflict_or_not_found(pool, actor.id, id, "item is not in progress").await?);
     }
-    PendingItem::get(&ctx.db, actor.id, id).await
+    PendingResponse::get(pool, actor.id, id).await
 }
 
-pub(crate) async fn delete(ctx: &AppState, actor: &AuthUser, id: PendingId) -> Result<()> {
+pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: PendingId) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if !PendingRecord::delete(&ctx.db, actor.id, id).await? {
-        return Err(conflict_or_not_found(
-            &ctx.db,
-            actor.id,
-            id,
-            "item is currently being archived",
-        )
-        .await?);
+    if !PendingRow::delete(pool, actor.id, id).await? {
+        return Err(
+            conflict_or_not_found(pool, actor.id, id, "item is currently being archived").await?,
+        );
     }
     Ok(())
 }
 
-pub(crate) async fn clear(ctx: &AppState, actor: &AuthUser, status: PendingStatus) -> Result<u64> {
+pub(crate) async fn clear(
+    pool: &SqlitePool,
+    actor: &AuthUser,
+    status: PendingStatus,
+) -> Result<u64> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     if status == PendingStatus::InProgress {
         return Err(AppError::BadRequest(
             "cannot clear in_progress items".into(),
         ));
     }
-    Ok(PendingRecord::delete_all_with_status(&ctx.db, actor.id, status).await?)
+    Ok(PendingRow::delete_all_with_status(pool, actor.id, status).await?)
 }
 
 // ------------------------------------------------------------------ bulk add
@@ -226,7 +230,7 @@ pub(crate) struct BulkCreateReport {
 
 /// One bad item does not fail the batch; DB errors roll back everything.
 pub(crate) async fn bulk_create(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     items: &[(String, Vec<String>)],
 ) -> Result<BulkCreateReport> {
@@ -237,7 +241,7 @@ pub(crate) async fn bulk_create(
         )));
     }
 
-    let mut tx = ctx.db.begin().await?;
+    let mut tx = pool.begin().await?;
     let mut results = Vec::with_capacity(items.len());
 
     for (url, tags) in items {
@@ -249,7 +253,7 @@ pub(crate) async fn bulk_create(
                 error: Some(error.to_string()),
             },
             Ok((url, tags)) => {
-                let outcome = PendingRecord::enqueue(&mut tx, actor.id, &url, &tags).await?;
+                let outcome = PendingRow::enqueue(&mut tx, actor.id, &url, &tags).await?;
                 BulkItemResult {
                     url: url.url,
                     status: if outcome.is_created() {
@@ -284,12 +288,12 @@ pub(crate) struct PendingCounts {
     pub total: i64,
 }
 
-pub(crate) async fn counts(ctx: &AppState, actor: &AuthUser) -> Result<PendingCounts> {
+pub(crate) async fn counts(pool: &SqlitePool, actor: &AuthUser) -> Result<PendingCounts> {
     actor.require(Permission::ARCHIVE_READ)?;
     let (queued, in_progress, failed) = tokio::try_join!(
-        db::pending::PendingRecord::count_with_status(&ctx.db, actor.id, PendingStatus::Queued),
-        db::pending::PendingRecord::count_with_status(&ctx.db, actor.id, PendingStatus::InProgress),
-        db::pending::PendingRecord::count_with_status(&ctx.db, actor.id, PendingStatus::Failed),
+        db::pending::PendingRow::count_with_status(pool, actor.id, PendingStatus::Queued),
+        db::pending::PendingRow::count_with_status(pool, actor.id, PendingStatus::InProgress),
+        db::pending::PendingRow::count_with_status(pool, actor.id, PendingStatus::Failed),
     )?;
     Ok(PendingCounts {
         queued,

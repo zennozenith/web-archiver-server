@@ -35,6 +35,17 @@ vendored-compress:
 app-test:
     cargo test
 
+# Check dependencies for known vulnerabilities (cargo install cargo-audit)
+audit:
+    cargo audit
+
+# Check licenses, advisories, bans and sources (cargo install cargo-deny)
+deny:
+    cargo deny check
+
+# Both dependency checks
+security: audit deny
+
 # Initialize the server data directory
 init-server:
     mkdir -p data/db && \

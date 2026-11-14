@@ -2,7 +2,7 @@ use serde::Serialize;
 use sqlx::{FromRow, Result, SqliteExecutor, SqlitePool};
 
 use crate::{
-    db::helper::{CreateOutcome, FieldPatch},
+    db::{create::CreateOutcome, patch::FieldPatch},
     infra::{TagColor, TagId, TagMerge, TagName},
 };
 

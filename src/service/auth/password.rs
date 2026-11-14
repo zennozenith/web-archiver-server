@@ -3,15 +3,15 @@ use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::{
-    auth::{ResetToken, TokenPurpose, policy},
     db::{
         self,
         audit::audit,
         auth::{NewAuthToken, ValidToken},
     },
+    identity::{ResetToken, TokenPurpose, policy},
     infra::{hash_password, sha256_hex},
     prelude::*,
-    util::time::{HOUR_MS, add_ms, now_ms},
+    util::time::{HOUR, add_ms, now_ms},
 };
 
 pub(crate) async fn reset_password(
@@ -69,20 +69,20 @@ pub(crate) async fn reset_password(
 /// Always returns `Ok(())` for unknown, inactive, or blank e-mails, so the
 /// caller can show the same "if that account exists, we sent a link" message
 /// and the response can't be used to enumerate accounts.
-pub(crate) async fn forgot_password(ctx: &AppState, email: String) -> Result<()> {
+pub(crate) async fn forgot_password(state: &AppState, email: String) -> Result<()> {
     let email = email.trim();
     if email.is_empty() {
         return Err(AppError::BadRequest("Email empty".into()));
     }
 
-    let Some(user_id) = db::auth::find_active_user_id_by_email(&ctx.db, email).await? else {
+    let Some(user_id) = db::auth::find_active_user_id_by_email(&state.db, email).await? else {
         return Ok(());
     };
 
     let now = now_ms();
     let token = ResetToken::new()?;
 
-    let mut tx = ctx.db.begin().await?;
+    let mut tx = state.db.begin().await?;
     // Only the most recent link should work.
     db::auth::invalidate_open_tokens(&mut tx, user_id, TokenPurpose::ResetPassword, now).await?;
     db::auth::insert_token(
@@ -92,7 +92,7 @@ pub(crate) async fn forgot_password(ctx: &AppState, email: String) -> Result<()>
             purpose: TokenPurpose::ResetPassword,
             token_hash: &sha256_hex(token.expose_secret()),
             target: Some(email),
-            expires_at: add_ms(now, HOUR_MS),
+            expires_at: add_ms(now, HOUR),
         },
     )
     .await?;
@@ -100,11 +100,11 @@ pub(crate) async fn forgot_password(ctx: &AppState, email: String) -> Result<()>
 
     // Send only after commit: never mail a link that failed to persist.
     super::mail::dispatch(
-        ctx,
-        super::mail::password_reset(&ctx.public_url, email, &token),
+        state,
+        super::mail::password_reset(&state.public_url, email, &token),
     );
     audit(
-        &ctx.db,
+        &state.db,
         Some(user_id),
         Some(user_id),
         "password.reset_requested",

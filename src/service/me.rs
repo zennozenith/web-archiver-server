@@ -3,14 +3,15 @@
 use secrecy::ExposeSecret as _;
 use serde_json::json;
 
+use sqlx::SqlitePool;
+
 use crate::{
-    app::AppState,
-    auth::{
+    db::{self, api_key::InsertApiKey, audit::audit, permission::PermissionInfo},
+    error::{AppError, ForbiddenReason, Resource, Result},
+    identity::{
         ApiKeyToken, ApiKeyView, AuthUser, CreatedApiKey, NewApiKey, Permission, ProfileUpdate,
         ProfileView, SessionView, UserView,
     },
-    db::{self, api_key::InsertApiKey, audit::audit, permission::PermissionInfo},
-    error::{AppError, ForbiddenReason, Resource, Result},
     infra::sha256_hex,
     util::time::now_ms,
 };
@@ -23,10 +24,10 @@ pub(crate) struct Mine {
 
 /// Permissions the actor holds, i.e. the scopes they may put on a new key.
 pub(crate) async fn available_scopes(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
 ) -> Result<Vec<PermissionInfo>> {
-    Ok(db::permission::all(&ctx.db)
+    Ok(db::permission::all(pool)
         .await?
         .into_iter()
         .filter(|p| actor.has_scope(&p.name))
@@ -38,14 +39,14 @@ pub(crate) struct Me {
     pub profile: ProfileView,
 }
 
-pub(crate) async fn get_me(ctx: &AppState, actor: &AuthUser) -> Result<Me> {
+pub(crate) async fn get_me(pool: &SqlitePool, actor: &AuthUser) -> Result<Me> {
     actor.require(Permission::PROFILE_READ)?;
 
     let (user, profile, sessions, keys) = tokio::try_join!(
-        db::user::find(&ctx.db, actor.id),
-        db::profile::find(&ctx.db, actor.id),
-        db::session::list_for_user(&ctx.db, actor.id),
-        db::api_key::list_for_user(&ctx.db, actor.id),
+        db::user::find(pool, actor.id),
+        db::profile::find(pool, actor.id),
+        db::session::list_for_user(pool, actor.id),
+        db::api_key::list_for_user(pool, actor.id),
     )?;
 
     let mine = Mine {
@@ -58,16 +59,16 @@ pub(crate) async fn get_me(ctx: &AppState, actor: &AuthUser) -> Result<Me> {
 }
 
 pub(crate) async fn update_profile(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     update: ProfileUpdate,
 ) -> Result<()> {
     actor.require(Permission::PROFILE_WRITE)?;
     let update = update.normalize()?;
 
-    db::profile::update(&ctx.db, actor.id, &update).await?;
+    db::profile::update(pool, actor.id, &update).await?;
     audit(
-        &ctx.db,
+        pool,
         Some(actor.id),
         Some(actor.id),
         "profile.updated",
@@ -79,8 +80,8 @@ pub(crate) async fn update_profile(
 
 // -------------------------------------------------------------- sessions
 
-pub(crate) async fn list_sessions(ctx: &AppState, actor: &AuthUser) -> Result<Vec<SessionView>> {
-    let mut sessions = db::session::list_for_user(&ctx.db, actor.id).await?;
+pub(crate) async fn list_sessions(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<SessionView>> {
+    let mut sessions = db::session::list_for_user(pool, actor.id).await?;
     for s in &mut sessions {
         s.current = actor.session_public_id.as_deref() == Some(s.public_id.as_str());
     }
@@ -88,16 +89,16 @@ pub(crate) async fn list_sessions(ctx: &AppState, actor: &AuthUser) -> Result<Ve
 }
 
 pub(crate) async fn revoke_session(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     public_id: &str,
 ) -> Result<()> {
     // Users can only end their own sessions; there is no admin session endpoint yet.
-    if !db::session::revoke(&ctx.db, actor.id, public_id, now_ms()).await? {
+    if !db::session::revoke(pool, actor.id, public_id, now_ms()).await? {
         return Err(AppError::NotFound(Resource::Session));
     }
     audit(
-        &ctx.db,
+        pool,
         Some(actor.id),
         Some(actor.id),
         "session.revoked",
@@ -109,12 +110,12 @@ pub(crate) async fn revoke_session(
 
 // -------------------------------------------------------------- API keys
 
-pub(crate) async fn list_api_keys(ctx: &AppState, actor: &AuthUser) -> Result<Vec<ApiKeyView>> {
-    Ok(db::api_key::list_for_user(&ctx.db, actor.id).await?)
+pub(crate) async fn list_api_keys(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<ApiKeyView>> {
+    Ok(db::api_key::list_for_user(pool, actor.id).await?)
 }
 
 pub(crate) async fn create_api_key(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     req: NewApiKey,
 ) -> Result<CreatedApiKey> {
@@ -132,7 +133,7 @@ pub(crate) async fn create_api_key(
     let scopes_json = req.scopes_json()?;
 
     let public_id = db::api_key::insert(
-        &ctx.db,
+        pool,
         InsertApiKey {
             user_id: actor.id,
             name: req.name(),
@@ -145,7 +146,7 @@ pub(crate) async fn create_api_key(
     .await?;
 
     audit(
-        &ctx.db,
+        pool,
         Some(actor.id),
         Some(actor.id),
         "api_key.created",
@@ -157,15 +158,15 @@ pub(crate) async fn create_api_key(
 }
 
 pub(crate) async fn revoke_api_key(
-    ctx: &AppState,
+    pool: &SqlitePool,
     actor: &AuthUser,
     public_id: &str,
 ) -> Result<()> {
-    if !db::api_key::revoke(&ctx.db, actor.id, public_id, now_ms()).await? {
+    if !db::api_key::revoke(pool, actor.id, public_id, now_ms()).await? {
         return Err(AppError::NotFound(Resource::ApiKey));
     }
     audit(
-        &ctx.db,
+        pool,
         Some(actor.id),
         Some(actor.id),
         "api_key.revoked",

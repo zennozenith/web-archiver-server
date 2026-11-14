@@ -5,7 +5,9 @@ use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqliteExecut
 
 use crate::{
     db::{
-        helper::{CreateOutcome, Cursor, CursorPage, id_type},
+        create::CreateOutcome,
+        cursor::{Cursor, CursorPage},
+        ids::id_type,
         page::PageId,
         tag::Tag,
     },
@@ -13,7 +15,7 @@ use crate::{
     util::{limit::Limit, url_canon::CanonicalUrl},
 };
 
-/// Column list shared by every query that materializes a [`PendingRecord`].
+/// Column list shared by every query that materializes a [`PendingRow`].
 macro_rules! pending_columns {
     () => {
         "id, url, status, attempts, last_error, created_at"
@@ -48,7 +50,7 @@ pub(crate) enum PendingStatus {
 /// A row of the `pending_items` table.
 #[derive(Debug, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PendingRecord {
+pub(crate) struct PendingRow {
     pub id: PendingId,
     pub url: String,
     pub status: PendingStatus,
@@ -60,9 +62,9 @@ pub(crate) struct PendingRecord {
 /// A pending record together with its tags. This is the API representation.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct PendingItem {
+pub(crate) struct PendingResponse {
     #[serde(flatten)]
-    pub record: PendingRecord,
+    pub record: PendingRow,
     pub tags: Vec<Tag>,
 }
 
@@ -70,7 +72,7 @@ pub(crate) struct PendingItem {
 // Single-record operations
 // ───────────────────────────────────────────────────────────────────────────
 
-impl PendingRecord {
+impl PendingRow {
     pub(crate) async fn load<'e>(
         executor: impl SqliteExecutor<'e>,
         owner: i64,
@@ -374,7 +376,7 @@ impl PendingUpdate<'_> {
         }
 
         if let Some(tags) = self.tags {
-            PendingRecord::replace_tags(&mut *conn, owner, id, tags).await?;
+            PendingRow::replace_tags(&mut *conn, owner, id, tags).await?;
         }
         Ok(())
     }
@@ -391,9 +393,9 @@ struct PendingTagJoin {
     tag: Tag,
 }
 
-impl PendingItem {
+impl PendingResponse {
     pub(crate) async fn load(pool: &SqlitePool, owner: i64, id: PendingId) -> Result<Option<Self>> {
-        let Some(record) = PendingRecord::load(pool, owner, id).await? else {
+        let Some(record) = PendingRow::load(pool, owner, id).await? else {
             return Ok(None);
         };
         Ok(Self::hydrate(pool, vec![record]).await?.pop())
@@ -415,7 +417,7 @@ impl PendingItem {
     /// Attaches tags to many records using a single extra query.
     pub(crate) async fn hydrate<'e>(
         executor: impl SqliteExecutor<'e>,
-        records: Vec<PendingRecord>,
+        records: Vec<PendingRow>,
     ) -> Result<Vec<Self>> {
         if records.is_empty() {
             return Ok(Vec::new());
@@ -480,7 +482,7 @@ impl PendingItem {
         qb.push(" ORDER BY id DESC LIMIT ")
             .push_bind(limit.saturating_add(1));
 
-        let records: Vec<PendingRecord> = qb.build_query_as().fetch_all(pool).await?;
+        let records: Vec<PendingRow> = qb.build_query_as().fetch_all(pool).await?;
 
         let page = CursorPage::from_overfetched(
             records,

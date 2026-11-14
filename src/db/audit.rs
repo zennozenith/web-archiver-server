@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sqlx::SqlitePool;
 
-use crate::{auth::AuditEntry, util::like_contains_pattern};
+use crate::{identity::AuditEntry, util::like_contains_pattern};
 
 /// Append a row to the append-only `audit_log`. Failures are logged, never bubbled up.
 pub(crate) async fn audit(

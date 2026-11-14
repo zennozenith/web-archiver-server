@@ -1,6 +1,6 @@
 use sqlx::{Result, SqliteExecutor};
 
-use crate::auth::{ProfileUpdate, ProfileView};
+use crate::identity::{ProfileUpdate, ProfileView};
 
 pub(crate) async fn find<'e>(ex: impl SqliteExecutor<'e>, user_id: i64) -> Result<ProfileView> {
     sqlx::query_as(

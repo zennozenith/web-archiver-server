@@ -1,6 +1,6 @@
 use sqlx::{Result, SqliteExecutor, SqlitePool, prelude::FromRow};
 
-use crate::auth::RoleView;
+use crate::identity::RoleView;
 
 pub(crate) async fn list<'e>(ex: impl SqliteExecutor<'e>) -> Result<Vec<RoleView>> {
     sqlx::query_as(

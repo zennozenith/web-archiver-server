@@ -6,7 +6,8 @@ use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqliteExecut
 use crate::{
     db::{
         content::ContentId,
-        helper::{Cursor, CursorPage, id_type},
+        cursor::{Cursor, CursorPage},
+        ids::id_type,
         page::{self, PageId},
     },
     infra::Blake3Hash,

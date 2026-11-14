@@ -3,7 +3,7 @@
 use serde::Serialize;
 use sqlx::{FromRow, Result, SqliteExecutor, SqlitePool};
 
-use crate::{db::helper::id_type, error::AppError};
+use crate::{db::ids::id_type, error::AppError};
 
 id_type! {
     /// Primary key of a collection.

@@ -168,7 +168,7 @@ macro_rules! impl_from_limit {
         }
     )*};
 }
-impl_from_limit!(u32, u64, usize);
+impl_from_limit!(u32, u64, usize, i64);
 
 impl From<Limit> for NonZeroU32 {
     fn from(l: Limit) -> Self {

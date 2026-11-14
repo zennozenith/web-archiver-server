@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::DatabaseSettings,
-    util::time::{DAY_MS, now_ms},
+    util::time::{days_ms, now_ms},
 };
 
 pub(crate) mod api_key;
@@ -16,8 +16,12 @@ pub(crate) mod auth;
 pub(crate) mod capture;
 pub(crate) mod collection;
 pub(crate) mod content;
-pub(crate) mod helper;
+pub(crate) mod create;
+pub(crate) mod cursor;
+pub(crate) mod group;
+pub(crate) mod ids;
 pub(crate) mod page;
+pub(crate) mod patch;
 pub(crate) mod pending;
 pub(crate) mod permission;
 pub(crate) mod profile;
@@ -60,7 +64,7 @@ pub(crate) fn spawn_cleanup(pool: SqlitePool, shutdown: CancellationToken) -> Jo
                 _ = tick.tick() => {}
             }
             let now = now_ms();
-            let cutoff = |days: i64| now.saturating_sub(days.saturating_mul(DAY_MS));
+            let cutoff = |days: i64| now.saturating_sub(days_ms(days));
 
             let jobs = [
                 ("DELETE FROM sessions WHERE expires_at < ?", cutoff(30)),

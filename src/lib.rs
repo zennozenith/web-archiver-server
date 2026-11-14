@@ -12,15 +12,15 @@ use crate::{
 };
 
 mod app;
-mod auth;
 mod config;
 mod error;
+mod identity;
 mod prelude;
 
 mod db;
-mod http;
 mod infra;
 mod service;
+mod transport;
 mod util;
 
 /// Helpers shared with the administrative CLI.

@@ -1,9 +1,9 @@
 use sqlx::SqlitePool;
 
 use crate::{
-    auth::ClientInfo,
     db::{self, auth::NewLoginAttempt},
     error::AppError,
+    identity::ClientInfo,
 };
 
 /// Records login attempts for one `login` call. Logging is best effort: a

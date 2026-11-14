@@ -1,19 +1,19 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Duration};
 
 use secrecy::ExposeSecret;
 use sqlx::SqlitePool;
 
 use crate::{
-    auth::{AuthMethod, AuthUser, Credential, Permission},
     db,
     error::{AppError, Result},
+    identity::{AuthMethod, AuthUser, Credential, Permission},
     infra::sha256_hex,
-    util::time::now_ms,
+    util::time::{duration_ms, now_ms},
 };
 
 /// Only write `last_used_at` when it is older than this, so ordinary GETs
 /// don't take SQLite's single write lock.
-const TOUCH_INTERVAL_MS: i64 = 5 * 60 * 1000;
+const TOUCH_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 pub(crate) async fn authenticate(pool: &SqlitePool, cred: Credential) -> Result<AuthUser> {
     let now = now_ms();
@@ -23,7 +23,7 @@ pub(crate) async fn authenticate(pool: &SqlitePool, cred: Credential) -> Result<
                 .await?
                 .ok_or(AppError::Unauthorized)?;
 
-            if now.saturating_sub(hit.last_used_at) > TOUCH_INTERVAL_MS {
+            if now.saturating_sub(hit.last_used_at) > duration_ms(TOUCH_INTERVAL) {
                 db::auth::touch_session(pool, &hit.session_public_id, now).await?;
             }
 
