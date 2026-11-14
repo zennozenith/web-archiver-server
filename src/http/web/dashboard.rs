@@ -5,17 +5,17 @@ use axum::extract::State;
 
 use crate::{
     app::AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     db::page::stats,
     http::{
-        extract::web_user::WebUser,
-        htmx::{PageError, Render},
+        htmx::Render,
         web::{
             library,
             view::{NavGroup, NavItem, NavProvider, Section, Shell, icons},
             view_archive::{LinkCard, PendingView, StatCard, TagRow},
         },
     },
+    prelude::*,
     service,
     util::limit::Limit,
 };
@@ -78,8 +78,8 @@ impl NavProvider for LibraryDashboard {
 
 pub(super) async fn page(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<DashboardTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<DashboardTpl>> {
     let totals = stats(&ctx.db, user.id).await?;
     let recent = service::page::list(
         &ctx,

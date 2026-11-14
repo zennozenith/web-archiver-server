@@ -9,15 +9,8 @@ use crate::{
     AppState,
     auth::{ClientInfo, LoginCredentials, NewAccount},
     error::AppError,
-    http::{
-        cookie::SessionCookie,
-        htmx::ActionError,
-        web::{
-            alert::Alert,
-            error::WebError,
-            form::{WebForm, require_htmx},
-        },
-    },
+    http::{cookie::SessionCookie, extract::body::AppForm, web::alert::Alert},
+    prelude::*,
     service,
     util::NonEmptyString,
 };
@@ -41,20 +34,16 @@ pub(super) struct LoginForm {
 pub(super) async fn login(
     State(ctx): State<AppState>,
     client: ClientInfo,
-    WebForm(form): WebForm<LoginForm>,
-) -> Result<Response, WebError> {
+    AppForm(form): AppForm<LoginForm>,
+) -> Result<Response> {
     let creds = LoginCredentials::new(&form.identifier, form.password);
     let token = service::auth::login(&ctx, &client, creds).await?;
-    Ok(session::sign_in(&token)?)
+    session::sign_in(&token)
 }
 
 /// Always ends with a cleared cookie and a redirect, even if the session was
 /// already gone, so logout is idempotent.
-pub(super) async fn logout(
-    State(ctx): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Response, ActionError> {
-    require_htmx(&headers)?;
+pub(super) async fn logout(State(ctx): State<AppState>, headers: HeaderMap) -> Result<Response> {
     if let Some(token) = SessionCookie::get(&headers) {
         service::auth::logout(&ctx, token).await?;
     }
@@ -75,8 +64,8 @@ pub(super) struct RegisterForm {
 
 pub(super) async fn register(
     State(ctx): State<AppState>,
-    WebForm(form): WebForm<RegisterForm>,
-) -> Result<Alert, WebError> {
+    AppForm(form): AppForm<RegisterForm>,
+) -> Result<Alert> {
     let account = NewAccount {
         email: form.email,
         username: NonEmptyString::non_empty(&form.username),
@@ -103,8 +92,8 @@ pub(super) struct VerifyForm {
 
 pub(super) async fn verify(
     State(ctx): State<AppState>,
-    WebForm(form): WebForm<VerifyForm>,
-) -> Result<Alert, WebError> {
+    AppForm(form): AppForm<VerifyForm>,
+) -> Result<Alert> {
     let token = parse_token(&form.token)?;
     service::auth::verify_email(&ctx.db, token).await?;
 
@@ -122,8 +111,8 @@ pub(super) struct ForgotForm {
 /// can't be used to enumerate accounts.
 pub(super) async fn forgot(
     State(ctx): State<AppState>,
-    WebForm(form): WebForm<ForgotForm>,
-) -> Result<Alert, WebError> {
+    AppForm(form): AppForm<ForgotForm>,
+) -> Result<Alert> {
     service::auth::forgot_password(&ctx, form.email).await?;
 
     Ok(Alert::success(
@@ -139,8 +128,8 @@ pub(super) struct ResetForm {
 
 pub(super) async fn reset(
     State(ctx): State<AppState>,
-    WebForm(form): WebForm<ResetForm>,
-) -> Result<Alert, WebError> {
+    AppForm(form): AppForm<ResetForm>,
+) -> Result<Alert> {
     let token = parse_token(&form.token)?;
     service::auth::reset_password(&ctx.db, token, form.new_password).await?;
 

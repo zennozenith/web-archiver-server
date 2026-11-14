@@ -5,16 +5,16 @@ use axum::extract::State;
 
 use crate::{
     AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     db::role::RoleSummary,
     http::{
-        extract::web_user::WebUser,
-        htmx::{PageError, Render},
+        htmx::Render,
         web::{
             account::AccountOverview,
             view::{Section, Shell, pct_encode, role_class},
         },
     },
+    prelude::*,
     service::admin,
 };
 
@@ -88,10 +88,7 @@ pub(crate) struct RolesTpl {
     can_users: bool,
 }
 
-pub(super) async fn page(
-    State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<RolesTpl>, PageError> {
+pub(super) async fn page(State(ctx): State<AppState>, user: AuthUser) -> Result<Render<RolesTpl>> {
     let catalog = admin::role_catalog(&ctx, &user).await?;
     let cards: Vec<RoleCard> = catalog.roles.into_iter().map(RoleCard::from).collect();
     let matrix = catalog

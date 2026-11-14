@@ -10,15 +10,14 @@ use serde::Deserialize;
 
 use crate::{
     app::AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     db::collection::CollectionId,
     error::Result,
     http::{
-        extract::{body::AppPath, web_user::WebUser},
-        htmx::{ActionError, Fragments, PageError, Render, ToastKind},
+        extract::body::{AppForm, AppPath},
+        htmx::{Fragments, Render, ToastKind},
         web::{
             dashboard::LibraryDashboard,
-            form::ActionForm,
             library,
             view::{Section, Shell},
             view_archive::{CollectionCard, LinkCard},
@@ -68,8 +67,8 @@ pub(super) struct CollectionsTpl {
 
 pub(super) async fn index(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<CollectionsTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<CollectionsTpl>> {
     let collections = service::collection::list(&ctx, &user)
         .await?
         .into_iter()
@@ -93,9 +92,9 @@ pub(super) struct CollectionTpl {
 
 pub(super) async fn show(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<CollectionId>,
-) -> Result<Render<CollectionTpl>, PageError> {
+) -> Result<Render<CollectionTpl>> {
     let collection = service::collection::get(&ctx, &user, id).await?;
     let links = library::load_collection(&ctx, &user, id, PAGE_LINKS).await?;
     Ok(Render(CollectionTpl {
@@ -128,8 +127,8 @@ fn form_shell(user: &crate::auth::AuthUser) -> Shell {
 
 pub(super) async fn new_form(
     State(_ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<CollectionFormTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<CollectionFormTpl>> {
     Ok(Render(CollectionFormTpl {
         shell: form_shell(&user),
         form_title: "New collection",
@@ -147,9 +146,9 @@ pub(super) async fn new_form(
 
 pub(super) async fn edit_form(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<CollectionId>,
-) -> Result<Render<CollectionFormTpl>, PageError> {
+) -> Result<Render<CollectionFormTpl>> {
     let collection = service::collection::get(&ctx, &user, id).await?;
     Ok(Render(CollectionFormTpl {
         shell: form_shell(&user),
@@ -168,30 +167,30 @@ pub(super) async fn edit_form(
 
 pub(super) async fn create(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-    ActionForm(form): ActionForm<CollectionForm>,
-) -> Result<Fragments, ActionError> {
+    user: AuthUser,
+    AppForm(form): AppForm<CollectionForm>,
+) -> Result<Fragments> {
     service::collection::create(&ctx, &user, &form.fields()).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Collection created")?)
+    Fragments::new().toast(ToastKind::Success, "Collection created")
 }
 
 pub(super) async fn update(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<CollectionId>,
-    ActionForm(form): ActionForm<CollectionForm>,
-) -> Result<Fragments, ActionError> {
+    AppForm(form): AppForm<CollectionForm>,
+) -> Result<Fragments> {
     service::collection::update(&ctx, &user, id, &form.fields()).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Collection updated")?)
+    Fragments::new().toast(ToastKind::Success, "Collection updated")
 }
 
 pub(super) async fn remove(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<CollectionId>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     service::collection::delete(&ctx, &user, id).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Collection deleted")?)
+    Fragments::new().toast(ToastKind::Success, "Collection deleted")
 }
 
 #[derive(Debug, Deserialize)]
@@ -202,10 +201,10 @@ pub(super) struct SharingForm {
 
 pub(super) async fn sharing(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<CollectionId>,
-    ActionForm(form): ActionForm<SharingForm>,
-) -> Result<Fragments, ActionError> {
+    AppForm(form): AppForm<SharingForm>,
+) -> Result<Fragments> {
     let public = form
         .public
         .as_deref()
@@ -216,7 +215,7 @@ pub(super) async fn sharing(
     } else {
         "Collection made private"
     };
-    Ok(Fragments::new().toast(ToastKind::Success, message)?)
+    Fragments::new().toast(ToastKind::Success, message)
 }
 
 #[derive(Debug, Template)]
@@ -230,7 +229,7 @@ pub(super) struct PublicCollectionTpl {
 pub(super) async fn public(
     State(ctx): State<AppState>,
     AppPath(id): AppPath<CollectionId>,
-) -> Result<Render<PublicCollectionTpl>, PageError> {
+) -> Result<Render<PublicCollectionTpl>> {
     let (collection, items) = service::collection::public_links(&ctx, id, PAGE_LINKS).await?;
     Ok(Render(PublicCollectionTpl {
         shell: Shell::public("Shared collection"),

@@ -6,11 +6,10 @@ use serde::Deserialize;
 
 use super::HOME;
 use crate::{
+    auth::AuthUser,
     error::AppError,
-    http::{
-        extract::{body::AppQuery, web_user::WebUser},
-        htmx::Render,
-    },
+    http::{extract::body::AppQuery, htmx::Render},
+    prelude::*,
 };
 
 // ------------------------------------------------------------------ templates
@@ -62,7 +61,7 @@ fn token_from(AppQuery(q): AppQuery<TokenQuery>) -> String {
 }
 
 /// Renders `page`, or sends already signed-in users home.
-fn guest_only(user: &Result<WebUser, AppError>, page: impl Template) -> Response {
+fn guest_only(user: &Result<AuthUser, AppError>, page: impl Template) -> Response {
     if user.is_ok() {
         Redirect::to(HOME).into_response()
     } else {
@@ -72,11 +71,11 @@ fn guest_only(user: &Result<WebUser, AppError>, page: impl Template) -> Response
 
 // ------------------------------------------------------------------- handlers
 
-pub(super) async fn login(user: Result<WebUser, AppError>) -> Response {
+pub(super) async fn login(user: Result<AuthUser, AppError>) -> Response {
     guest_only(&user, LoginTpl { title: "Sign in" })
 }
 
-pub(super) async fn register(user: Result<WebUser, AppError>) -> Response {
+pub(super) async fn register(user: Result<AuthUser, AppError>) -> Response {
     guest_only(
         &user,
         RegisterTpl {

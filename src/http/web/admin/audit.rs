@@ -6,15 +6,16 @@ use serde::Deserialize;
 
 use crate::{
     AppState,
-    auth::AuditEntry,
+    auth::{AuditEntry, AuthUser},
     http::{
-        extract::{body::AppQuery, web_user::WebUser},
-        htmx::{ActionError, PageError, Render},
+        extract::body::AppQuery,
+        htmx::Render,
         web::{
             account::AccountOverview,
             view::{Section, Shell, Stamp, pct_encode},
         },
     },
+    prelude::*,
     service::admin,
 };
 
@@ -110,9 +111,9 @@ pub(crate) struct AuditTpl {
 
 pub(super) async fn page(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<AuditQuery>,
-) -> Result<Render<AuditTpl>, PageError> {
+) -> Result<Render<AuditTpl>> {
     let audit = load(&ctx, &user, &query.q, None).await?;
     Ok(Render(AuditTpl {
         shell: Shell::new::<AccountOverview>(&user, Section::Audit),
@@ -130,9 +131,9 @@ pub(crate) struct AuditRowsTpl {
 /// Fragment: filtered rows (replaces the tbody) or the next older batch.
 pub(super) async fn rows(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<AuditQuery>,
-) -> Result<Render<AuditRowsTpl>, ActionError> {
+) -> Result<Render<AuditRowsTpl>> {
     Ok(Render(AuditRowsTpl {
         audit: load(&ctx, &user, &query.q, query.before()).await?,
     }))

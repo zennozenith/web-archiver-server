@@ -15,8 +15,8 @@
 //! * Routes that serve both full pages and fragments extract [`HtmxRequest`]
 //!   and call [`HtmxRequest::render_tpl`]; the response then carries a `Vary`
 //!   header so caches key on the htmx request headers.
-//! * Full-page routes return `Result<_, PageError>`; htmx action routes
-//!   return `Result<_, ActionError>`.
+//! * Full-page routes return `Result<_>`; htmx action routes
+//!   return `Result<_>`.
 //! * Server errors (5xx) are logged and shown to the user with a generic
 //!   message; internal details never reach the client.
 

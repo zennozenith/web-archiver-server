@@ -7,14 +7,14 @@ use crate::{
     auth::{ApiKeyView, AuthUser, NewApiKey},
     error::AppError,
     http::{
-        extract::{body::AppPath, web_user::WebUser},
-        htmx::{ActionError, Fragments, PageError, Render, ToastKind},
+        extract::body::{AppForm, AppPath},
+        htmx::{Fragments, Render, ToastKind},
         web::{
             account::overview::AccountOverview,
-            form::ActionForm,
             view::{Section, Shell, Stamp},
         },
     },
+    prelude::*,
     service::me,
 };
 
@@ -85,10 +85,7 @@ struct NewKeyTpl {
     key: String,
 }
 
-pub(super) async fn page(
-    State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<KeysTpl>, PageError> {
+pub(super) async fn page(State(ctx): State<AppState>, user: AuthUser) -> Result<Render<KeysTpl>> {
     let scopes = me::available_scopes(&ctx, &user)
         .await?
         .into_iter()
@@ -132,32 +129,32 @@ impl From<Vec<(String, String)>> for KeyForm {
 
 pub(super) async fn create(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-    ActionForm(pairs): ActionForm<Vec<(String, String)>>,
-) -> Result<Fragments, ActionError> {
+    user: AuthUser,
+    AppForm(pairs): AppForm<Vec<(String, String)>>,
+) -> Result<Fragments> {
     let form = KeyForm::from(pairs);
     let request = NewApiKey::new(&form.name, form.scopes, form.days)?;
     let created = me::create_api_key(&ctx, &user, request).await?;
 
-    Ok(Fragments::new()
+    Fragments::new()
         .push(&KeyRowsTpl {
             keys: load_keys(&ctx, &user).await?,
         })?
         .push(&NewKeyTpl {
             key: created.key.expose_secret().to_owned(),
         })?
-        .toast(ToastKind::Success, "API key created")?)
+        .toast(ToastKind::Success, "API key created")
 }
 
 pub(super) async fn revoke(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(public_id): AppPath<String>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     me::revoke_api_key(&ctx, &user, &public_id).await?;
-    Ok(Fragments::new()
+    Fragments::new()
         .push(&KeyRowsTpl {
             keys: load_keys(&ctx, &user).await?,
         })?
-        .toast(ToastKind::Success, "API key revoked")?)
+        .toast(ToastKind::Success, "API key revoked")
 }

@@ -10,18 +10,14 @@ use serde::Deserialize;
 
 use crate::{
     app::AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     db::pending::{PendingId, PendingStatus},
     error::Result,
     http::{
-        extract::{
-            body::{AppPath, AppQuery},
-            web_user::WebUser,
-        },
-        htmx::{ActionError, Fragments, PageError, Render, ToastKind},
+        extract::body::{AppForm, AppPath, AppQuery},
+        htmx::{Fragments, Render, ToastKind},
         web::{
             dashboard::LibraryDashboard,
-            form::ActionForm,
             view::{Section, Shell},
             view_archive::PendingView,
         },
@@ -54,9 +50,9 @@ pub(super) struct PendingTpl {
 
 pub(super) async fn index(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<PendingQuery>,
-) -> Result<Render<PendingTpl>, PageError> {
+) -> Result<Render<PendingTpl>> {
     let items = service::pending::list(
         &ctx,
         &user,
@@ -96,11 +92,11 @@ fn split_tags(raw: &str) -> Vec<String> {
 
 pub(super) async fn create(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-    ActionForm(form): ActionForm<CreatePendingForm>,
-) -> Result<Fragments, ActionError> {
+    user: AuthUser,
+    AppForm(form): AppForm<CreatePendingForm>,
+) -> Result<Fragments> {
     service::pending::create(&ctx, &user, &form.url, &split_tags(&form.tags)).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Added to the queue")?)
+    Fragments::new().toast(ToastKind::Success, "Added to the queue")
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,18 +128,18 @@ fn parse_bulk(raw: &str) -> Vec<(String, Vec<String>)> {
 
 pub(super) async fn bulk(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-    ActionForm(form): ActionForm<BulkForm>,
-) -> Result<Fragments, ActionError> {
+    user: AuthUser,
+    AppForm(form): AppForm<BulkForm>,
+) -> Result<Fragments> {
     let items = parse_bulk(&form.items);
     let report = service::pending::bulk_create(&ctx, &user, &items).await?;
-    Ok(Fragments::new().toast(
+    Fragments::new().toast(
         ToastKind::Success,
         &format!(
             "Added {} URLs ({} duplicates, {} invalid)",
             report.created, report.duplicates, report.invalid
         ),
-    )?)
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,10 +153,10 @@ pub(super) struct PatchPendingForm {
 
 pub(super) async fn update(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PendingId>,
-    ActionForm(form): ActionForm<PatchPendingForm>,
-) -> Result<Fragments, ActionError> {
+    AppForm(form): AppForm<PatchPendingForm>,
+) -> Result<Fragments> {
     service::pending::patch(
         &ctx,
         &user,
@@ -170,25 +166,25 @@ pub(super) async fn update(
         Some(&split_tags(&form.tags)),
     )
     .await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Queue item updated")?)
+    Fragments::new().toast(ToastKind::Success, "Queue item updated")
 }
 
 pub(super) async fn remove(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PendingId>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     service::pending::delete(&ctx, &user, id).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Removed from the queue")?)
+    Fragments::new().toast(ToastKind::Success, "Removed from the queue")
 }
 
 pub(super) async fn retry(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PendingId>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     service::pending::retry(&ctx, &user, id).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Queued for retry")?)
+    Fragments::new().toast(ToastKind::Success, "Queued for retry")
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,14 +194,14 @@ pub(super) struct ClearQuery {
 
 pub(super) async fn clear(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<ClearQuery>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     let deleted = service::pending::clear(&ctx, &user, query.status).await?;
-    Ok(Fragments::new().toast(
+    Fragments::new().toast(
         ToastKind::Success,
         &format!("Deleted {deleted} queued items"),
-    )?)
+    )
 }
 
 pub(crate) fn router() -> Router<AppState> {

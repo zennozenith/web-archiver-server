@@ -117,9 +117,9 @@ impl AuthUser {
         }
     }
 
-    pub(crate) fn permissions(&self) -> impl Iterator<Item = &str> {
-        self.permissions.iter().map(String::as_str)
-    }
+    // pub(crate) fn permissions(&self) -> impl Iterator<Item = &str> {
+    //     self.permissions.iter().map(String::as_str)
+    // }
 }
 
 /// The columns both credential paths share.

@@ -14,20 +14,17 @@ use crate::{
     error::AppError,
     http::{
         dto::admin::StatusRequest,
-        extract::{
-            body::{AppPath, AppQuery},
-            web_user::WebUser,
-        },
-        htmx::{ActionError, Fragments, HxHeaders, PageError, Render, ToastKind},
+        extract::body::{AppForm, AppPath, AppQuery},
+        htmx::{Fragments, HxHeaders, Render, ToastKind},
         web::{
             account::AccountOverview,
-            form::ActionForm,
             view::{
                 Caps, PAGE_SIZE, Pager, Section, Shell, Stamp, StatusOption, UserItem, pct_encode,
                 status_options,
             },
         },
     },
+    prelude::*,
     service::admin,
     util::time::now_ms,
 };
@@ -134,9 +131,9 @@ pub(crate) struct UsersTpl {
 
 pub(super) async fn page(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<ListQuery>,
-) -> Result<Render<UsersTpl>, PageError> {
+) -> Result<Render<UsersTpl>> {
     let table = load_table(&ctx, &user, &query).await?;
     let roles = admin::role_names(&ctx, &user)
         .await?
@@ -167,9 +164,9 @@ pub(crate) struct UsersTableTpl {
 /// Fragment: table + pager for the current filters (target `#users-results`).
 pub(super) async fn table(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<ListQuery>,
-) -> Result<Render<UsersTableTpl>, ActionError> {
+) -> Result<Render<UsersTableTpl>> {
     Ok(Render(UsersTableTpl {
         table: load_table(&ctx, &user, &query).await?,
     }))
@@ -273,9 +270,9 @@ async fn build_modal(
 
 pub(super) async fn manage(
     State(ctx): State<AppState>,
-    WebUser(viewer): WebUser,
+    viewer: AuthUser,
     AppPath(public_id): AppPath<String>,
-) -> Result<Render<UserModalTpl>, ActionError> {
+) -> Result<Render<UserModalTpl>> {
     Ok(Render(build_modal(&ctx, &viewer, &public_id).await?))
 }
 
@@ -312,10 +309,10 @@ async fn refreshed(
 
 pub(super) async fn set_status(
     State(ctx): State<AppState>,
-    WebUser(actor): WebUser,
+    actor: AuthUser,
     AppPath(public_id): AppPath<String>,
-    ActionForm(form): ActionForm<StatusRequest>,
-) -> Result<Fragments, ActionError> {
+    AppForm(form): AppForm<StatusRequest>,
+) -> Result<Fragments> {
     admin::set_status(
         &ctx,
         &actor,
@@ -324,35 +321,35 @@ pub(super) async fn set_status(
         form.reason.as_deref(),
     )
     .await?;
-    Ok(refreshed(&ctx, &actor, &public_id, "Status updated").await?)
+    refreshed(&ctx, &actor, &public_id, "Status updated").await
 }
 
 pub(super) async fn grant(
     State(ctx): State<AppState>,
-    WebUser(actor): WebUser,
+    actor: AuthUser,
     AppPath((public_id, role)): AppPath<(String, String)>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     admin::grant_role(&ctx, &actor, &public_id, &role).await?;
-    Ok(refreshed(&ctx, &actor, &public_id, &format!("Granted {role}")).await?)
+    refreshed(&ctx, &actor, &public_id, &format!("Granted {role}")).await
 }
 
 pub(super) async fn revoke(
     State(ctx): State<AppState>,
-    WebUser(actor): WebUser,
+    actor: AuthUser,
     AppPath((public_id, role)): AppPath<(String, String)>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     admin::revoke_role(&ctx, &actor, &public_id, &role).await?;
-    Ok(refreshed(&ctx, &actor, &public_id, &format!("Revoked {role}")).await?)
+    refreshed(&ctx, &actor, &public_id, &format!("Revoked {role}")).await
 }
 
 pub(super) async fn delete(
     State(ctx): State<AppState>,
-    WebUser(actor): WebUser,
+    actor: AuthUser,
     AppPath(public_id): AppPath<String>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     admin::delete_user(&ctx, &actor, &public_id).await?;
-    Ok(Fragments::new()
+    Fragments::new()
         .push(&UserRowGone { public_id })?
         .hx(HxHeaders::new().trigger(CLOSE_MODAL))
-        .toast(ToastKind::Success, "User deleted")?)
+        .toast(ToastKind::Success, "User deleted")
 }

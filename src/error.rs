@@ -59,7 +59,7 @@ pub enum AppError {
     InvalidCredentials,
 
     // 403
-    #[error("you do not have permission: {0}")]
+    #[error("Forbidden: {0}")]
     Forbidden(#[from] ForbiddenReason),
 
     // 404
@@ -175,7 +175,7 @@ pub enum ForbiddenReason {
     Permission,
     #[error("keys cannot mint more keys")]
     ApiKeyMint,
-    #[error("Csrf")]
+    #[error("request must come from the app")]
     Csrf,
     #[error("unknown reason, report admin")]
     Unknown,

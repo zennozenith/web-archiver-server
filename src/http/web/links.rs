@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use crate::{
     app::AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     db::{
         collection::CollectionId,
         helper::FieldPatch,
@@ -19,15 +19,11 @@ use crate::{
     },
     error::{AppError, Result},
     http::{
-        extract::{
-            body::{AppPath, AppQuery},
-            web_user::WebUser,
-        },
-        htmx::{ActionError, Fragments, PageError, Render, ToastKind},
+        extract::body::{AppForm, AppPath, AppQuery},
+        htmx::{Fragments, Render, ToastKind},
         multipart::parse_page_upload,
         web::{
             dashboard::LibraryDashboard,
-            form::{ActionForm, require_htmx},
             library::{self, LinkQuery},
             view::{Section, Shell},
             view_archive::{CaptureView, CollectionChoice, HighlightView, LinkCard},
@@ -68,9 +64,9 @@ async fn page(
 
 pub(super) async fn index(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<LinkQuery>,
-) -> Result<Render<LinksTpl>, PageError> {
+) -> Result<Render<LinksTpl>> {
     Ok(Render(page(&ctx, &user, &query, Section::Links).await?))
 }
 
@@ -84,9 +80,9 @@ pub(super) struct LinkGridTpl {
 
 pub(super) async fn search(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<LinkQuery>,
-) -> Result<Render<LinkGridTpl>, ActionError> {
+) -> Result<Render<LinkGridTpl>> {
     let filters = query.filters();
     let (links, next_cursor) = library::load(&ctx, &user, &query).await?;
     Ok(Render(LinkGridTpl {
@@ -105,8 +101,8 @@ pub(super) struct PinnedTpl {
 
 pub(super) async fn pinned(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<PinnedTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<PinnedTpl>> {
     let query = LinkQuery {
         pinned_only: true,
         ..Default::default()
@@ -127,8 +123,8 @@ pub(super) struct UnorganizedTpl {
 
 pub(super) async fn unorganized(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<UnorganizedTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<UnorganizedTpl>> {
     let query = LinkQuery {
         unorganized_only: true,
         ..Default::default()
@@ -155,9 +151,9 @@ pub(super) struct LinkDetailTpl {
 
 pub(super) async fn detail(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PageId>,
-) -> Result<Render<LinkDetailTpl>, PageError> {
+) -> Result<Render<LinkDetailTpl>> {
     let detail = service::page::get(&ctx, &user, id).await?;
     let tags_csv = detail
         .page
@@ -193,25 +189,22 @@ pub(super) async fn detail(
 
 pub(super) async fn create(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-    headers: HeaderMap,
+    user: AuthUser,
     multipart: std::result::Result<Multipart, MultipartRejection>,
-) -> Result<Fragments, ActionError> {
-    require_htmx(&headers)?;
+) -> Result<Fragments> {
     let upload = parse_page_upload(multipart?).await?;
     service::page::create(&ctx, &user, upload).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Link saved")?)
+    Fragments::new().toast(ToastKind::Success, "Link saved")
 }
 
 /// Multipart edit form. Absent text fields fall back to the current values.
 pub(super) async fn update(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PageId>,
     headers: HeaderMap,
     multipart: std::result::Result<Multipart, MultipartRejection>,
-) -> Result<Fragments, ActionError> {
-    require_htmx(&headers)?;
+) -> Result<Fragments> {
     let mut mp = multipart?;
 
     let mut title: Option<String> = None;
@@ -262,26 +255,26 @@ pub(super) async fn update(
         service::page::set_thumbnail(&ctx, &user, id, Some(Image::new(format, bytes)?)).await?;
     }
 
-    Ok(Fragments::new().toast(ToastKind::Success, "Link updated")?)
+    Fragments::new().toast(ToastKind::Success, "Link updated")
 }
 
 pub(super) async fn remove(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PageId>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     service::page::delete(&ctx, &user, id).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Link deleted")?)
+    Fragments::new().toast(ToastKind::Success, "Link deleted")
 }
 
 pub(super) async fn pin(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PageId>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     let pinned = service::page::toggle_pin(&ctx, &user, id).await?;
     let message = if pinned { "Pinned" } else { "Unpinned" };
-    Ok(Fragments::new().toast(ToastKind::Success, message)?)
+    Fragments::new().toast(ToastKind::Success, message)
 }
 
 #[derive(Debug, Deserialize)]
@@ -292,20 +285,20 @@ pub(super) struct HighlightForm {
 
 pub(super) async fn add_highlight(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PageId>,
-    ActionForm(form): ActionForm<HighlightForm>,
-) -> Result<Fragments, ActionError> {
+    AppForm(form): AppForm<HighlightForm>,
+) -> Result<Fragments> {
     service::page::add_highlight(&ctx, &user, id, &form.text, form.color.as_deref()).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Highlight saved")?)
+    Fragments::new().toast(ToastKind::Success, "Highlight saved")
 }
 
 pub(super) async fn update_highlight(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath((page_id, highlight_id)): AppPath<(PageId, i64)>,
-    ActionForm(form): ActionForm<HighlightForm>,
-) -> Result<Fragments, ActionError> {
+    AppForm(form): AppForm<HighlightForm>,
+) -> Result<Fragments> {
     let _ = page_id;
     service::page::update_highlight(
         &ctx,
@@ -315,16 +308,16 @@ pub(super) async fn update_highlight(
         form.color.as_deref(),
     )
     .await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Highlight updated")?)
+    Fragments::new().toast(ToastKind::Success, "Highlight updated")
 }
 
 pub(super) async fn delete_highlight(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath((_page_id, highlight_id)): AppPath<(PageId, i64)>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     service::page::delete_highlight(&ctx, &user, highlight_id).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Highlight removed")?)
+    Fragments::new().toast(ToastKind::Success, "Highlight removed")
 }
 
 pub(super) fn router() -> Router<AppState> {
@@ -345,9 +338,9 @@ pub(super) fn router() -> Router<AppState> {
 
 async fn redirect_latest_archive(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(id): AppPath<PageId>,
-) -> Result<axum::response::Response, ActionError> {
+) -> Result<axum::response::Response> {
     let capture =
         service::capture::latest_with_blob(&ctx, &user, id, crate::db::capture::CaptureBlob::Html)
             .await?;

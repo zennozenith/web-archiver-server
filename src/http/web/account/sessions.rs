@@ -6,13 +6,14 @@ use crate::{
     auth::{AuthUser, SessionView},
     error::AppError,
     http::{
-        extract::{body::AppPath, web_user::WebUser},
-        htmx::{ActionError, Fragments, PageError, Render, ToastKind},
+        extract::body::AppPath,
+        htmx::{Fragments, Render, ToastKind},
         web::{
             account::overview::AccountOverview,
             view::{Section, Shell, Stamp},
         },
     },
+    prelude::*,
     service::me,
 };
 
@@ -95,8 +96,8 @@ struct SessionRowsTpl {
 
 pub(super) async fn page(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<SessionsTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<SessionsTpl>> {
     Ok(Render(SessionsTpl {
         shell: Shell::new::<AccountOverview>(&user, Section::Sessions),
         sessions: load(&ctx, &user).await?,
@@ -105,13 +106,13 @@ pub(super) async fn page(
 
 pub(super) async fn revoke(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(public_id): AppPath<String>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     me::revoke_session(&ctx, &user, &public_id).await?;
-    Ok(Fragments::new()
+    Fragments::new()
         .push(&SessionRowsTpl {
             sessions: load(&ctx, &user).await?,
         })?
-        .toast(ToastKind::Success, "Session revoked")?)
+        .toast(ToastKind::Success, "Session revoked")
 }

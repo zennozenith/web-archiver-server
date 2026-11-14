@@ -10,17 +10,13 @@ use serde::Deserialize;
 
 use crate::{
     app::AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     error::{AppError, Result},
     http::{
-        extract::{
-            body::{AppPath, AppQuery},
-            web_user::WebUser,
-        },
-        htmx::{ActionError, Fragments, PageError, Render, ToastKind},
+        extract::body::{AppForm, AppPath, AppQuery},
+        htmx::{Fragments, Render, ToastKind},
         web::{
             dashboard::LibraryDashboard,
-            form::ActionForm,
             library,
             view::{Section, Shell},
             view_archive::TagRow,
@@ -64,10 +60,7 @@ async fn rows(ctx: &AppState, user: &crate::auth::AuthUser, query: &str) -> Resu
     Ok(rows)
 }
 
-pub(super) async fn index(
-    State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<TagsTpl>, PageError> {
+pub(super) async fn index(State(ctx): State<AppState>, user: AuthUser) -> Result<Render<TagsTpl>> {
     Ok(Render(TagsTpl {
         shell: Shell::new::<LibraryDashboard>(&user, Section::Tags),
         tags: rows(&ctx, &user, "").await?,
@@ -77,9 +70,9 @@ pub(super) async fn index(
 
 pub(super) async fn search(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppQuery(query): AppQuery<TagQuery>,
-) -> Result<Render<TagListTpl>, ActionError> {
+) -> Result<Render<TagListTpl>> {
     Ok(Render(TagListTpl {
         tags: rows(&ctx, &user, &query.q).await?,
     }))
@@ -95,9 +88,9 @@ pub(super) struct TagTpl {
 
 pub(super) async fn show(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(name): AppPath<String>,
-) -> Result<Render<TagTpl>, PageError> {
+) -> Result<Render<TagTpl>> {
     let tag = service::tag::find(&ctx, &user, &name)
         .await?
         .ok_or(AppError::NotFound("tag"))?;
@@ -118,11 +111,11 @@ pub(super) struct CreateTagForm {
 
 pub(super) async fn create(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-    ActionForm(form): ActionForm<CreateTagForm>,
-) -> Result<Fragments, ActionError> {
+    user: AuthUser,
+    AppForm(form): AppForm<CreateTagForm>,
+) -> Result<Fragments> {
     service::tag::create(&ctx, &user, &form.name, form.color.as_deref()).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Tag added")?)
+    Fragments::new().toast(ToastKind::Success, "Tag added")
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,10 +125,10 @@ pub(super) struct RenameTagForm {
 
 pub(super) async fn rename(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(name): AppPath<String>,
-    ActionForm(form): ActionForm<RenameTagForm>,
-) -> Result<Fragments, ActionError> {
+    AppForm(form): AppForm<RenameTagForm>,
+) -> Result<Fragments> {
     let id = resolve_id(&ctx, &user, &name).await?;
     service::tag::patch(
         &ctx,
@@ -145,17 +138,17 @@ pub(super) async fn rename(
         crate::db::helper::FieldPatch::Unchanged,
     )
     .await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Tag renamed")?)
+    Fragments::new().toast(ToastKind::Success, "Tag renamed")
 }
 
 pub(super) async fn remove(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
+    user: AuthUser,
     AppPath(name): AppPath<String>,
-) -> Result<Fragments, ActionError> {
+) -> Result<Fragments> {
     let id = resolve_id(&ctx, &user, &name).await?;
     service::tag::delete(&ctx, &user, id).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Tag deleted")?)
+    Fragments::new().toast(ToastKind::Success, "Tag deleted")
 }
 
 /// The web routes are keyed by tag name; actions need the numeric id.

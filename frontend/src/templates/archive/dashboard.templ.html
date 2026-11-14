@@ -10,7 +10,8 @@
 
 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
   {% for card in cards %}
-  <a href="{{ card.href }}" class="rounded-xl border border-line bg-surface p-4 transition-colors hover:border-brand/60">
+  <a href="{{ card.href }}"
+    class="rounded-xl border border-line bg-surface p-4 transition-colors hover:border-brand/60">
     <div class="text-xs font-semibold uppercase tracking-wider text-faint">{{ card.label }}</div>
     <div class="mt-1 font-display text-3xl font-semibold tabular-nums">{{ card.value }}</div>
   </a>
@@ -40,9 +41,12 @@
         <a class="link text-xs" href="/pending">Open</a>
       </div>
       {% if can_write %}
-      <form class="mt-3 flex flex-col gap-2" hx-post="/pending" hx-swap="none" @htmx:after:request="$ok($event) && $el.reset()">
-        <input type="url" name="url" required class="input input-sm w-full" placeholder="https://example.com/page" aria-label="URL to archive" />
-        <input type="text" name="tags" class="input input-sm w-full" placeholder="tags, comma separated" aria-label="Tags" />
+      <form class="mt-3 flex flex-col gap-2" hx-post="/pending" hx-swap="none"
+        @htmx:after:request="$ok($event) && $el.reset()">
+        <input type="url" name="url" required class="input input-sm w-full" placeholder="https://example.com/page"
+          aria-label="URL to archive" />
+        <input type="text" name="tags" class="input input-sm w-full" placeholder="tags, comma separated"
+          aria-label="Tags" />
         <button class="btn btn-primary btn-sm" type="submit">Add to queue</button>
       </form>
       {% endif %}
@@ -65,7 +69,8 @@
       </div>
       <div class="mt-3 flex flex-wrap gap-1.5">
         {% for tag in tags %}
-        <a href="{{ tag.href }}" class="badge badge-soft badge-ghost"># {{ tag.name }} <span class="tabular-nums text-faint">{{ tag.page_count }}</span></a>
+        <a href="{{ tag.href }}" class="badge badge-soft"># {{ tag.name }} <span class="tabular-nums text-faint">{{
+            tag.page_count }}</span></a>
         {% else %}
         <span class="text-sm text-dim">No tags yet.</span>
         {% endfor %}

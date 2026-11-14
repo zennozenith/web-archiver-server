@@ -3,17 +3,17 @@ use axum::extract::State;
 
 use crate::{
     AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     http::{
         dto::user::ProfileRequest,
-        extract::web_user::WebUser,
-        htmx::{ActionError, Fragments, PageError, Render, ToastKind},
+        extract::body::AppForm,
+        htmx::{Fragments, Render, ToastKind},
         web::{
             account::overview::{AccountOverview, Mine},
-            form::ActionForm,
             view::{Section, Shell, Stamp, UserItem},
         },
     },
+    prelude::*,
     service::me,
 };
 
@@ -41,8 +41,8 @@ pub(crate) struct ProfileTpl {
 
 pub(super) async fn page(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<ProfileTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<ProfileTpl>> {
     let data = me::get_me(&ctx, &user).await?;
     let me = UserItem::new(data.mine.user.clone(), &user.public_id);
 
@@ -78,9 +78,9 @@ pub(super) async fn page(
 /// The form posts every field, so it shares the API's request type.
 pub(super) async fn update(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-    ActionForm(form): ActionForm<ProfileRequest>,
-) -> Result<Fragments, ActionError> {
+    user: AuthUser,
+    AppForm(form): AppForm<ProfileRequest>,
+) -> Result<Fragments> {
     me::update_profile(&ctx, &user, form.into()).await?;
-    Ok(Fragments::new().toast(ToastKind::Success, "Profile saved")?)
+    Fragments::new().toast(ToastKind::Success, "Profile saved")
 }

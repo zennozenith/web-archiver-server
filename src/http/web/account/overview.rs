@@ -7,16 +7,16 @@ use axum::extract::State;
 use super::super::view::{RoleChip, Section, Shell, Stamp, UserItem};
 use crate::{
     AppState,
-    auth::Permission,
+    auth::{AuthUser, Permission},
     db::stats::{DayCount, UserCounts},
     http::{
-        extract::web_user::WebUser,
-        htmx::{PageError, Render},
+        htmx::Render,
         web::{
             admin::AuditItem,
             view::{NavGroup, NavItem, NavProvider, icons},
         },
     },
+    prelude::*,
     service,
 };
 
@@ -189,8 +189,8 @@ fn day_bars(days: Vec<DayCount>) -> Vec<DayBar> {
 
 pub(super) async fn page(
     State(ctx): State<AppState>,
-    WebUser(user): WebUser,
-) -> Result<Render<OverviewTpl>, PageError> {
+    user: AuthUser,
+) -> Result<Render<OverviewTpl>> {
     let overview = service::dashboard::overview(&ctx, &user).await?;
 
     let me = UserItem::new(overview.user, &user.public_id);

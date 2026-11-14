@@ -1,46 +1,26 @@
-//! Error types for the two kinds of route: full pages and htmx actions.
+//! Renders `AppError` for the HTML side of the app.
+//!
+//! Handlers and extractors just return `AppError`. `AppError::into_response`
+//! logs server errors once and attaches a sanitized `ErrorInfo`; this layer
+//! turns that into a toast, an error page, or leaves the JSON alone,
+//! depending on what the request is.
 
 use askama::Template;
 use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
+    extract::Request,
+    http::{HeaderMap, StatusCode, header as http_header},
+    middleware::Next,
+    response::{IntoResponse, Redirect, Response},
 };
 
-use super::{Fragments, HxHeaders, Render, ToastKind, with_redirect};
-use crate::prelude::*;
+use super::{Fragments, HtmxRequest, HxHeaders, Render, ToastKind, header, with_redirect};
+use crate::error::ErrorInfo;
 
-/// Where unauthenticated htmx requests are sent.
+/// Where unauthenticated users are sent.
 const LOGIN_PATH: &str = "/login";
 
-/// Message shown instead of internal details for server errors.
+/// Shown instead of the sanitized-but-terse message for server errors.
 const GENERIC_SERVER_MESSAGE: &str = "An unexpected error occurred. Please try again.";
-
-/// Message safe to show the user. Server errors are logged and replaced with
-/// a generic message so internals (SQL, paths) never leak.
-fn public_message(err: &AppError, status: StatusCode) -> String {
-    if status.is_server_error() {
-        tracing::error!(error = %err, %status, "request failed");
-        GENERIC_SERVER_MESSAGE.to_owned()
-    } else {
-        err.to_string()
-    }
-}
-
-macro_rules! impl_error_from {
-    ($ty:ident) => {
-        impl From<AppError> for $ty {
-            fn from(e: AppError) -> Self {
-                Self(e)
-            }
-        }
-
-        impl From<sqlx::Error> for $ty {
-            fn from(e: sqlx::Error) -> Self {
-                Self(AppError::Database(e))
-            }
-        }
-    };
-}
 
 #[derive(Debug, Template)]
 #[template(path = "error.templ.html")]
@@ -50,73 +30,106 @@ struct ErrorTpl {
     message: String,
 }
 
-/// Error for full-page routes: renders a standalone error page.
-#[derive(Debug)]
-pub(crate) struct PageError(AppError);
-impl_error_from!(PageError);
-
-impl IntoResponse for PageError {
-    fn into_response(self) -> Response {
-        let (status, ..) = self.0.parts();
-        let page = ErrorTpl {
-            title: "Something went wrong",
-            code: status.as_u16(),
-            message: public_message(&self.0, status),
-        };
-        (status, Render(page)).into_response()
-    }
+/// How the client wants to be told about a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Surface {
+    /// htmx action or fragment request: toast, leave the page untouched.
+    Toast,
+    /// Boosted link/form or history restore: htmx expects a whole page.
+    HxPage,
+    /// Plain browser navigation: error page, real HTTP redirects.
+    Page,
+    /// Not an HTML client: keep the JSON body.
+    Json,
 }
 
-/// Error for htmx action and fragment routes.
-///
-/// Answers with an error toast and `HX-Reswap: none` so the main target is
-/// left untouched. A 401 instead redirects the browser to the login page.
-#[derive(Debug)]
-pub(crate) struct ActionError(AppError);
-impl_error_from!(ActionError);
-
-impl From<axum::extract::rejection::FormRejection> for ActionError {
-    fn from(rej: axum::extract::rejection::FormRejection) -> Self {
-        Self(AppError::from(rej))
-    }
-}
-
-impl From<axum::extract::multipart::MultipartError> for ActionError {
-    fn from(err: axum::extract::multipart::MultipartError) -> Self {
-        Self(AppError::from(err))
-    }
-}
-
-impl From<axum::extract::multipart::MultipartRejection> for ActionError {
-    fn from(rej: axum::extract::multipart::MultipartRejection) -> Self {
-        Self(AppError::from(rej))
-    }
-}
-
-impl From<crate::util::ParseBoolError> for ActionError {
-    fn from(err: crate::util::ParseBoolError) -> Self {
-        Self(AppError::from(err))
-    }
-}
-
-impl From<crate::infra::FormatMismatch> for ActionError {
-    fn from(err: crate::infra::FormatMismatch) -> Self {
-        Self(AppError::from(err))
-    }
-}
-
-impl IntoResponse for ActionError {
-    fn into_response(self) -> Response {
-        let (status, ..) = self.0.parts();
-        if status == StatusCode::UNAUTHORIZED {
-            return with_redirect(status.into_response(), LOGIN_PATH);
+impl Surface {
+    fn detect(headers: &HeaderMap) -> Self {
+        let hx = HtmxRequest::from_headers(headers);
+        if hx.is_htmx && !hx.boosted && !hx.history_restore {
+            Self::Toast
+        } else if hx.is_htmx {
+            Self::HxPage
+        } else if accepts_html(headers) {
+            Self::Page
+        } else {
+            Self::Json
         }
+    }
+}
 
-        Fragments::new()
-            .status(status)
-            .hx(HxHeaders::new().reswap("none"))
-            .toast(ToastKind::Error, &public_message(&self.0, status))
-            // If even the toast fails to render, fall back to the plain error.
-            .map_or_else(IntoResponse::into_response, IntoResponse::into_response)
+fn accepts_html(headers: &HeaderMap) -> bool {
+    header::get(headers, http_header::ACCEPT.as_str()).is_some_and(|v| v.contains("text/html"))
+}
+
+/// Middleware for the HTML router only, so `/api` keeps pure JSON.
+pub(crate) async fn render_errors(req: Request, next: Next) -> Response {
+    let surface = Surface::detect(req.headers());
+    let mut res = next.run(req).await;
+
+    let Some(info) = res.extensions_mut().remove::<ErrorInfo>() else {
+        return res;
+    };
+
+    if surface == Surface::Json {
+        res.extensions_mut().insert(info);
+        return res;
+    }
+
+    let mut out = if info.status == StatusCode::UNAUTHORIZED {
+        login_redirect(surface)
+    } else if surface == Surface::Toast {
+        toast_response(&info)
+    } else {
+        page_response(&info)
+    };
+    header::set_vary(out.headers_mut());
+    out
+}
+
+fn login_redirect(surface: Surface) -> Response {
+    match surface {
+        Surface::Toast | Surface::HxPage => {
+            with_redirect(StatusCode::UNAUTHORIZED.into_response(), LOGIN_PATH)
+        }
+        Surface::Page | Surface::Json => Redirect::to(LOGIN_PATH).into_response(),
+    }
+}
+
+fn display_message(info: &ErrorInfo) -> String {
+    if info.status.is_server_error() {
+        GENERIC_SERVER_MESSAGE.to_owned()
+    } else {
+        info.message.clone()
+    }
+}
+
+fn toast_response(info: &ErrorInfo) -> Response {
+    let message = display_message(info);
+    Fragments::new()
+        .status(info.status)
+        .hx(HxHeaders::new().reswap("none"))
+        .toast(ToastKind::Error, &message)
+        .map_or_else(
+            |_| (info.status, message).into_response(),
+            IntoResponse::into_response,
+        )
+}
+
+fn page_response(info: &ErrorInfo) -> Response {
+    let page = ErrorTpl {
+        title: title_for(info.status),
+        code: info.status.as_u16(),
+        message: display_message(info),
+    };
+    (info.status, Render(page)).into_response()
+}
+
+fn title_for(status: StatusCode) -> &'static str {
+    match status {
+        StatusCode::NOT_FOUND => "Page not found",
+        StatusCode::FORBIDDEN => "Access denied",
+        s if s.is_server_error() => "Something went wrong",
+        _ => "Request failed",
     }
 }

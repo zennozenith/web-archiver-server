@@ -25,7 +25,7 @@ pub(crate) fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
 /// The `sid` cookie that carries the session token.
 ///
 /// `HttpOnly` keeps it away from scripts, and `SameSite=Lax` is the base layer
-/// of CSRF protection (the htmx header check in `WebForm` is the second).
+/// of CSRF protection (the htmx header check in `AppForm` is the second).
 pub(crate) struct SessionCookie;
 
 impl SessionCookie {

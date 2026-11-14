@@ -19,7 +19,6 @@ mod auth;
 mod collections;
 mod dashboard;
 mod error;
-mod form;
 mod library;
 mod links;
 mod pending;
@@ -27,7 +26,7 @@ mod tags;
 mod view;
 mod view_archive;
 
-use axum::{Router, response::Redirect, routing::get};
+use axum::{Router, middleware::from_fn, response::Redirect, routing::get};
 
 use crate::AppState;
 
@@ -36,7 +35,8 @@ pub(crate) fn router() -> Router<AppState> {
     let public = Router::new()
         // .route("/healthz", get(health))
         .merge(collections::public_router())
-        .merge(auth::router());
+        .merge(auth::router())
+        .layer(from_fn(error::inline_alerts)); // inner: 4xx -> alert
 
     // Login required
     let authed = Router::new()
@@ -51,6 +51,10 @@ pub(crate) fn router() -> Router<AppState> {
     // Admin role required (layer order: require_user first, then require_admin)
     let admin = Router::new().nest("/admin", admin::router());
 
-    public.merge(authed).merge(admin)
+    public
+        .merge(authed)
+        .merge(admin)
+        .layer(from_fn(error::require_htmx_for_writes))
+        .layer(from_fn(super::htmx::render_errors))
     // .fallback(not_found)
 }
