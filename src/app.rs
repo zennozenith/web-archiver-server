@@ -135,8 +135,8 @@ pub(super) fn app(state: AppState) -> Router {
 
     // Capture uploads can legitimately run for minutes; keep them outside the
     // default deadline and give the group its own longer one.
-    let long_running = Router::new()
-        .nest("/api", api::long_running())
+    let capture_routes = Router::new()
+        .nest("/api", api::capture_routes())
         .layer(deadline(CAPTURE_TIMEOUT));
 
     let request_id = request_id_header();
@@ -146,7 +146,7 @@ pub(super) fn app(state: AppState) -> Router {
     // `X-Request-Id` and is logged like any other response.
     let app = normal
         .merge(uploads)
-        .merge(long_running)
+        .merge(capture_routes)
         .layer(from_fn_with_state(
             Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
             shed_requests,

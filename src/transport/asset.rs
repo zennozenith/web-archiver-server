@@ -50,6 +50,10 @@ pub(crate) fn router() -> Router<AppState> {
             "/static/vite/vendored",
             ServeDir::new("static/vite/vendored").precompressed_br(),
         )
+        .nest_service(
+            "/static/vite/fonts",
+            ServeDir::new("static/vite/fonts").precompressed_br(),
+        )
         .route(
             "/static/vite/assets/{*path}",
             get(async |Path(path): Path<String>| ViteAssets::serve_embedded(&path)),

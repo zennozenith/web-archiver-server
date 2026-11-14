@@ -61,6 +61,14 @@ export default defineConfig({
         // entryFileNames: "[name].js", // stable name, no hash
         // chunkFileNames: "chunks/[name]-[hash].js",
         // assetFileNames: "assets/[name][extname]",
+        // assetFileNames: (assetInfo) => {
+        //   // Read from the new `names` array first, fall back to deprecated `name`
+        //   const name = assetInfo.names?.[0] ?? assetInfo.name ?? "";
+        //   if (name.endsWith(".woff2")) {
+        //     return "fonts/[name][extname]";
+        //   }
+        //   return "assets/[name]-[hash][extname]";
+        // },
       },
     },
     resolve: {
