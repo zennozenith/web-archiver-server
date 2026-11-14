@@ -3,7 +3,6 @@ use std::{future::Future, sync::Arc, time::Duration};
 use anyhow::Context as _;
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 use crate::{
     app::{AppState, RuntimeConfig},
@@ -22,28 +21,11 @@ mod prelude;
 mod db;
 mod infra;
 mod service;
+mod telemetry;
 mod transport;
 mod util;
 
-pub fn init_tracing() {
-    let default_level = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "info"
-    };
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                format!(
-                    "{crate_name}={default_level},tower_http=info,sqlx=warn",
-                    crate_name = env!("CARGO_CRATE_NAME"),
-                )
-                .into()
-            }),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-}
+pub use telemetry::{TelemetryGuard, init_tracing};
 
 pub async fn run() -> anyhow::Result<()> {
     let settings = Settings::load()?;
@@ -58,21 +40,34 @@ pub async fn run() -> anyhow::Result<()> {
 
     let result = serve(state, &settings, shutdown_signal()).await;
 
+    tracing::info!("server stopped, cleaning up");
     shutdown.cancel();
-    if let Err(e) = cleanup.await {
-        tracing::warn!("cleanup task failed: {e}");
+    if let Err(error) = cleanup.await {
+        tracing::warn!(%error, "cleanup task failed");
     }
     checkpoint(db.writer()).await;
+    tracing::info!("shutdown complete");
     result
 }
 
+/// One line describing the effective configuration, so "what was this
+/// instance running with?" is answerable from the logs alone. Never add
+/// secrets here (SMTP password, tokens): only facts safe to ship to a log
+/// aggregator.
 fn log_settings(settings: &Settings) {
-    tracing::debug!(
+    tracing::info!(
+        app_env = std::env::var("APP_ENV").unwrap_or_else(|_| "local".to_owned()),
         data_dir = %settings.data_dir.display(),
         public_url = %settings.public_base(),
         host = %settings.server.host,
         port = settings.server.port,
-        "settings loaded"
+        database = %settings.database.url,
+        db_read_connections = settings.database.read_connections,
+        csp = ?settings.server.csp,
+        db_slow_query_ms = settings.database.slow_query_ms,
+        smtp_configured = settings.mail.smtp.is_some(),
+        trusted_proxies = settings.server.trusted_proxies.len(),
+        "configuration loaded"
     );
 }
 
@@ -128,7 +123,7 @@ async fn serve(
     let local_addr = listener
         .local_addr()
         .context("cannot get local address from listener")?;
-    tracing::info!("listening on http://{local_addr}");
+    tracing::info!(%local_addr, "server listening");
 
     axum::serve(
         listener,
@@ -140,18 +135,18 @@ async fn serve(
 }
 
 async fn checkpoint(db: &SqlitePool) {
-    if let Err(e) = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+    if let Err(error) = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
         .execute(db)
         .await
     {
-        tracing::warn!("WAL checkpoint failed: {e}");
+        tracing::warn!(%error, "WAL checkpoint failed");
     }
 }
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        if let Err(e) = tokio::signal::ctrl_c().await {
-            tracing::error!("failed to install Ctrl+C handler: {e}");
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            tracing::error!(%error, "failed to install Ctrl+C handler");
         }
     };
 
@@ -161,17 +156,17 @@ async fn shutdown_signal() {
             Ok(mut signal) => {
                 signal.recv().await;
             }
-            Err(e) => tracing::error!("failed to install SIGTERM handler: {e}"),
+            Err(error) => tracing::error!(%error, "failed to install SIGTERM handler"),
         }
     };
 
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
 
-    tokio::select! {
-        () = ctrl_c => {},
-        () = terminate => {},
-    }
+    let signal = tokio::select! {
+        () = ctrl_c => "SIGINT",
+        () = terminate => "SIGTERM",
+    };
 
-    tracing::info!("shutdown signal received");
+    tracing::info!(signal, "shutdown signal received");
 }

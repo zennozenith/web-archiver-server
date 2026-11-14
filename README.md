@@ -201,7 +201,11 @@ cargo run
 | `APP_MAIL__SMTP__USERNAME`       | _required with SMTP_      | SMTP username                                                      |
 | `APP_MAIL__SMTP__PASSWORD`       | _required with SMTP_      | SMTP password                                                      |
 | `APP_MAIL__SMTP__STARTTLS`       | `true`                    | Use STARTTLS; disable for implicit TLS (usually port 465)          |
-| `RUST_LOG`                       | `web_archiver=debug`      | `tracing-subscriber` environment filter                            |
+| `APP_DATABASE__SLOW_QUERY_MS`    | `250`                     | SQL statements slower than this are logged at `WARN`               |
+| `RUST_LOG`                       | `web_archiver=debug` (debug) / `info` (release) | `tracing-subscriber` filter, e.g. `RUST_LOG=info,sqlx::query=debug` |
+| `APP_LOG__FORMAT`                | `pretty` (debug) / `json` (release) | stdout format: `pretty`, `compact` or `json`           |
+| `APP_LOG__DIR`                   | _none_                    | Also write JSON logs to daily-rotated files in this directory      |
+| `APP_LOG__MAX_FILES`             | `14`                      | Rotated log files to keep when `APP_LOG__DIR` is set               |
 
 Release builds require SMTP configuration; debug builds fall back to logging
 e-mails. `APP_PUBLIC_URL` must be an absolute `http` or `https` URL without
@@ -389,3 +393,27 @@ clients.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Logging
+
+Logging uses `tracing`. See `src/telemetry/mod.rs` for the setup.
+
+- **Correlation:** every request gets an `http_request` span with `request_id`,
+  `method`, `route`, `path`, `client_ip` and (once authenticated) `user_id`.
+  In JSON output every line logged during the request lists these spans, so
+  `grep <request_id>` reconstructs one request. The id is returned to clients
+  in the `X-Request-Id` response header; quote it in bug reports.
+- **Access log:** one `request finished` line per request with `status` and
+  `latency_ms` (`error` for 5xx, `warn` for 4xx, `info` otherwise). Health
+  probes are not logged.
+- **Slow SQL:** statements over `APP_DATABASE__SLOW_QUERY_MS` and pool waits
+  over 500 ms are logged at `WARN`. Turn on every statement with
+  `RUST_LOG=info,sqlx::query=debug` (SQL text only, never bind values).
+- **Security events:** audit entries, failed logins and blocked outbound
+  fetches are logged. E-mail addresses are masked and URLs are logged without
+  query strings; tokens, passwords, cookies and headers are never logged.
+- **Files:** set `APP_LOG__DIR` for daily-rotated JSON files written from a
+  background thread. Under extreme disk stalls lines are dropped rather than
+  blocking requests.
+- **Panics** are logged through `tracing` (with a backtrace when
+  `RUST_BACKTRACE=1`).

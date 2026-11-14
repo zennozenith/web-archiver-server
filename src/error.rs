@@ -269,11 +269,23 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code, details) = self.parts();
 
+        // Lets the access-log line say *why* a request failed, not just the status.
+        tracing::Span::current().record("error_code", code);
+
         // Log server errors with the full cause chain, but never leak it to clients.
+        // Client errors are expected traffic: the access line carries status and
+        // `error_code`, and the detail is only logged at DEBUG.
         let message = if status.is_server_error() {
-            tracing::error!(error = ?self, %status, "request failed");
+            tracing::error!(
+                error.chain = %crate::telemetry::error_chain(&self),
+                error.debug = ?self,
+                error.code = code,
+                %status,
+                "request failed"
+            );
             "internal server error".to_owned()
         } else {
+            tracing::debug!(error.code = code, error = %self, %status, "request rejected");
             self.to_string()
         };
 

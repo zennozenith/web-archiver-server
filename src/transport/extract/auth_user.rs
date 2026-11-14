@@ -37,6 +37,9 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let cred = credential(&parts.headers).ok_or(AppError::Unauthorized)?;
-        service::auth::authenticate(&Database::from_ref(state), cred).await
+        let user = service::auth::authenticate(&Database::from_ref(state), cred).await?;
+        // Every later log line of this request now carries the user.
+        tracing::Span::current().record("user_id", user.id);
+        Ok(user)
     }
 }

@@ -18,7 +18,7 @@ pub(crate) use account::{
     AccountStatus, LoginCredentials, NewAccount, validate_email, validate_username,
 };
 pub(crate) use api_key::{CreatedApiKey, NewApiKey};
-pub(crate) use client::ClientInfo;
+pub(crate) use client::{ClientInfo, client_ip};
 pub(crate) use profile::ProfileUpdate;
 pub(crate) use token::{
     ApiKeyToken, RandomToken, ResetToken, Rng, SessionToken, TokenPurpose, VerifyToken,

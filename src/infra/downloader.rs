@@ -16,6 +16,8 @@ use reqwest::{
 };
 use url::Url;
 
+use crate::telemetry::redact::SafeUrl;
+
 /// Hard ceiling per resource, independent of the request body limit.
 pub(crate) const MAX_ASSET_BYTES: usize = 32 * 1024 * 1024;
 /// Maximum redirects followed for one resource.
@@ -179,13 +181,22 @@ pub(crate) struct FetchedResource {
     pub bytes: Vec<u8>,
 }
 
+/// [`validate_public_url`] plus a log line: a blocked target is the SSRF
+/// signal worth alerting on.
+fn ensure_public(url: &Url) -> Result<(), FetchError> {
+    validate_public_url(url).map_err(|reason| {
+        tracing::warn!(url = %SafeUrl(url), %reason, "blocked outbound fetch");
+        FetchError::Blocked(reason)
+    })
+}
+
 /// Fetch one resource. Non-2xx responses are errors and are not stored.
 pub(crate) async fn fetch(
     client: &reqwest::Client,
     url: Url,
     max_bytes: usize,
 ) -> Result<FetchedResource, FetchError> {
-    validate_public_url(&url).map_err(FetchError::Blocked)?;
+    ensure_public(&url)?;
     let response = client.get(url.clone()).send().await?;
     let status = response.status();
     if !status.is_success() {

@@ -16,8 +16,8 @@ impl<T: Template> IntoResponse for Render<T> {
     fn into_response(self) -> Response {
         match self.0.render() {
             Ok(html) => Html(html).into_response(),
-            Err(e) => {
-                tracing::error!("template render failed: {e}");
+            Err(error) => {
+                tracing::error!(%error, "template render failed");
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         }

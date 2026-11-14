@@ -12,14 +12,13 @@ use tokio::sync::Semaphore;
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     timeout::TimeoutLayer,
-    trace::TraceLayer,
 };
 
 use crate::{
     config::CspMode,
     db::Database,
     infra::{BlobFiles, Mailer},
-    transport::{api, asset, security, web},
+    transport::{api, asset, security, trace, web},
     util::net::Cidr,
 };
 
@@ -77,8 +76,8 @@ async fn readyz(State(state): State<AppState>) -> (StatusCode, &'static str) {
     let probe = sqlx::query_scalar::<_, i64>("SELECT 1").fetch_one(state.db.reader());
     match tokio::time::timeout(READINESS_TIMEOUT, probe).await {
         Ok(Ok(_)) => (StatusCode::OK, "ok"),
-        Ok(Err(e)) => {
-            tracing::warn!("readiness check failed: {e}");
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "readiness check failed");
             (StatusCode::SERVICE_UNAVAILABLE, "unavailable")
         }
         Err(_) => {
@@ -144,14 +143,14 @@ pub(super) fn app(state: AppState) -> Router {
     // Layers added later wrap earlier ones. Load shedding is added first so it
     // sits *inside* the request-ID and trace layers: a shed 503 then carries
     // `X-Request-Id` and is logged like any other response.
-    let app = normal
+    let routed = normal
         .merge(uploads)
         .merge(capture_routes)
         .layer(from_fn_with_state(
             Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
             shed_requests,
-        ))
-        .layer(TraceLayer::new_for_http())
+        ));
+    let app = trace::trace_requests(routed, &config)
         .layer(PropagateRequestIdLayer::new(request_id.clone()))
         .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
         .layer(DefaultBodyLimit::max(DEFAULT_BODY_BYTES))

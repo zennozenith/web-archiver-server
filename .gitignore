@@ -22,3 +22,6 @@ devenv.local.yaml
 # pre-commit
 .pre-commit-config.yaml
 
+
+# Rotated log files (APP_LOG__DIR)
+/logs

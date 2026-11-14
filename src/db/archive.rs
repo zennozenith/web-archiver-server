@@ -18,6 +18,7 @@ use crate::{
         extractor::{css, html},
     },
     prelude::*,
+    telemetry::redact::SafeUrl,
 };
 
 /// Upper bound on sub-resources fetched per archive request (CSS resources included).
@@ -132,7 +133,7 @@ impl AssetCollector<'_> {
                 return Ok(());
             }
             if self.total_bytes.saturating_add(fetched.bytes.len()) > MAX_ASSET_TOTAL_BYTES {
-                tracing::debug!(url = %key, "asset budget exhausted");
+                tracing::debug!(url = %SafeUrl(&url), "asset budget exhausted");
                 self.summary.skipped = self.summary.skipped.saturating_add(1);
                 return Ok(());
             }
@@ -146,8 +147,8 @@ impl AssetCollector<'_> {
             } = fetched;
             let kind = refine_kind(kind, &content_type, &url);
             tracing::trace!(
-                url = %key,
-                final_url = %final_url,
+                url = %SafeUrl(&url),
+                final_url = %SafeUrl(&final_url),
                 bytes = bytes.len(),
                 kind = kind.as_str(),
                 "asset fetched"
@@ -164,7 +165,7 @@ impl AssetCollector<'_> {
             let blob = match prepare_blob(self.pool, self.store, bytes, &content_type).await {
                 Ok(blob) => blob,
                 Err(e) => {
-                    tracing::warn!(url = %key, error = ?e, "asset storage failed");
+                    tracing::warn!(url = %SafeUrl(&url), error = ?e, "asset storage failed");
                     self.summary.failed = self.summary.failed.saturating_add(1);
                     return Ok(());
                 }
@@ -246,7 +247,7 @@ impl AssetCollector<'_> {
                     }
                 }
                 Err(e) => {
-                    tracing::debug!(url = %key, error = %e, "css resource fetch failed");
+                    tracing::debug!(url = %SafeUrl(&resource.url), error = %e, "css resource fetch failed");
                     self.summary.failed = self.summary.failed.saturating_add(1);
                 }
             }
@@ -312,7 +313,7 @@ pub(crate) async fn collect_assets(
                     .await?;
             }
             Err(e) => {
-                tracing::debug!(url = %resource.url, error = %e, "asset fetch failed");
+                tracing::debug!(url = %SafeUrl(&resource.url), error = %e, "asset fetch failed");
                 collector.summary.failed = collector.summary.failed.saturating_add(1);
             }
         }

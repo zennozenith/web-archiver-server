@@ -4,6 +4,7 @@ pub(crate) mod cookie;
 pub(crate) mod multipart;
 pub(crate) mod security;
 pub(crate) mod serve;
+pub(crate) mod trace;
 
 pub(crate) mod api;
 pub(crate) mod dto;

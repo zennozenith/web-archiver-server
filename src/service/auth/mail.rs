@@ -1,9 +1,11 @@
 use secrecy::ExposeSecret as _;
+use tracing::Instrument as _;
 
 use crate::{
     AppState,
     identity::{ResetToken, VerifyToken},
     infra::{MailTransport as _, mailer::OutgoingMail},
+    telemetry::redact::MaskedEmail,
 };
 
 pub(super) fn verification(public_url: &str, to: &str, token: &VerifyToken) -> OutgoingMail {
@@ -54,10 +56,16 @@ pub(super) fn password_reset(public_url: &str, to: &str, token: &ResetToken) -> 
 /// an address has an account.
 pub(super) fn dispatch(state: &AppState, message: OutgoingMail) {
     let mailer = std::sync::Arc::<crate::infra::mailer::Mailer>::clone(&state.mailer);
-    tokio::spawn(async move {
-        let to = message.to.clone();
-        if let Err(e) = mailer.send(message).await {
-            tracing::error!(%to, "failed to send e-mail: {e}");
+    // `tokio::spawn` starts a fresh task with no span, so carry the request's
+    // context over explicitly; otherwise a send failure would lose its request_id.
+    let span = tracing::info_span!("mail.send", to = %MaskedEmail(&message.to));
+    tokio::spawn(
+        async move {
+            match mailer.send(message).await {
+                Ok(()) => tracing::debug!("e-mail sent"),
+                Err(error) => tracing::error!(%error, "failed to send e-mail"),
+            }
         }
-    });
+        .instrument(span),
+    );
 }

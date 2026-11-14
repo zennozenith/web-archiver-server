@@ -35,6 +35,7 @@ hex = "0.4"
 html5ever = "=0.40.1"
 http = "1.5.0"
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
+log = "0.4"  # `LevelFilter` for sqlx statement/slow-query logging
 mime_guess = "2.0.5"
 reqwest = { version = "0.13.5", default-features = false, features = ["brotli", "deflate", "gzip", "rustls", "stream"] }
 rpassword = { version = "7.5.5", optional = true }
@@ -53,7 +54,8 @@ tokio-util = { version = "0.7", features = ["io", "rt"] }  # streaming files and
 tower = { version = "0.5.3", features = ["limit", "util"] }
 tower-http = { version = "0.7.1", features = ["cors", "fs", "limit", "request-id", "set-status", "timeout", "trace"] }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-appender = "0.2.4"  # non-blocking, rotating log files
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 url = { version = "2.5.8", features = ["serde"] }
 
 [dev-dependencies]

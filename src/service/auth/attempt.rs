@@ -34,6 +34,8 @@ impl<'a> AttemptLog<'a> {
         reason: LoginFailure,
         error: AppError,
     ) -> AppError {
+        // The identifier (e-mail or username) is deliberately not logged.
+        tracing::warn!(user_id, reason = reason.as_str(), "login failed");
         self.record(user_id, Some(reason.as_str())).await;
         error
     }
@@ -54,8 +56,8 @@ impl<'a> AttemptLog<'a> {
             },
         )
         .await;
-        if let Err(e) = res {
-            tracing::warn!("failed to record login attempt: {e}");
+        if let Err(error) = res {
+            tracing::warn!(%error, "failed to record login attempt");
         }
     }
 }

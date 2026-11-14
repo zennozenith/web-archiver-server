@@ -65,8 +65,15 @@ pub(crate) async fn audit<'e>(
     .bind(details.map_or_else(|| String::from("{}"), |v| v.to_string()))
     .execute(executor)
     .await;
-    if let Err(e) = res {
-        tracing::warn!("failed to write audit log ({action}): {e}");
+    // `details` is left out on purpose: it can hold IPs and user agents.
+    match res {
+        Ok(_) => tracing::info!(
+            audit.action = %action,
+            audit.actor_user = actor,
+            audit.target_user = target,
+            "audit event"
+        ),
+        Err(error) => tracing::warn!(%error, audit.action = %action, "failed to write audit log"),
     }
 }
 

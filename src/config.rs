@@ -10,7 +10,10 @@ use lettre::message::Mailbox;
 use secrecy::SecretString;
 use serde::{Deserialize, Deserializer, de};
 use serde_aux::field_attributes::deserialize_number_from_string;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
+use sqlx::{
+    ConnectOptions as _,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
+};
 use url::Url;
 
 use crate::util::net::Cidr;
@@ -96,6 +99,11 @@ pub(crate) struct DatabaseSettings {
     pub read_connections: u32,
     #[serde(default = "default_busy_timeout_secs")]
     pub busy_timeout_secs: u64,
+    /// Statements slower than this are logged at `WARN` with their SQL text and
+    /// timings. Set it above your normal worst case so the log stays quiet
+    /// until something is actually wrong.
+    #[serde(default = "default_slow_query_ms")]
+    pub slow_query_ms: u64,
 }
 
 impl Default for DatabaseSettings {
@@ -104,6 +112,7 @@ impl Default for DatabaseSettings {
             url: default_db_url(),
             read_connections: default_read_connections(),
             busy_timeout_secs: default_busy_timeout_secs(),
+            slow_query_ms: default_slow_query_ms(),
         }
     }
 }
@@ -115,7 +124,16 @@ impl DatabaseSettings {
             .foreign_keys(true) // PRAGMA foreign_keys = ON
             .journal_mode(SqliteJournalMode::Wal) // PRAGMA journal_mode = WAL
             .synchronous(SqliteSynchronous::Normal) // PRAGMA synchronous = NORMAL
-            .busy_timeout(Duration::from_secs(self.busy_timeout_secs))) // PRAGMA busy_timeout = ...
+            .busy_timeout(Duration::from_secs(self.busy_timeout_secs)) // PRAGMA busy_timeout = ...
+            // Every statement at DEBUG: hidden by the default filter, enable with
+            // `RUST_LOG=sqlx::query=debug`. Bind values are never logged, only SQL text.
+            .log_statements(log::LevelFilter::Debug)
+            // Anything over the threshold is promoted to WARN, which the default
+            // filter lets through.
+            .log_slow_statements(
+                log::LevelFilter::Warn,
+                Duration::from_millis(self.slow_query_ms),
+            ))
     }
 }
 
@@ -222,4 +240,8 @@ const fn default_read_connections() -> u32 {
 
 const fn default_busy_timeout_secs() -> u64 {
     5
+}
+
+const fn default_slow_query_ms() -> u64 {
+    250
 }

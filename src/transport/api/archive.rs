@@ -5,6 +5,8 @@ use axum::{
     http::StatusCode,
 };
 
+use tracing::Instrument as _;
+
 use crate::{
     app::AppState,
     db::page::PageId,
@@ -25,6 +27,8 @@ pub(super) async fn archive(
     multipart: std::result::Result<Multipart, MultipartRejection>,
 ) -> Result<(StatusCode, AppJson<service::archive::ArchiveResult>)> {
     let upload = parse_capture_upload(multipart?).await?;
-    let result = service::archive::archive(&state, &user, id, upload).await?;
+    let result = service::archive::archive(&state, &user, id, upload)
+        .instrument(tracing::info_span!("archive.capture", page_id = %id))
+        .await?;
     Ok((StatusCode::CREATED, AppJson(result)))
 }

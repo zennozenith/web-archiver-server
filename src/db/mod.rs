@@ -6,6 +6,7 @@ use sqlx::{
 };
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument as _;
 
 use crate::{
     config::DatabaseSettings,
@@ -34,6 +35,10 @@ pub(crate) mod session;
 pub(crate) mod stats;
 pub(crate) mod tag;
 pub(crate) mod user;
+
+/// Waiting longer than this for a pooled connection is logged at `WARN`. On the
+/// single-connection write pool it means writers are queueing behind a slow one.
+const SLOW_ACQUIRE: Duration = Duration::from_millis(500);
 
 /// SQLite pools split by access pattern.
 ///
@@ -64,6 +69,7 @@ impl Database {
     pub(crate) async fn open(settings: &DatabaseSettings) -> Result<Self, sqlx::Error> {
         let options = settings.connect_options()?;
         create_parent_dir(&options).await?;
+        let path = options.get_filename().display().to_string();
 
         let in_memory = options.get_filename() == Path::new(":memory:")
             || settings.url.contains("mode=memory");
@@ -84,6 +90,12 @@ impl Database {
             PoolMode::QueryOnly,
         )
         .await?;
+        tracing::info!(
+            %path,
+            read_connections = settings.read_connections,
+            slow_query_ms = settings.slow_query_ms,
+            "database opened"
+        );
         Ok(Self { write, read })
     }
 
@@ -122,6 +134,7 @@ async fn build_pool(
         .max_connections(max_connections)
         .min_connections(1)
         .acquire_timeout(Duration::from_secs(10))
+        .acquire_slow_threshold(SLOW_ACQUIRE)
         .idle_timeout(Duration::from_secs(10 * 60))
         .max_lifetime(Duration::from_secs(30 * 60));
 
@@ -162,7 +175,14 @@ fn parent_dir(options: &SqliteConnectOptions) -> Option<&Path> {
 
 /// Apply all migrations in ./migrations (embedded into the binary at compile time).
 pub(crate) async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::migrate::MigrateError> {
-    sqlx::migrate!("./migrations").run(pool).await
+    let migrator = sqlx::migrate!("./migrations");
+    tracing::info!(
+        bundled = migrator.iter().count(),
+        "applying database migrations"
+    );
+    migrator.run(pool).await?;
+    tracing::info!("database schema is up to date");
+    Ok(())
 }
 
 /// Hourly housekeeping, taken from the "OPERATIONAL NOTES" in the schema file.
@@ -176,23 +196,31 @@ pub(crate) fn spawn_cleanup(pool: SqlitePool, shutdown: CancellationToken) -> Jo
                 () = shutdown.cancelled() => break,
                 _ = tick.tick() => {}
             }
-            let now = now_ms();
-            let cutoff = |days: i64| now.saturating_sub(days_ms(days));
-
-            let jobs = [
-                ("DELETE FROM sessions WHERE expires_at < ?", cutoff(30)),
-                ("DELETE FROM auth_tokens WHERE expires_at < ?", cutoff(7)),
-                (
-                    "DELETE FROM login_attempts WHERE created_at < ?",
-                    cutoff(90),
-                ),
-            ];
-            for (sql, ts) in jobs {
-                run_cleanup(&pool, sql, ts).await;
-            }
-            let _throw_away = sqlx::query("PRAGMA optimize").execute(&pool).await;
+            // `instrument` (not `span.enter()`): a guard held across `.await`
+            // would attach the span to whatever else runs on this thread.
+            cleanup_once(&pool)
+                .instrument(tracing::info_span!("db.cleanup"))
+                .await;
         }
     })
+}
+
+async fn cleanup_once(pool: &SqlitePool) {
+    let now = now_ms();
+    let cutoff = |days: i64| now.saturating_sub(days_ms(days));
+
+    let jobs = [
+        ("DELETE FROM sessions WHERE expires_at < ?", cutoff(30)),
+        ("DELETE FROM auth_tokens WHERE expires_at < ?", cutoff(7)),
+        (
+            "DELETE FROM login_attempts WHERE created_at < ?",
+            cutoff(90),
+        ),
+    ];
+    for (sql, ts) in jobs {
+        run_cleanup(pool, sql, ts).await;
+    }
+    let _throw_away = sqlx::query("PRAGMA optimize").execute(pool).await;
 }
 
 async fn run_cleanup(pool: &SqlitePool, sql: &'static str, ts: i64) {
@@ -200,10 +228,10 @@ async fn run_cleanup(pool: &SqlitePool, sql: &'static str, ts: i64) {
         Ok(r) => {
             let removed = r.rows_affected();
             if removed > 0 {
-                tracing::info!("cleanup: {removed} rows removed by `{sql}`");
+                tracing::info!(removed, sql, "cleanup removed expired rows");
             }
         }
-        Err(e) => tracing::warn!("cleanup failed for `{sql}`: {e}"),
+        Err(error) => tracing::warn!(%error, sql, "cleanup failed"),
     }
 }
 

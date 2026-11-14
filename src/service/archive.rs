@@ -68,6 +68,8 @@ pub(crate) async fn archive(
     upload: ArchiveUpload,
 ) -> Result<ArchiveResult> {
     actor.require(Permission::ARCHIVE_WRITE)?;
+    let started = std::time::Instant::now();
+    let html_bytes = upload.html.len();
     if upload.html.is_empty() {
         return Err(AppError::invalid(
             "missing_html",
@@ -156,6 +158,18 @@ pub(crate) async fn archive(
     }
 
     tx.commit().await?;
+
+    tracing::info!(
+        capture_id = capture_id.get(),
+        version,
+        html_bytes,
+        assets_saved = asset_summary.saved,
+        assets_deduplicated = asset_summary.deduplicated,
+        assets_failed = asset_summary.failed,
+        assets_skipped = asset_summary.skipped,
+        elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        "page captured"
+    );
 
     Ok(ArchiveResult {
         capture_id: capture_id.get(),

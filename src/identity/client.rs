@@ -1,7 +1,7 @@
 use std::net::{IpAddr, SocketAddr};
 
 use axum::extract::ConnectInfo;
-use http::{HeaderMap, header::USER_AGENT, request::Parts};
+use http::{Extensions, HeaderMap, header::USER_AGENT, request::Parts};
 
 use crate::{app::RuntimeConfig, error::AppError, util::net::Cidr};
 
@@ -28,29 +28,37 @@ impl ClientInfo {
     }
 
     pub(crate) fn extract(parts: &Parts, config: &RuntimeConfig) -> Result<Self, AppError> {
-        let ConnectInfo(addr) = parts
-            .extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .copied()
+        let ip = client_ip(&parts.extensions, &parts.headers, config)
             .ok_or_else(|| AppError::internal("missing ConnectInfo"))?;
-
-        // Only trust forwarding headers when the socket peer itself is a
-        // configured proxy. A client connecting directly can forge the header,
-        // but its peer address will never match `trusted_proxies`.
-        let peer = addr.ip().to_canonical();
-        let ip = if is_trusted_proxy(peer, &config.trusted_proxies) {
-            forwarded_ip(&parts.headers, &config.trusted_proxies).unwrap_or(peer)
-        } else {
-            peer
-        };
-
-        // Dual-stack sockets report IPv4 peers as `::ffff:a.b.c.d`; canonicalize
-        // once so callers and the audit trail always see plain IPv4.
-        let ip = ip.to_canonical();
-
         let ua = parts.headers.get(USER_AGENT).and_then(|v| v.to_str().ok());
         Ok(Self::new(ip, ua))
     }
+}
+
+/// The client address as the server sees it, or `None` before `ConnectInfo`
+/// has been attached to the request.
+///
+/// Only trusts forwarding headers when the socket peer itself is a configured
+/// proxy. A client connecting directly can forge the header, but its peer
+/// address will never match `trusted_proxies`. Shared by the extractor and the
+/// request-tracing layer so both always agree.
+pub(crate) fn client_ip(
+    extensions: &Extensions,
+    headers: &HeaderMap,
+    config: &RuntimeConfig,
+) -> Option<IpAddr> {
+    let ConnectInfo(addr) = extensions.get::<ConnectInfo<SocketAddr>>().copied()?;
+
+    let peer = addr.ip().to_canonical();
+    let ip = if is_trusted_proxy(peer, &config.trusted_proxies) {
+        forwarded_ip(headers, &config.trusted_proxies).unwrap_or(peer)
+    } else {
+        peer
+    };
+
+    // Dual-stack sockets report IPv4 peers as `::ffff:a.b.c.d`; canonicalize
+    // once so callers and the audit trail always see plain IPv4.
+    Some(ip.to_canonical())
 }
 
 fn is_trusted_proxy(ip: IpAddr, trusted_proxies: &[Cidr]) -> bool {
