@@ -42,7 +42,7 @@ pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Res
     let password_hash = hash_password(account.password).await?;
     let now = now_ms();
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_write().await?;
 
     let inserted = db::auth::insert_pending_user(
         &mut tx,

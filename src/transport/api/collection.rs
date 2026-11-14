@@ -65,7 +65,7 @@ async fn create_collection(
     AppJson(req): AppJson<CollectionRequest>,
 ) -> Result<AppJson<CollectionRecord>> {
     Ok(AppJson(
-        service::collection::create(&state.db, &user, &req.fields(false)).await?,
+        service::collection::create(state.db.writer(), &user, &req.fields(false)).await?,
     ))
 }
 
@@ -77,7 +77,8 @@ async fn update_collection(
 ) -> Result<AppJson<CollectionRecord>> {
     let current = service::collection::get(&state.db, &user, id).await?;
     Ok(AppJson(
-        service::collection::update(&state.db, &user, id, &req.fields(current.public)).await?,
+        service::collection::update(state.db.writer(), &user, id, &req.fields(current.public))
+            .await?,
     ))
 }
 
@@ -86,7 +87,7 @@ async fn delete_collection(
     user: AuthUser,
     AppPath(id): AppPath<CollectionId>,
 ) -> Result<StatusCode> {
-    service::collection::delete(&state.db, &user, id).await?;
+    service::collection::delete(state.db.writer(), &user, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -102,7 +103,8 @@ async fn update_sharing(
     AppPath(id): AppPath<CollectionId>,
     AppJson(req): AppJson<SharingRequest>,
 ) -> Result<StatusCode> {
-    service::collection::set_public(&state.db, &user, id, req.public.unwrap_or(false)).await?;
+    service::collection::set_public(state.db.writer(), &user, id, req.public.unwrap_or(false))
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

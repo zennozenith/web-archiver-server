@@ -83,7 +83,7 @@ pub(crate) async fn forgot_password(state: &AppState, email: String) -> Result<(
     let now = now_ms();
     let token = ResetToken::new()?;
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_write().await?;
     // Only the most recent link should work.
     db::auth::invalidate_open_tokens(&mut tx, user_id, TokenPurpose::ResetPassword, now).await?;
     db::auth::insert_token(

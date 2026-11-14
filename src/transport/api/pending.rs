@@ -71,7 +71,7 @@ async fn create(
     user: AuthUser,
     AppJson(req): AppJson<CreatePendingRequest>,
 ) -> Result<(StatusCode, AppJson<PendingResponse>)> {
-    let item = service::pending::create(&state.db, &user, &req.url, &req.tags).await?;
+    let item = service::pending::create(state.db.writer(), &user, &req.url, &req.tags).await?;
     Ok((StatusCode::CREATED, AppJson(item)))
 }
 
@@ -92,7 +92,7 @@ async fn bulk_create(
         .map(|item| (item.url, item.tags))
         .collect();
     Ok(AppJson(
-        service::pending::bulk_create(&state.db, &user, &items).await?,
+        service::pending::bulk_create(state.db.writer(), &user, &items).await?,
     ))
 }
 
@@ -112,7 +112,7 @@ async fn patch(
 ) -> Result<AppJson<PendingResponse>> {
     Ok(AppJson(
         service::pending::patch(
-            &state.db,
+            state.db.writer(),
             &user,
             id,
             req.status,
@@ -129,13 +129,13 @@ async fn retry(
     AppPath(id): AppPath<PendingId>,
 ) -> Result<AppJson<PendingResponse>> {
     Ok(AppJson(
-        service::pending::retry(&state.db, &user, id).await?,
+        service::pending::retry(state.db.writer(), &user, id).await?,
     ))
 }
 
 /// Atomically take the oldest queued item. 204 when the queue is empty.
 async fn claim(State(state): State<AppState>, user: AuthUser) -> Result<Response> {
-    Ok(service::pending::claim(&state.db, &user)
+    Ok(service::pending::claim(state.db.writer(), &user)
         .await?
         .map_or_else(
             || StatusCode::NO_CONTENT.into_response(),
@@ -150,7 +150,7 @@ async fn fail(
     AppJson(req): AppJson<FailPendingRequest>,
 ) -> Result<AppJson<PendingResponse>> {
     Ok(AppJson(
-        service::pending::fail(&state.db, &user, id, &req.error).await?,
+        service::pending::fail(state.db.writer(), &user, id, &req.error).await?,
     ))
 }
 
@@ -159,7 +159,7 @@ async fn delete(
     user: AuthUser,
     AppPath(id): AppPath<PendingId>,
 ) -> Result<StatusCode> {
-    service::pending::delete(&state.db, &user, id).await?;
+    service::pending::delete(state.db.writer(), &user, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -180,7 +180,7 @@ async fn clear(
     user: AuthUser,
     AppQuery(query): AppQuery<ClearPendingQuery>,
 ) -> Result<AppJson<ClearPendingResponse>> {
-    let deleted = service::pending::clear(&state.db, &user, query.status).await?;
+    let deleted = service::pending::clear(state.db.writer(), &user, query.status).await?;
     Ok(AppJson(ClearPendingResponse { deleted }))
 }
 

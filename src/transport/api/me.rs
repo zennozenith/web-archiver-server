@@ -31,7 +31,7 @@ async fn update_profile(
     user: AuthUser,
     AppJson(req): AppJson<ProfileRequest>,
 ) -> Result<AppJson<OkDto>> {
-    service::me::update_profile(&state.db, &user, req.into()).await?;
+    service::me::update_profile(state.db.writer(), &user, req.into()).await?;
     Ok(AppJson(OkDto::new()))
 }
 
@@ -49,7 +49,7 @@ async fn revoke_session(
     user: AuthUser,
     AppPath(public_id): AppPath<String>,
 ) -> Result<AppJson<OkDto>> {
-    service::me::revoke_session(&state.db, &user, &public_id).await?;
+    service::me::revoke_session(state.db.writer(), &user, &public_id).await?;
     Ok(AppJson(OkDto::new()))
 }
 
@@ -68,7 +68,7 @@ async fn create_api_key(
     AppJson(req): AppJson<CreateKeyRequest>,
 ) -> Result<AppJson<CreatedApiKeyDto>> {
     let new_key = NewApiKey::try_from(req)?;
-    let created = service::me::create_api_key(&state.db, &user, new_key).await?;
+    let created = service::me::create_api_key(state.db.writer(), &user, new_key).await?;
     // The plaintext key is shown exactly once.
     Ok(AppJson(created.into()))
 }
@@ -78,7 +78,7 @@ async fn revoke_api_key(
     user: AuthUser,
     AppPath(public_id): AppPath<String>,
 ) -> Result<AppJson<OkDto>> {
-    service::me::revoke_api_key(&state.db, &user, &public_id).await?;
+    service::me::revoke_api_key(state.db.writer(), &user, &public_id).await?;
     Ok(AppJson(OkDto::new()))
 }
 

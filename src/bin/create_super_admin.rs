@@ -17,8 +17,7 @@ use std::io::{self, Write};
 
 use anyhow::{Result, bail};
 use secrecy::{ExposeSecret, SecretString};
-use sqlx::SqlitePool;
-use web_archiver::admin;
+use web_archiver::admin::{self, AdminDb};
 
 // ----------------------------------------------------------------------------
 // Entry point
@@ -34,26 +33,26 @@ async fn main() {
 
 async fn run() -> Result<()> {
     let args = parse_args()?;
-    let pool = admin::connect(&args.database).await?;
+    let db = admin::connect(&args.database).await?;
 
     if args.migrate {
         println!("Running migrations...");
-        admin::migrate(&pool).await?;
+        admin::migrate(&db).await?;
     }
 
-    warn_if_super_admin_exists(&pool).await?;
+    warn_if_super_admin_exists(&db).await?;
 
     println!("\n=== Create super admin ===\n");
 
     let email = if let Some(v) = args.email {
         v
     } else {
-        prompt_email(&pool).await?
+        prompt_email(&db).await?
     };
     let username = if args.username.is_some() {
         args.username
     } else {
-        prompt_username(&pool).await?
+        prompt_username(&db).await?
     };
     let display_name = if args.display_name.is_some() {
         args.display_name
@@ -73,7 +72,7 @@ async fn run() -> Result<()> {
     }
 
     let created = admin::create_super_admin(
-        &pool,
+        &db,
         admin::NewSuperAdmin {
             email: &email,
             username: username.as_deref(),
@@ -165,8 +164,8 @@ fn confirm(prompt: &str) -> Result<bool> {
     Ok(matches!(s.as_str(), "y" | "yes"))
 }
 
-async fn warn_if_super_admin_exists(pool: &SqlitePool) -> Result<()> {
-    let count = admin::super_admin_count(pool).await?;
+async fn warn_if_super_admin_exists(db: &AdminDb) -> Result<()> {
+    let count = admin::super_admin_count(db).await?;
     if count > 0 {
         println!("Note: {count} super admin account(s) already exist.");
         if !confirm("Create another one? [y/N]: ")? {
@@ -177,14 +176,14 @@ async fn warn_if_super_admin_exists(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
-async fn prompt_email(pool: &SqlitePool) -> Result<String> {
+async fn prompt_email(db: &AdminDb) -> Result<String> {
     loop {
         let email = read_line("Email: ")?;
         if let Err(msg) = admin::validate_email(&email) {
             eprintln!("  ✗ {msg}");
             continue;
         }
-        if admin::email_in_use(pool, &email).await? {
+        if admin::email_in_use(db, &email).await? {
             eprintln!("  ✗ That email is already in use.");
             continue;
         }
@@ -192,7 +191,7 @@ async fn prompt_email(pool: &SqlitePool) -> Result<String> {
     }
 }
 
-async fn prompt_username(pool: &SqlitePool) -> Result<Option<String>> {
+async fn prompt_username(db: &AdminDb) -> Result<Option<String>> {
     loop {
         let Some(username) = prompt_optional("Username (optional): ")? else {
             return Ok(None);
@@ -201,7 +200,7 @@ async fn prompt_username(pool: &SqlitePool) -> Result<Option<String>> {
             eprintln!("  ✗ {msg}");
             continue;
         }
-        if admin::username_in_use(pool, &username).await? {
+        if admin::username_in_use(db, &username).await? {
             eprintln!("  ✗ That username is already in use.");
             continue;
         }

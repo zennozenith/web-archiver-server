@@ -39,7 +39,7 @@ pub(super) async fn login(
     AppForm(form): AppForm<LoginForm>,
 ) -> Result<Response> {
     let creds = LoginCredentials::new(&form.identifier, form.password);
-    let token = service::auth::login(&state.db, &client, creds).await?;
+    let token = service::auth::login(state.db.writer(), &client, creds).await?;
     session::sign_in(&token, state.config.secure_cookie)
 }
 
@@ -47,7 +47,7 @@ pub(super) async fn login(
 /// already gone, so logout is idempotent.
 pub(super) async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response> {
     if let Some(token) = SessionCookie::get(&headers) {
-        service::auth::logout(&state.db, token).await?;
+        service::auth::logout(state.db.writer(), token).await?;
     }
     session::sign_out(LOGIN_PATH, state.config.secure_cookie)
 }
@@ -97,7 +97,7 @@ pub(super) async fn verify(
     AppForm(form): AppForm<VerifyForm>,
 ) -> Result<Alert> {
     let token = parse_token(&form.token)?;
-    service::auth::verify_email(&state.db, token).await?;
+    service::auth::verify_email(state.db.writer(), token).await?;
 
     Ok(Alert::success("E-mail verified. You can sign in now.").link(LOGIN_PATH, "Sign in"))
 }
@@ -133,7 +133,7 @@ pub(super) async fn reset(
     AppForm(form): AppForm<ResetForm>,
 ) -> Result<Alert> {
     let token = parse_token(&form.token)?;
-    service::auth::reset_password(&state.db, token, form.new_password).await?;
+    service::auth::reset_password(state.db.writer(), token, form.new_password).await?;
 
     Ok(
         Alert::success("Password updated. Every session was signed out.")

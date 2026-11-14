@@ -105,6 +105,14 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new().route("/health", get(misc::health)).merge(api)
 }
 
+/// Multipart uploads that get `UPLOAD_TIMEOUT` instead of the default deadline.
+///
+/// Mounted by [`crate::app::app`] next to (not inside) the default group; the
+/// paths overlap with [`router`] but the methods do not.
+pub(crate) fn upload_routes() -> Router<AppState> {
+    Router::new().merge(page::upload_route())
+}
+
 /// Routes that intentionally exceed the default request deadline.
 ///
 /// They are mounted outside the global timeout layer by [`crate::app::app`].

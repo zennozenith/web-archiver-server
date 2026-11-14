@@ -88,7 +88,7 @@ pub(crate) async fn archive(
     // Network I/O happens before the write transaction.
     let (assets, asset_summary) = if upload.save_assets {
         collect_assets(
-            &state.db,
+            state.db.writer(),
             &state.blobs,
             &state.fetch_client,
             &page_url,
@@ -105,21 +105,21 @@ pub(crate) async fn archive(
         .collect();
     let rewritten = html::rewrite_resources(&upload.html, &page_url, &replacements);
 
-    let original_blob = prepare_blob(&state.db, &state.blobs, upload.html, "text/html").await?;
+    let original_blob = prepare_blob(state.db.writer(), &state.blobs, upload.html, "text/html").await?;
     let served_blob = match rewritten {
-        Some(bytes) => Some(prepare_blob(&state.db, &state.blobs, bytes, "text/html").await?),
+        Some(bytes) => Some(prepare_blob(state.db.writer(), &state.blobs, bytes, "text/html").await?),
         None => None,
     };
     let shot_blob = match upload.screenshot {
         Some(image) => {
             let format = image.format();
             let data = image.into_data();
-            Some(prepare_blob(&state.db, &state.blobs, data, format.mime_type()).await?)
+            Some(prepare_blob(state.db.writer(), &state.blobs, data, format.mime_type()).await?)
         }
         None => None,
     };
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = state.db.begin_write().await?;
 
     let original_id = insert_blob(&mut tx, &original_blob).await?;
     let html_id = match &served_blob {

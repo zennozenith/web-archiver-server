@@ -1,8 +1,8 @@
 use axum::extract::{FromRef, FromRequestParts};
 use http::{HeaderMap, header, request::Parts};
-use sqlx::SqlitePool;
 
 use crate::{
+    db::Database,
     error::AppError,
     identity::{ApiKeyToken, AuthUser, Credential, SessionToken},
     service,
@@ -31,12 +31,12 @@ fn credential(headers: &HeaderMap) -> Option<Credential> {
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
-    SqlitePool: FromRef<S>,
+    Database: FromRef<S>,
 {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let cred = credential(&parts.headers).ok_or(AppError::Unauthorized)?;
-        service::auth::authenticate(&SqlitePool::from_ref(state), cred).await
+        service::auth::authenticate(&Database::from_ref(state), cred).await
     }
 }

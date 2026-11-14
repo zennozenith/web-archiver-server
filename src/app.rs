@@ -4,11 +4,10 @@ use axum::{
     Router,
     extract::{DefaultBodyLimit, FromRef, Request, State},
     http::{HeaderName, HeaderValue, StatusCode, header::RETRY_AFTER},
-    middleware::{Next, from_fn, from_fn_with_state},
+    middleware::{Next, from_fn_with_state},
     response::{IntoResponse, Response},
     routing::get,
 };
-use sqlx::SqlitePool;
 use tokio::sync::Semaphore;
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
@@ -17,6 +16,7 @@ use tower_http::{
 };
 
 use crate::{
+    config::CspMode,
     db::Database,
     infra::{BlobFiles, Mailer},
     transport::{api, asset, security, web},
@@ -24,13 +24,16 @@ use crate::{
 };
 
 /// Small default; upload routes opt into a larger limit explicitly.
-const DEFAULT_REQUEST_BYTES: usize = 2 * 1024 * 1024;
+const DEFAULT_BODY_BYTES: usize = 2 * 1024 * 1024;
 /// Multipart page forms, which may carry a thumbnail.
 pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = 16 * 1024 * 1024;
 /// A full capture plus its screenshot and rewritten document.
 pub(crate) const MAX_CAPTURE_BODY_BYTES: usize = 64 * 1024 * 1024;
 /// Default per-request deadline. Long-running captures opt in to `CAPTURE_TIMEOUT`.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Multipart page forms can carry a thumbnail over a slow link, so they get
+/// longer than ordinary requests, but far less than a capture.
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 /// Archiving a page and all of its sub-resources can legitimately take minutes.
 pub(crate) const CAPTURE_TIMEOUT: Duration = Duration::from_secs(300);
 /// `/readyz` must answer quickly even when the pool is saturated.
@@ -49,6 +52,8 @@ pub(crate) struct RuntimeConfig {
     pub public_url: String,
     pub secure_cookie: bool,
     pub trusted_proxies: Vec<Cidr>,
+    /// Which Content-Security-Policy rollout stage to serve.
+    pub csp: CspMode,
 }
 
 #[derive(Debug, Clone, FromRef)]
@@ -62,13 +67,6 @@ pub struct AppState {
     pub(crate) mailer: Arc<Mailer>,
     #[from_ref(skip)]
     pub(crate) config: Arc<RuntimeConfig>,
-}
-
-/// Extractors that ask for a bare `SqlitePool` get the single-writer pool.
-impl FromRef<AppState> for SqlitePool {
-    fn from_ref(state: &AppState) -> Self {
-        state.db.writer().clone()
-    }
 }
 
 async fn healthz() -> &'static str {
@@ -117,39 +115,51 @@ pub(super) fn app(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .with_state(state.clone());
 
+    let deadline =
+        |limit: Duration| TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, limit);
+
     // Normal routes share the short default deadline.
     let normal = Router::new()
         .nest("/api", api::router())
         .merge(web::router())
         .merge(asset::router())
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            REQUEST_TIMEOUT,
-        ));
+        .merge(security::report_router())
+        .layer(deadline(DEFAULT_TIMEOUT));
+
+    // Multipart page forms (thumbnails) get their own, longer deadline. Same
+    // paths as routes above, but different methods, so the groups merge.
+    let uploads = Router::new()
+        .nest("/api", api::upload_routes())
+        .merge(web::upload_router())
+        .layer(deadline(UPLOAD_TIMEOUT));
 
     // Capture uploads can legitimately run for minutes; keep them outside the
     // default deadline and give the group its own longer one.
     let long_running = Router::new()
         .nest("/api", api::long_running())
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            CAPTURE_TIMEOUT,
-        ));
+        .layer(deadline(CAPTURE_TIMEOUT));
 
     let request_id = request_id_header();
+    let config = Arc::clone(&state.config);
+    // Layers added later wrap earlier ones. Load shedding is added first so it
+    // sits *inside* the request-ID and trace layers: a shed 503 then carries
+    // `X-Request-Id` and is logged like any other response.
     let app = normal
+        .merge(uploads)
         .merge(long_running)
-        .layer(TraceLayer::new_for_http())
-        .layer(PropagateRequestIdLayer::new(request_id.clone()))
-        .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
         .layer(from_fn_with_state(
             Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
             shed_requests,
         ))
-        .layer(DefaultBodyLimit::max(DEFAULT_REQUEST_BYTES))
+        .layer(TraceLayer::new_for_http())
+        .layer(PropagateRequestIdLayer::new(request_id.clone()))
+        .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
+        .layer(DefaultBodyLimit::max(DEFAULT_BODY_BYTES))
         .with_state(state);
 
-    probes.merge(app).layer(from_fn(security::headers))
+    probes
+        .merge(app)
+        .layer(from_fn_with_state(config, security::headers))
 }
 
 #[cfg(test)]
@@ -189,6 +199,7 @@ mod tests {
             public_url: "http://localhost".to_owned(),
             secure_cookie: false,
             trusted_proxies: Vec::new(),
+            csp: CspMode::default(),
         });
 
         AppState {

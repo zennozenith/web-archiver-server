@@ -320,24 +320,27 @@ pub(super) async fn delete_highlight(
     Fragments::new().toast(ToastKind::Success, "Highlight removed")
 }
 
-pub(super) fn router() -> Router<AppState> {
+/// Form submissions that may carry a thumbnail: a larger body limit and their
+/// own timeout (mounted by `web::upload_router`).
+pub(super) fn upload_router() -> Router<AppState> {
     Router::new()
         .route(
             "/links",
-            get(index)
-                .post(create)
-                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
+            post(create).layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
         )
+        .route(
+            "/links/{id}",
+            put(update).layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
+        )
+}
+
+pub(super) fn router() -> Router<AppState> {
+    Router::new()
+        .route("/links", get(index))
         .route("/links/search", get(search))
         .route("/links/pinned", get(pinned))
         .route("/links/unorganized", get(unorganized))
-        .route(
-            "/links/{id}",
-            get(detail)
-                .put(update)
-                .delete(remove)
-                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
-        )
+        .route("/links/{id}", get(detail).delete(remove))
         .route("/links/{id}/pin", post(pin))
         .route("/links/{id}/highlights", post(add_highlight))
         .route(

@@ -109,7 +109,7 @@ pub(super) async fn revoke(
     user: AuthUser,
     AppPath(public_id): AppPath<String>,
 ) -> Result<Fragments> {
-    me::revoke_session(&state.db, &user, &public_id).await?;
+    me::revoke_session(state.db.writer(), &user, &public_id).await?;
     Fragments::new()
         .push(&SessionRowsTpl {
             sessions: load(&state, &user).await?,

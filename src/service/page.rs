@@ -81,7 +81,7 @@ pub(crate) async fn create(
 ) -> Result<PageItem> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     ensure_collection(state, actor, upload.collection_id).await?;
-    upload.execute(&state.db, actor.id, &state.blobs).await
+    upload.execute(state.db.writer(), actor.id, &state.blobs).await
 }
 
 pub(crate) async fn patch(
@@ -97,7 +97,7 @@ pub(crate) async fn patch(
         ensure_collection(state, actor, collection_id).await?;
     }
 
-    if update.apply(&state.db, actor.id, id).await? {
+    if update.apply(state.db.writer(), actor.id, id).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::Page))
@@ -106,7 +106,7 @@ pub(crate) async fn patch(
 
 pub(crate) async fn delete(state: &AppState, actor: &AuthUser, id: PageId) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if PageId::delete(id, &state.db, actor.id).await? {
+    if PageId::delete(id, state.db.writer(), actor.id).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::Page))
@@ -129,7 +129,7 @@ pub(crate) async fn set_thumbnail(
 ) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     if id
-        .set_thumbnail(&state.db, actor.id, &state.blobs, thumbnail)
+        .set_thumbnail(state.db.writer(), actor.id, &state.blobs, thumbnail)
         .await?
     {
         Ok(())
@@ -168,7 +168,7 @@ pub(crate) async fn put_tags(
     names: &[TagName],
 ) -> Result<Vec<Tag>> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    page::put_tags(&state.db, actor.id, id, names)
+    page::put_tags(state.db.writer(), actor.id, id, names)
         .await?
         .or_not_found(Resource::Page)
 }
@@ -180,7 +180,7 @@ pub(crate) async fn add_tag(
     name: &TagName,
 ) -> Result<Tag> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    page::add_tag(&state.db, actor.id, id, name)
+    page::add_tag(state.db.writer(), actor.id, id, name)
         .await?
         .or_not_found(Resource::Page)
 }
@@ -192,7 +192,7 @@ pub(crate) async fn remove_tag(
     tag_id: TagId,
 ) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if page::remove_tag(&state.db, actor.id, id, tag_id).await? {
+    if page::remove_tag(state.db.writer(), actor.id, id, tag_id).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::PageTag))
@@ -250,14 +250,14 @@ pub(crate) async fn update_highlight(
     color: Option<&str>,
 ) -> Result<HighlightRecord> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    HighlightRecord::update(&state.db, actor.id, id, text, color)
+    HighlightRecord::update(state.db.writer(), actor.id, id, text, color)
         .await?
         .or_not_found(Resource::Highlight)
 }
 
 pub(crate) async fn delete_highlight(state: &AppState, actor: &AuthUser, id: i64) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if HighlightRecord::delete(&state.db, actor.id, id).await? {
+    if HighlightRecord::delete(state.db.writer(), actor.id, id).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::Highlight))

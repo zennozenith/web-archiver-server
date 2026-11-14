@@ -105,6 +105,7 @@ async fn build_state(settings: &Settings, db: db::Database) -> anyhow::Result<Ap
         public_url: settings.public_base().to_owned(),
         secure_cookie: settings.server.use_secure_cookie(&settings.public_url),
         trusted_proxies: settings.server.trusted_proxies.clone(),
+        csp: settings.server.csp,
     });
 
     Ok(AppState {

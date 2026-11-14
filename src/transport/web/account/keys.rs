@@ -132,7 +132,7 @@ pub(super) async fn create(
 ) -> Result<Fragments> {
     let form = KeyForm::from(pairs);
     let request = NewApiKey::new(&form.name, form.scopes, form.days)?;
-    let created = me::create_api_key(&state.db, &user, request).await?;
+    let created = me::create_api_key(state.db.writer(), &user, request).await?;
 
     Fragments::new()
         .push(&KeyRowsTpl {
@@ -149,7 +149,7 @@ pub(super) async fn revoke(
     user: AuthUser,
     AppPath(public_id): AppPath<String>,
 ) -> Result<Fragments> {
-    me::revoke_api_key(&state.db, &user, &public_id).await?;
+    me::revoke_api_key(state.db.writer(), &user, &public_id).await?;
     Fragments::new()
         .push(&KeyRowsTpl {
             keys: load_keys(&state, &user).await?,

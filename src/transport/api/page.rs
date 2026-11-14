@@ -185,12 +185,7 @@ async fn remove_page_tag(
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route(
-            "/page",
-            get(list_pages)
-                .post(create_page)
-                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
-        )
+        .route("/page", get(list_pages))
         .route("/page/lookup", get(lookup_page))
         .route(
             "/page/{id}",
@@ -216,6 +211,15 @@ pub(super) fn routes() -> Router<AppState> {
 
 /// Long-running capture upload, mounted outside the global request deadline.
 ///
+/// Page creation accepts a multipart form with an optional thumbnail, so it has
+/// a larger body limit and its own timeout (mounted by `api::upload_routes`).
+pub(super) fn upload_route() -> Router<AppState> {
+    Router::new().route(
+        "/page",
+        post(create_page).layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
+    )
+}
+
 /// The capture pipeline can legitimately take minutes, so it carries its own
 /// timeout and a larger body limit instead of the 30 s default.
 pub(super) fn capture_route() -> Router<AppState> {

@@ -49,10 +49,18 @@ pub(crate) fn router() -> Router<AppState> {
     // Admin role required (layer order: require_user first, then require_admin)
     let admin = Router::new().nest("/admin", admin::router());
 
-    public
-        .merge(authed)
-        .merge(admin)
+    htmx_layers(public.merge(authed).merge(admin))
+    // .fallback(not_found)
+}
+
+/// Upload form routes, mounted by `app` under the longer upload deadline.
+/// They need the same htmx layers as everything else in this module.
+pub(crate) fn upload_router() -> Router<AppState> {
+    htmx_layers(links::upload_router())
+}
+
+fn htmx_layers(router: Router<AppState>) -> Router<AppState> {
+    router
         .layer(from_fn(error::require_htmx_for_writes))
         .layer(from_fn(super::htmx::render_errors))
-    // .fallback(not_found)
 }

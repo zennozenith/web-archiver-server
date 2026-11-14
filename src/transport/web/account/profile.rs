@@ -75,6 +75,6 @@ pub(super) async fn update(
     user: AuthUser,
     AppForm(form): AppForm<ProfileRequest>,
 ) -> Result<Fragments> {
-    me::update_profile(&state.db, &user, form.into()).await?;
+    me::update_profile(state.db.writer(), &user, form.into()).await?;
     Fragments::new().toast(ToastKind::Success, "Profile saved")
 }

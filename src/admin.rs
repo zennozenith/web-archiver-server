@@ -1,7 +1,10 @@
 //! Administrative operations shared by the operator CLI.
 //!
-//! The CLI only prompts; connection options, migrations, validation and the
-//! SQL for a super-admin account live here so they cannot drift from the app.
+//! This module is the library's **only** public surface for tooling. The CLI
+//! only prompts; connection options, migrations, validation and the queries
+//! behind a super-admin account live behind it so they cannot drift from the
+//! app. No `sqlx` type appears in this API: the pool is wrapped in [`AdminDb`],
+//! so the app's internals can change without breaking the CLI.
 
 use anyhow::{Context as _, bail};
 use secrecy::SecretString;
@@ -19,9 +22,17 @@ use crate::{
     util::time::now_ms,
 };
 
-/// Open a SQLite pool with the same URL normalization, directory creation and
-/// PRAGMAs as the server.
-pub async fn connect(database: &str) -> anyhow::Result<SqlitePool> {
+/// An open database connection for administrative commands.
+///
+/// Opaque on purpose; obtain one with [`connect`].
+#[derive(Debug, Clone)]
+pub struct AdminDb {
+    pool: SqlitePool,
+}
+
+/// Open a SQLite connection with the same URL normalization, directory
+/// creation and PRAGMAs as the server.
+pub async fn connect(database: &str) -> anyhow::Result<AdminDb> {
     let url = if database.starts_with("sqlite:") {
         database.to_owned()
     } else {
@@ -31,14 +42,15 @@ pub async fn connect(database: &str) -> anyhow::Result<SqlitePool> {
         url: url.into_boxed_str(),
         ..DatabaseSettings::default()
     };
-    db::create_pool(&settings)
+    let pool = db::create_pool(&settings)
         .await
-        .context("unable to open database")
+        .context("unable to open database")?;
+    Ok(AdminDb { pool })
 }
 
 /// Apply every migration embedded in the library.
-pub async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
-    db::migrate(pool)
+pub async fn migrate(db: &AdminDb) -> anyhow::Result<()> {
+    db::migrate(&db.pool)
         .await
         .context("unable to migrate database")
 }
@@ -65,18 +77,18 @@ pub fn validate_username(username: &str) -> Result<(), String> {
 }
 
 /// Whether a live user already owns this e-mail address.
-pub async fn email_in_use(pool: &SqlitePool, email: &str) -> anyhow::Result<bool> {
-    Ok(db::user::email_in_use(pool, email).await?)
+pub async fn email_in_use(db: &AdminDb, email: &str) -> anyhow::Result<bool> {
+    Ok(db::user::email_in_use(&db.pool, email).await?)
 }
 
 /// Whether a live user already owns this username.
-pub async fn username_in_use(pool: &SqlitePool, username: &str) -> anyhow::Result<bool> {
-    Ok(db::user::username_in_use(pool, username).await?)
+pub async fn username_in_use(db: &AdminDb, username: &str) -> anyhow::Result<bool> {
+    Ok(db::user::username_in_use(&db.pool, username).await?)
 }
 
 /// Number of live super-admin accounts.
-pub async fn super_admin_count(pool: &SqlitePool) -> anyhow::Result<i64> {
-    Ok(db::user::super_admin_count(pool).await?)
+pub async fn super_admin_count(db: &AdminDb) -> anyhow::Result<i64> {
+    Ok(db::user::super_admin_count(&db.pool).await?)
 }
 
 #[derive(Debug)]
@@ -96,18 +108,18 @@ pub struct NewSuperAdmin<'a> {
 
 /// Create a pre-verified, active super-admin account.
 pub async fn create_super_admin(
-    pool: &SqlitePool,
+    db: &AdminDb,
     account: NewSuperAdmin<'_>,
 ) -> anyhow::Result<CreatedSuperAdmin> {
     validate_email(account.email).map_err(anyhow::Error::msg)?;
     if let Some(username) = account.username {
         validate_username(username).map_err(anyhow::Error::msg)?;
     }
-    if email_in_use(pool, account.email).await? {
+    if email_in_use(db, account.email).await? {
         bail!("email is already in use");
     }
     if let Some(username) = account.username
-        && username_in_use(pool, username).await?
+        && username_in_use(db, username).await?
     {
         bail!("username is already in use");
     }
@@ -115,7 +127,7 @@ pub async fn create_super_admin(
     // Argon2 is deliberately slow; hash before taking the write transaction.
     let password_hash = crate::infra::crypto::hash_password(account.password).await?;
     let now = now_ms();
-    let mut tx = pool.begin().await?;
+    let mut tx = db.pool.begin().await?;
 
     let (user_id, public_id) = auth::insert_active_user(
         &mut tx,

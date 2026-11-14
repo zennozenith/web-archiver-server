@@ -66,6 +66,11 @@ impl Settings {
             "public_url must not contain credentials"
         );
 
+        ensure!(
+            self.database.read_connections >= 1,
+            "database.read_connections must be at least 1"
+        );
+
         if self.mail.smtp.is_some() {
             ensure!(
                 self.mail.from.is_some(),
@@ -85,8 +90,10 @@ impl Settings {
 pub(crate) struct DatabaseSettings {
     #[serde(default = "default_db_url")]
     pub url: Box<str>,
-    #[serde(default = "default_max_connections")]
-    pub max_connections: u32,
+    /// Size of the read pool. The writer is always a single connection (see
+    /// `db::Database`). `max_connections` is accepted for older config files.
+    #[serde(default = "default_read_connections", alias = "max_connections")]
+    pub read_connections: u32,
     #[serde(default = "default_busy_timeout_secs")]
     pub busy_timeout_secs: u64,
 }
@@ -95,7 +102,7 @@ impl Default for DatabaseSettings {
     fn default() -> Self {
         Self {
             url: default_db_url(),
-            max_connections: default_max_connections(),
+            read_connections: default_read_connections(),
             busy_timeout_secs: default_busy_timeout_secs(),
         }
     }
@@ -127,6 +134,22 @@ pub(crate) struct ServerSettings {
     /// scheme, so plain-HTTP development works without extra configuration.
     #[serde(default)]
     pub secure_cookie: Option<bool>,
+    /// Content-Security-Policy rollout stage; see [`CspMode`].
+    #[serde(default)]
+    pub csp: CspMode,
+}
+
+/// How the strict app CSP is rolled out.
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CspMode {
+    /// Enforce a transitional policy (scripts may use `unsafe-inline` and
+    /// `unsafe-eval`) and only *report* violations of the strict one to
+    /// `/csp-report`. Switch to `enforce` once the reports have been quiet.
+    #[default]
+    ReportOnly,
+    /// Enforce the strict policy (and keep reporting violations).
+    Enforce,
 }
 
 impl ServerSettings {
@@ -190,10 +213,11 @@ fn default_db_url() -> Box<str> {
     String::from("sqlite://data/db/app.db").into_boxed_str()
 }
 
-/// SQLite permits one writer. A single pooled connection avoids
-/// `SQLITE_BUSY` when a deferred transaction upgrades from read to write.
-const fn default_max_connections() -> u32 {
-    1
+/// SQLite permits one writer, which `db::Database` pins to a single
+/// connection (avoiding `SQLITE_BUSY` on read-to-write upgrades). Readers are
+/// cheap under WAL, so the read pool can be larger.
+const fn default_read_connections() -> u32 {
+    8
 }
 
 const fn default_busy_timeout_secs() -> u64 {
