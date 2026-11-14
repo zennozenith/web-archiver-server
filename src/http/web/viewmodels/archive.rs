@@ -8,7 +8,7 @@ use crate::{
         pending::{PendingItem, PendingStatus},
         tag::TagSummary,
     },
-    http::web::view::Stamp,
+    http::web::viewmodels::Stamp,
 };
 
 fn thumb_url(page_id: i64) -> String {

@@ -63,7 +63,7 @@ pub(crate) async fn parse_page_upload(mut mp: Multipart) -> Result<CreatePage> {
         url: canonicalize_url(&raw_url)?,
         display_title,
         description: upload_description.unwrap_or_default(),
-        collection_id: CollectionId::parse_or(upload_collection_id.as_ref()),
+        collection_id: CollectionId::parse_opt(upload_collection_id.as_deref()),
         pinned: upload_pinned,
         tags: upload_tags,
         thumbnail,

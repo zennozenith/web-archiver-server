@@ -9,8 +9,7 @@ use crate::error::AppError;
 /// Random 16 bytes hex encoded
 pub(crate) fn random_id() -> Result<String, AppError> {
     let mut buf = [0u8; 16];
-    // TODO: Remove expect and return error
-    getrandom::fill(&mut buf).map_err(|e| AppError::Internal(Box::new(e)))?; // system RNG unavailable
+    getrandom::fill(&mut buf).map_err(AppError::internal)?; // system RNG unavailable
     Ok(hex::encode(buf))
 }
 
@@ -27,10 +26,10 @@ pub(crate) async fn hash_password(password: SecretString) -> Result<String, AppE
         Argon2::default()
             .hash_password(password.expose_secret().as_bytes())
             .map(|h| h.to_string())
-            .map_err(|e| AppError::Internal(Box::new(e)))
+            .map_err(AppError::internal)
     })
     .await
-    .map_err(|e| AppError::Internal(Box::new(e)))?
+    .map_err(AppError::internal)?
 }
 
 pub(crate) async fn verify_password(password: SecretString, phc_hash: String) -> bool {

@@ -11,8 +11,8 @@ use crate::{
         htmx::Render,
         web::{
             library,
-            view::{NavGroup, NavItem, NavProvider, Section, Shell, icons},
-            view_archive::{LinkCard, PendingView, StatCard, TagRow},
+            viewmodels::archive::{LinkCard, PendingView, StatCard, TagRow},
+            viewmodels::{NavGroup, NavItem, NavProvider, Section, Shell, icons},
         },
     },
     prelude::*,
@@ -34,7 +34,7 @@ pub(super) struct DashboardTpl {
 pub(crate) struct LibraryDashboard;
 
 impl NavProvider for LibraryDashboard {
-    fn groups(user: &crate::auth::AuthUser, active: Section) -> Vec<super::view::NavGroup> {
+    fn groups(user: &crate::auth::AuthUser, active: Section) -> Vec<super::viewmodels::NavGroup> {
         let item = |section: Section,
                     href: &'static str,
                     label: &'static str,

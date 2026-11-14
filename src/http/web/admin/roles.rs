@@ -11,7 +11,7 @@ use crate::{
         htmx::Render,
         web::{
             account::AccountOverview,
-            view::{Section, Shell, pct_encode, role_class},
+            viewmodels::{Section, Shell, pct_encode, role_class},
         },
     },
     prelude::*,
@@ -64,7 +64,10 @@ fn cell(role_perms: &[String], permission: &str) -> Cell {
             class: "cell-yes",
             label: "Granted",
         }
-    } else if role_perms.iter().any(|p| p == "*") {
+    } else if role_perms
+        .iter()
+        .any(|p| p == Permission::WILDCARD.as_str())
+    {
         Cell {
             symbol: "\u{25CF}",
             class: "cell-implied",

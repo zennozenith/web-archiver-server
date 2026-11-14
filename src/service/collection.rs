@@ -4,7 +4,7 @@ use crate::{
     app::AppState,
     auth::{AuthUser, Permission},
     db::collection::{CollectionId, CollectionInput, CollectionRecord},
-    error::{AppError, Result},
+    error::{AppError, Resource, Result},
 };
 
 /// Validated fields accepted when creating or editing a collection.
@@ -53,7 +53,7 @@ pub(crate) async fn get(
     actor.require(Permission::ARCHIVE_READ)?;
     CollectionRecord::load(&ctx.db, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound("collection"))
+        .ok_or(AppError::NotFound(Resource::Collection))
 }
 
 pub(crate) async fn create(
@@ -76,7 +76,7 @@ pub(crate) async fn update(
     let input = fields.input()?;
     CollectionRecord::update(&ctx.db, actor.id, id, &input)
         .await?
-        .ok_or(AppError::NotFound("collection"))
+        .ok_or(AppError::NotFound(Resource::Collection))
 }
 
 pub(crate) async fn delete(ctx: &AppState, actor: &AuthUser, id: CollectionId) -> Result<()> {
@@ -84,7 +84,7 @@ pub(crate) async fn delete(ctx: &AppState, actor: &AuthUser, id: CollectionId) -
     if CollectionRecord::delete(&ctx.db, actor.id, id).await? {
         Ok(())
     } else {
-        Err(AppError::NotFound("collection"))
+        Err(AppError::NotFound(Resource::Collection))
     }
 }
 
@@ -98,7 +98,7 @@ pub(crate) async fn set_public(
     if CollectionRecord::set_public(&ctx.db, actor.id, id, public).await? {
         Ok(())
     } else {
-        Err(AppError::NotFound("collection"))
+        Err(AppError::NotFound(Resource::Collection))
     }
 }
 
@@ -106,7 +106,7 @@ pub(crate) async fn set_public(
 pub(crate) async fn public(ctx: &AppState, id: CollectionId) -> Result<CollectionRecord> {
     CollectionRecord::load_public(&ctx.db, id)
         .await?
-        .ok_or(AppError::NotFound("public collection"))
+        .ok_or(AppError::NotFound(Resource::PublicCollection))
 }
 
 /// A public collection together with its links. No sign-in required.

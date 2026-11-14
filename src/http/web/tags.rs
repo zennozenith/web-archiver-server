@@ -11,15 +11,15 @@ use serde::Deserialize;
 use crate::{
     app::AppState,
     auth::{AuthUser, Permission},
-    error::{AppError, Result},
+    error::{AppError, Resource, Result},
     http::{
         extract::body::{AppForm, AppPath, AppQuery},
         htmx::{Fragments, Render, ToastKind},
         web::{
             dashboard::LibraryDashboard,
             library,
-            view::{Section, Shell},
-            view_archive::TagRow,
+            viewmodels::archive::TagRow,
+            viewmodels::{Section, Shell},
         },
     },
     infra::{TagId, TagName},
@@ -83,7 +83,7 @@ pub(super) async fn search(
 pub(super) struct TagTpl {
     shell: Shell,
     tag: TagRow,
-    links: Vec<crate::http::web::view_archive::LinkCard>,
+    links: Vec<crate::http::web::viewmodels::archive::LinkCard>,
 }
 
 pub(super) async fn show(
@@ -93,7 +93,7 @@ pub(super) async fn show(
 ) -> Result<Render<TagTpl>> {
     let tag = service::tag::find(&ctx, &user, &name)
         .await?
-        .ok_or(AppError::NotFound("tag"))?;
+        .ok_or(AppError::NotFound(Resource::Tag))?;
     let links = library::load_tagged(&ctx, &user, tag.id, PAGE_LINKS).await?;
     Ok(Render(TagTpl {
         shell: Shell::new::<LibraryDashboard>(&user, Section::Tags),
@@ -160,7 +160,7 @@ async fn resolve_id(
     service::tag::find(ctx, user, name)
         .await?
         .map(|tag| tag.id)
-        .ok_or(AppError::NotFound("tag"))
+        .ok_or(AppError::NotFound(Resource::Tag))
 }
 
 pub(crate) fn router() -> Router<AppState> {

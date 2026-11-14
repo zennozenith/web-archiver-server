@@ -11,7 +11,7 @@ use crate::{
         helper::{CreateOutcome, Cursor, CursorPage},
         pending::{PendingId, PendingItem, PendingRecord, PendingStatus, PendingUpdate},
     },
-    error::{AppError, Result},
+    error::{AppError, Resource, Result},
     infra::{TagName, parse_tag_names},
     util::{
         limit::Limit,
@@ -20,7 +20,6 @@ use crate::{
     },
 };
 
-const ITEM: &str = "pending item";
 const DEFAULT_LIST_LIMIT: Limit = Limit::from_const(50);
 pub(crate) const MAX_BULK_ITEMS: usize = 500;
 const MAX_ERROR_CHARS: usize = 2000;
@@ -38,7 +37,7 @@ async fn conflict_or_not_found(
     Ok(if PendingRecord::exists(pool, owner, id).await? {
         AppError::Conflict(conflict_message.into())
     } else {
-        AppError::NotFound(ITEM)
+        AppError::NotFound(Resource::PendingItem)
     })
 }
 
@@ -62,9 +61,7 @@ pub(crate) async fn list(
 
 pub(crate) async fn get(ctx: &AppState, actor: &AuthUser, id: PendingId) -> Result<PendingItem> {
     actor.require(Permission::ARCHIVE_READ)?;
-    PendingItem::load(&ctx.db, actor.id, id)
-        .await?
-        .ok_or(AppError::NotFound(ITEM))
+    PendingItem::get(&ctx.db, actor.id, id).await
 }
 
 pub(crate) async fn create(
@@ -88,9 +85,7 @@ pub(crate) async fn create(
     };
     tx.commit().await?;
 
-    PendingItem::load(&ctx.db, actor.id, id)
-        .await?
-        .ok_or(AppError::NotFound(ITEM))
+    PendingItem::get(&ctx.db, actor.id, id).await
 }
 
 #[expect(clippy::too_many_arguments, reason = "mirrors the API patch fields")]
@@ -105,7 +100,7 @@ pub(crate) async fn patch(
     actor.require(Permission::ARCHIVE_WRITE)?;
 
     if status == Some(PendingStatus::InProgress) {
-        return Err(AppError::Unprocessable {
+        return Err(AppError::Invalid {
             code: "invalid_status",
             message: "use POST /api/pending/claim to start work on an item".into(),
         });
@@ -117,7 +112,7 @@ pub(crate) async fn patch(
     let mut tx = ctx.db.begin().await?;
     let current = PendingRecord::status_of(&mut *tx, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(ITEM))?;
+        .ok_or(AppError::NotFound(Resource::PendingItem))?;
 
     if status.is_some() && current == PendingStatus::InProgress {
         return Err(AppError::Conflict(
@@ -134,9 +129,7 @@ pub(crate) async fn patch(
     .await?;
     tx.commit().await?;
 
-    PendingItem::load(&ctx.db, actor.id, id)
-        .await?
-        .ok_or(AppError::NotFound(ITEM))
+    PendingItem::get(&ctx.db, actor.id, id).await
 }
 
 pub(crate) async fn retry(ctx: &AppState, actor: &AuthUser, id: PendingId) -> Result<PendingItem> {
@@ -150,9 +143,7 @@ pub(crate) async fn retry(ctx: &AppState, actor: &AuthUser, id: PendingId) -> Re
         )
         .await?);
     }
-    PendingItem::load(&ctx.db, actor.id, id)
-        .await?
-        .ok_or(AppError::NotFound(ITEM))
+    PendingItem::get(&ctx.db, actor.id, id).await
 }
 
 /// Atomically claims the actor's oldest queued item.
@@ -176,9 +167,7 @@ pub(crate) async fn fail(
     if !PendingRecord::mark_failed(&ctx.db, actor.id, id, &error).await? {
         return Err(conflict_or_not_found(&ctx.db, actor.id, id, "item is not in progress").await?);
     }
-    PendingItem::load(&ctx.db, actor.id, id)
-        .await?
-        .ok_or(AppError::NotFound(ITEM))
+    PendingItem::get(&ctx.db, actor.id, id).await
 }
 
 pub(crate) async fn delete(ctx: &AppState, actor: &AuthUser, id: PendingId) -> Result<()> {

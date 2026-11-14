@@ -64,9 +64,9 @@ pub(crate) async fn create_account(ctx: &AppState, account: NewAccount) -> Resul
 
     if !db::auth::grant_role(&mut tx, user_id, DEFAULT_ROLE).await? {
         // Misconfigured seed data. Roll back instead of creating a user with no permissions.
-        return Err(AppError::Internal(
-            format!("role `{DEFAULT_ROLE}` is missing").into(),
-        ));
+        return Err(AppError::internal(format!(
+            "role `{DEFAULT_ROLE}` is missing"
+        )));
     }
 
     let verify_token = issue_verify_token(&mut tx, user_id, &account.email, now).await?;

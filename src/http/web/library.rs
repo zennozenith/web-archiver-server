@@ -7,7 +7,7 @@ use crate::{
     auth::AuthUser,
     db::page::{PageField, PageItem, PageSort},
     error::Result,
-    http::web::view_archive::LinkCard,
+    http::web::viewmodels::archive::LinkCard,
     infra::TagId,
     service,
     util::limit::Limit,
@@ -74,7 +74,7 @@ impl LinkQuery {
         let field = self.field();
         LinkFilters {
             text: self.q.clone(),
-            text_qs: crate::http::web::view::pct_encode(&self.q),
+            text_qs: crate::http::web::viewmodels::pct_encode(&self.q),
             sort_value: match sort {
                 PageSort::Oldest => "oldest",
                 PageSort::Name => "name",
@@ -160,9 +160,9 @@ pub(crate) async fn collection_choices(
     ctx: &AppState,
     actor: &AuthUser,
     selected: Option<i64>,
-) -> Result<Vec<crate::http::web::view_archive::CollectionChoice>> {
+) -> Result<Vec<crate::http::web::viewmodels::archive::CollectionChoice>> {
     let collections = service::collection::list(ctx, actor).await?;
-    Ok(crate::http::web::view_archive::collection_choices(
+    Ok(crate::http::web::viewmodels::archive::collection_choices(
         collections,
         selected,
     ))

@@ -1,9 +1,13 @@
 use std::time::Duration;
 
-use chrono::Utc;
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
-use crate::{config::DatabaseSettings, util::time::DAY_MS};
+use crate::{
+    config::DatabaseSettings,
+    util::time::{DAY_MS, now_ms},
+};
 
 pub(crate) mod api_key;
 pub(crate) mod archive;
@@ -31,9 +35,9 @@ pub(crate) async fn create_pool(
         .max_connections(database_settings.max_connections)
         .min_connections(1)
         .acquire_timeout(Duration::from_secs(10))
-        .idle_timeout(Duration::from_mins(10))
-        .max_lifetime(Duration::from_mins(30))
-        .connect_with(database_settings.connect_options())
+        .idle_timeout(Duration::from_secs(10 * 60))
+        .max_lifetime(Duration::from_secs(30 * 60))
+        .connect_with(database_settings.connect_options()?)
         .await?;
 
     Ok(pool)
@@ -45,12 +49,17 @@ pub(crate) async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::migrate::Migr
 }
 
 /// Hourly housekeeping, taken from the "OPERATIONAL NOTES" in the schema file.
-pub(crate) fn spawn_cleanup(pool: SqlitePool) {
+///
+/// The returned handle stops when `shutdown` is cancelled.
+pub(crate) fn spawn_cleanup(pool: SqlitePool, shutdown: CancellationToken) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(3600));
         loop {
-            tick.tick().await;
-            let now = Utc::now().timestamp_millis();
+            tokio::select! {
+                () = shutdown.cancelled() => break,
+                _ = tick.tick() => {}
+            }
+            let now = now_ms();
             let cutoff = |days: i64| now.saturating_sub(days.saturating_mul(DAY_MS));
 
             let jobs = [
@@ -66,7 +75,7 @@ pub(crate) fn spawn_cleanup(pool: SqlitePool) {
             }
             let _throw_away = sqlx::query("PRAGMA optimize").execute(&pool).await;
         }
-    });
+    })
 }
 
 async fn run_cleanup(pool: &SqlitePool, sql: &'static str, ts: i64) {

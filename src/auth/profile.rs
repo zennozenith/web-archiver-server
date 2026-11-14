@@ -1,6 +1,6 @@
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 
-use crate::prelude::*;
+use crate::{prelude::*, util::time::today};
 
 const NAME_MAX: usize = 100;
 const BIO_MAX: usize = 1000;
@@ -29,7 +29,7 @@ impl ProfileUpdate {
             Some(raw) => {
                 let date = NaiveDate::parse_from_str(&raw, "%Y-%m-%d")
                     .map_err(|_| AppError::BadRequest("birth_date must be YYYY-MM-DD".into()))?;
-                if date > Utc::now().date_naive() {
+                if date > today() {
                     return Err(AppError::BadRequest(
                         "birth_date cannot be in the future".into(),
                     ));

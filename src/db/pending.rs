@@ -29,6 +29,12 @@ id_type! {
     pub(crate) struct PendingId;
 }
 
+impl PendingId {
+    pub(crate) const fn get(self) -> i64 {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, strum::Display)]
 #[sqlx(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -393,6 +399,19 @@ impl PendingItem {
         Ok(Self::hydrate(pool, vec![record]).await?.pop())
     }
 
+    /// Like [`Self::load`], but reports a missing item as a typed `404`.
+    pub(crate) async fn get(
+        pool: &SqlitePool,
+        owner: i64,
+        id: PendingId,
+    ) -> crate::error::Result<Self> {
+        Self::load(pool, owner, id)
+            .await?
+            .ok_or(crate::error::AppError::NotFound(
+                crate::error::Resource::PendingItem,
+            ))
+    }
+
     /// Attaches tags to many records using a single extra query.
     pub(crate) async fn hydrate<'e>(
         executor: impl SqliteExecutor<'e>,
@@ -474,12 +493,5 @@ impl PendingItem {
             items,
             next_cursor: page.next_cursor,
         })
-    }
-
-    /// All of the owner's items (used by the HTML pages and bulk operations).
-    pub(crate) async fn all(pool: &SqlitePool, owner: i64) -> Result<Vec<Self>> {
-        Self::list(pool, owner, None, None, Limit::MAX)
-            .await
-            .map(|page| page.items)
     }
 }

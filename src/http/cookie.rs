@@ -43,21 +43,25 @@ impl SessionCookie {
     /// Returns an internal error if the token contains characters that are
     /// not valid in a header. Generated tokens never do, so this indicates a
     /// bug rather than bad input.
-    pub(crate) fn issue(token: &SessionToken) -> Result<HeaderValue, AppError> {
-        Self::header(token.expose_secret(), SESSION_TTL_MS / 1000)
+    pub(crate) fn issue(token: &SessionToken, secure: bool) -> Result<HeaderValue, AppError> {
+        Self::header(token.expose_secret(), SESSION_TTL_MS / 1000, secure)
     }
 
     /// `Set-Cookie` value that deletes the cookie in the browser.
-    pub(crate) const fn clear() -> HeaderValue {
-        HeaderValue::from_static("sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")
+    pub(crate) fn clear(secure: bool) -> HeaderValue {
+        let secure = if secure { "; Secure" } else { "" };
+        HeaderValue::try_from(format!(
+            "sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure}"
+        ))
+        .unwrap_or_else(|_| HeaderValue::from_static("sid=; Path=/; Max-Age=0"))
     }
 
-    // TODO: add `; Secure` when serving over HTTPS (make it a config flag).
-    fn header(value: &str, max_age_secs: i64) -> Result<HeaderValue, AppError> {
+    fn header(value: &str, max_age_secs: i64, secure: bool) -> Result<HeaderValue, AppError> {
+        let secure = if secure { "; Secure" } else { "" };
         HeaderValue::try_from(format!(
-            "{}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}",
+            "{}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}{secure}",
             Self::KEY,
         ))
-        .map_err(|e| AppError::Internal(Box::new(e)))
+        .map_err(AppError::internal)
     }
 }

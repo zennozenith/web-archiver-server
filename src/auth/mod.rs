@@ -45,6 +45,8 @@ impl Permission {
     pub(crate) const ROLES_READ: Self = Self("roles:read");
     pub(crate) const ROLES_WRITE: Self = Self("roles:write");
     pub(crate) const AUDIT_READ: Self = Self("audit:read");
+    /// Grants every permission; only super-admins hold it.
+    pub(crate) const WILDCARD: Self = Self("*");
 
     pub(crate) const fn as_str(self) -> &'static str {
         self.0
@@ -54,7 +56,6 @@ impl Permission {
 /// What the client presented. Parsing it from headers is the HTTP layer's job.
 pub(crate) enum Credential {
     Session(SessionToken),
-    // TODO: replace with ApiKeyToken
     ApiKey(ApiKeyToken),
 }
 
@@ -75,14 +76,14 @@ pub(crate) struct AuthUser {
 
 impl AuthUser {
     pub(crate) fn new(
-        profile: UserProfile,
+        profile: AuthIdentityRow,
         roles: Vec<String>,
         permissions: HashSet<String>,
-        origin: Origin,
+        origin: AuthMethod,
     ) -> Self {
         let (session_public_id, via_api_key) = match origin {
-            Origin::Session { public_id } => (Some(public_id), false),
-            Origin::ApiKey => (None, true),
+            AuthMethod::Session { public_id } => (Some(public_id), false),
+            AuthMethod::ApiKey => (None, true),
         };
         Self {
             id: profile.id,
@@ -95,43 +96,39 @@ impl AuthUser {
             via_api_key,
         }
     }
-    /// Wildcard holder ("*"), e.g. `super_admin`.
-    pub(crate) fn is_super(&self) -> bool {
-        self.permissions.contains("*")
+    /// Wildcard holder, e.g. `super_admin`.
+    pub(crate) fn is_super_admin(&self) -> bool {
+        self.permissions.contains(Permission::WILDCARD.as_str())
     }
 
     /// Same as `can`, for permission names only known at runtime (API key scopes).
-    pub(crate) fn has(&self, name: &str) -> bool {
-        self.is_super() || self.permissions.contains(name)
+    pub(crate) fn has_scope(&self, name: &str) -> bool {
+        self.is_super_admin() || self.permissions.contains(name)
     }
 
     pub(crate) fn can(&self, permission: Permission) -> bool {
-        self.has(permission.as_str())
+        self.has_scope(permission.as_str())
     }
 
     pub(crate) fn require(&self, permission: Permission) -> Result<(), AppError> {
         if self.can(permission) {
             Ok(())
         } else {
-            Err(AppError::Forbidden(ForbiddenReason::Permission))
+            Err(AppError::Forbidden(ForbiddenReason::MissingPermission))
         }
     }
-
-    // pub(crate) fn permissions(&self) -> impl Iterator<Item = &str> {
-    //     self.permissions.iter().map(String::as_str)
-    // }
 }
 
 /// The columns both credential paths share.
 #[derive(Debug, sqlx::FromRow)]
-pub(crate) struct UserProfile {
+pub(crate) struct AuthIdentityRow {
     pub id: i64,
     pub public_id: String,
     pub email: Option<String>,
     pub username: Option<String>,
 }
 
-pub(crate) enum Origin {
+pub(crate) enum AuthMethod {
     Session { public_id: String },
     ApiKey,
 }

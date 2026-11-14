@@ -10,30 +10,7 @@ use tower_http::services::ServeDir;
 
 use crate::prelude::*;
 
-// use std::collections::HashMap;
-// use std::sync::OnceLock;
-// use serde::Deserialize;
-// #[derive(Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// struct ManifestEntry {
-//     file: String,
-// }
-
-// /// Vite's manifest is written by `build.rs` before Rust compiles, so embedding
-// /// it is safe and lets templates reference content-addressed files.
-// fn manifest() -> &'static HashMap<String, ManifestEntry> {
-//     static MANIFEST: OnceLock<HashMap<String, ManifestEntry>> = OnceLock::new();
-//     MANIFEST.get_or_init(|| {
-//         serde_json::from_str(include_str!("../static/vite/.vite/manifest.json")).unwrap_or_default()
-//     })
-// }
-
-// /// Resolve a Vite entry (e.g. `src/app.ts`) to its built `/static/vite/...` URL.
-// pub(crate) fn vite_asset(entry: &str) -> Option<String> {
-//     manifest()
-//         .get(entry)
-//         .map(|item| format!("/static/vite/{}", item.file))
-// }
+use super::cache;
 
 trait ServeEmbed: Embed {
     fn serve_embedded(path: &str) -> Response {
@@ -45,7 +22,7 @@ trait ServeEmbed: Embed {
                     .header(header::CONTENT_TYPE, mime.as_ref())
                     // long cache since Vite output is content-addressed if you hash filenames;
                     // drop this header if you're using the fixed filenames from the earlier scaffold
-                    .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+                    .header(header::CACHE_CONTROL, cache::PUBLIC_IMMUTABLE)
                     .body(Body::from(content.data))
                     .expect("static response headers are valid")
             }

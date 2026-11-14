@@ -9,8 +9,7 @@ use serde::Deserialize;
 use super::audit::AuditItem;
 use crate::{
     AppState,
-    auth::{AuthUser, Permission},
-    db::user::UserSearch,
+    auth::{AuthUser, Permission, UserFilter},
     error::AppError,
     http::{
         dto::admin::StatusRequest,
@@ -18,7 +17,7 @@ use crate::{
         htmx::{Fragments, HxHeaders, Render, ToastKind},
         web::{
             account::AccountOverview,
-            view::{
+            viewmodels::{
                 Caps, PAGE_SIZE, Pager, Section, Shell, Stamp, StatusOption, UserItem, pct_encode,
                 status_options,
             },
@@ -60,12 +59,14 @@ impl ListQuery {
             .max(1)
     }
 
-    fn search(&self) -> UserSearch<'_> {
-        UserSearch {
-            q: self.q.trim(),
-            status: non_empty(&self.status),
-            role: non_empty(&self.role),
-        }
+    fn filter(&self) -> Result<UserFilter, AppError> {
+        Ok(UserFilter::new(
+            Some(self.q.trim()),
+            non_empty(&self.status),
+            Some(PAGE_SIZE),
+            None,
+        )?
+        .with_role(non_empty(&self.role)))
     }
 
     /// Query string reproducing the filters, ending in `&` when non-empty.
@@ -96,7 +97,7 @@ async fn load_table(
     query: &ListQuery,
 ) -> Result<UsersTable, AppError> {
     let found =
-        admin::search_users(ctx, actor, &query.search(), query.page_number(), PAGE_SIZE).await?;
+        admin::search_users(ctx, actor, &query.filter()?, query.page_number(), PAGE_SIZE).await?;
     Ok(UsersTable {
         pager: Pager::new(found.total, found.page, PAGE_SIZE, &query.base_qs()),
         rows: found

@@ -7,7 +7,7 @@ use crate::{
         helper::{CreateOutcome, FieldPatch},
         tag::{PatchOutcome, Tag, TagPatch, TagSummary},
     },
-    error::{AppError, Result},
+    error::{AppError, Resource, Result},
     infra::{TagColor, TagId, TagMerge, TagName, parse_optional_color},
 };
 
@@ -71,7 +71,7 @@ pub(crate) async fn patch(
 
     match patch.apply(&ctx.db, actor.id, id).await? {
         PatchOutcome::Updated(tag) => Ok(tag),
-        PatchOutcome::NotFound => Err(AppError::NotFound("tag")),
+        PatchOutcome::NotFound => Err(AppError::NotFound(Resource::Tag)),
         PatchOutcome::NameTaken { existing_id } => Err(AppError::Duplicate {
             existing_id: existing_id.get(),
             msg: "a tag with that name already exists",
@@ -84,7 +84,7 @@ pub(crate) async fn delete(ctx: &AppState, actor: &AuthUser, id: TagId) -> Resul
     if Tag::delete(&ctx.db, actor.id, id).await? {
         Ok(())
     } else {
-        Err(AppError::NotFound("tag"))
+        Err(AppError::NotFound(Resource::Tag))
     }
 }
 
@@ -98,5 +98,5 @@ pub(crate) async fn merge(
     let merge = TagMerge::new(source, target).map_err(|e| AppError::BadRequest(e.to_string()))?;
     Tag::merge(&ctx.db, actor.id, merge)
         .await?
-        .ok_or(AppError::NotFound("tag"))
+        .ok_or(AppError::NotFound(Resource::Tag))
 }

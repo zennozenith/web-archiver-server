@@ -4,7 +4,9 @@ use secrecy::ExposeSecret as _;
 use sqlx::{FromRow, Result, SqliteConnection, SqliteExecutor, SqlitePool};
 
 use crate::{
-    auth::{AccountStatus, ClientInfo, SESSION_TTL_MS, SessionToken, TokenPurpose, UserProfile},
+    auth::{
+        AccountStatus, AuthIdentityRow, ClientInfo, SESSION_TTL_MS, SessionToken, TokenPurpose,
+    },
     infra::sha256_hex,
     util::time::add_ms,
 };
@@ -12,7 +14,7 @@ use crate::{
 #[derive(FromRow)]
 pub(crate) struct SessionHit {
     #[sqlx(flatten)]
-    pub user: UserProfile,
+    pub user: AuthIdentityRow,
     pub session_public_id: String,
     pub last_used_at: i64,
 }
@@ -20,7 +22,7 @@ pub(crate) struct SessionHit {
 #[derive(FromRow)]
 pub(crate) struct ApiKeyHit {
     #[sqlx(flatten)]
-    pub user: UserProfile,
+    pub user: AuthIdentityRow,
     pub key_id: i64,
     pub scopes: String, // JSON array
 }

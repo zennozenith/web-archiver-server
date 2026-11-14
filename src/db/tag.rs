@@ -169,23 +169,6 @@ impl Tag {
         .await
     }
 
-    pub(crate) async fn rename(
-        pool: &SqlitePool,
-        owner: i64,
-        id: TagId,
-        name: &TagName,
-    ) -> Result<Option<Self>> {
-        sqlx::query_as(concat!(
-            "UPDATE tags SET name = ? WHERE owner_user_id = ? AND id = ? RETURNING ",
-            tag_columns!()
-        ))
-        .bind(name)
-        .bind(owner)
-        .bind(id)
-        .fetch_optional(pool)
-        .await
-    }
-
     /// Returns `true` if a tag was deleted.
     pub(crate) async fn delete(pool: &SqlitePool, owner: i64, id: TagId) -> Result<bool> {
         let result = sqlx::query("DELETE FROM tags WHERE owner_user_id = ? AND id = ?")

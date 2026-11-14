@@ -33,22 +33,29 @@ pub(crate) async fn find_id_by_public_id<'e>(
         .await
 }
 
+macro_rules! user_filter {
+    () => {
+        " WHERE (?1 IS NULL
+                    OR email        LIKE ?1 ESCAPE '\\'
+                    OR username     LIKE ?1 ESCAPE '\\'
+                    OR display_name LIKE ?1 ESCAPE '\\')
+               AND (?2 IS NULL OR status = ?2)
+               AND (?3 IS NULL OR id IN (SELECT user_id FROM v_user_roles WHERE role = ?3))"
+    };
+}
+
 pub(crate) async fn list<'e>(
     ex: impl SqliteExecutor<'e>,
     filter: &UserFilter,
 ) -> Result<Vec<UserView>> {
     sqlx::query_as(concat!(
         user_select!(),
-        " WHERE (?1 IS NULL
-                 OR email        LIKE ?1 ESCAPE '\\'
-                 OR username     LIKE ?1 ESCAPE '\\'
-                 OR display_name LIKE ?1 ESCAPE '\\')
-            AND (?2 IS NULL OR status = ?2)
-          ORDER BY created_at DESC
-          LIMIT ?3 OFFSET ?4"
+        user_filter!(),
+        " ORDER BY created_at DESC LIMIT ?4 OFFSET ?5"
     ))
-    .bind(filter.pattern.as_deref())
+    .bind(filter.like_pattern())
     .bind(filter.status)
+    .bind(filter.role.as_deref())
     .bind(filter.limit)
     .bind(filter.offset)
     .fetch_all(ex)
@@ -92,53 +99,17 @@ pub(crate) async fn soft_delete<'e>(
     Ok(res.rows_affected() > 0)
 }
 
-/// Directory filters. Empty `q` matches everyone.
-#[derive(Debug, Default)]
-pub(crate) struct UserSearch<'a> {
-    pub q: &'a str,
-    pub status: Option<&'a str>,
-    pub role: Option<&'a str>,
+pub(crate) async fn count(pool: &SqlitePool, filter: &UserFilter) -> sqlx::Result<i64> {
+    sqlx::query_scalar(concat!("SELECT COUNT(*) FROM v_users", user_filter!()))
+        .bind(filter.like_pattern())
+        .bind(filter.status)
+        .bind(filter.role.as_deref())
+        .fetch_one(pool)
+        .await
 }
 
-macro_rules! user_filter {
-    () => {
-        "(?1 = '%%' OR email LIKE ?1 OR username LIKE ?1 OR display_name LIKE ?1) \
-         AND (?2 IS NULL OR status = ?2) \
-         AND (?3 IS NULL OR id IN (SELECT user_id FROM v_user_roles WHERE role = ?3))"
-    };
-}
-
-pub(crate) async fn count(pool: &SqlitePool, s: &UserSearch<'_>) -> sqlx::Result<i64> {
-    sqlx::query_scalar(concat!(
-        "SELECT COUNT(*) FROM v_users WHERE ",
-        user_filter!()
-    ))
-    .bind(format!("%{}%", s.q.trim()))
-    .bind(s.status)
-    .bind(s.role)
-    .fetch_one(pool)
-    .await
-}
-
-pub(crate) async fn search(
-    pool: &SqlitePool,
-    s: &UserSearch<'_>,
-    limit: i64,
-    offset: i64,
-) -> sqlx::Result<Vec<UserView>> {
-    sqlx::query_as(concat!(
-        user_select!(),
-        " WHERE ",
-        user_filter!(),
-        " ORDER BY created_at DESC LIMIT ?4 OFFSET ?5"
-    ))
-    .bind(format!("%{}%", s.q.trim()))
-    .bind(s.status)
-    .bind(s.role)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await
+pub(crate) async fn search(pool: &SqlitePool, filter: &UserFilter) -> sqlx::Result<Vec<UserView>> {
+    list(pool, filter).await
 }
 
 /// Admin-only details that don't belong in the public user view.

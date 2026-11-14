@@ -1,14 +1,12 @@
 //! Queries for captures: dated snapshots of a page, with their blobs and assets.
 
-use std::collections::HashMap;
-
 use serde::Serialize;
 use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteConnection, SqliteExecutor, SqlitePool};
 
 use crate::{
     db::{
         content::ContentId,
-        helper::{Cursor, CursorPage, group_by, id_type},
+        helper::{Cursor, CursorPage, id_type},
         page::{self, PageId},
     },
     infra::Blake3Hash,
@@ -18,6 +16,12 @@ use crate::{
 id_type! {
     /// Primary key of a capture.
     pub(crate) struct CaptureId;
+}
+
+impl CaptureId {
+    pub(crate) const fn get(self) -> i64 {
+        self.0
+    }
 }
 
 /// Version numbers are computed (1 = oldest) so they renumber if a capture is deleted.
@@ -136,22 +140,6 @@ pub(crate) async fn delete<'e>(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Overviews (index page)
-// ───────────────────────────────────────────────────────────────────────────
-
-/// One line per capture for the index UI.
-#[derive(Debug, FromRow)]
-pub(crate) struct CaptureOverview {
-    pub id: CaptureId,
-    pub page_id: PageId,
-    pub captured_at: i64,
-    pub title: Option<String>,
-    pub status_code: Option<i64>,
-    pub has_html: bool,
-    pub has_screenshot: bool,
-}
-
-// ───────────────────────────────────────────────────────────────────────────
 // Capture creation
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -198,36 +186,6 @@ impl NewCapture<'_> {
             .await?;
 
         Ok((capture_id, version))
-    }
-}
-
-impl CaptureOverview {
-    /// Captures for many pages in one query, newest first per page.
-    pub(crate) async fn overviews_by_page<'e>(
-        executor: impl SqliteExecutor<'e>,
-        owner: i64,
-        page_ids: &[PageId],
-    ) -> Result<HashMap<PageId, Vec<Self>>> {
-        if page_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
-            "SELECT c.id, c.page_id, c.captured_at, c.title, c.status_code,
-                (c.content_id IS NOT NULL) AS has_html,
-                (c.screenshot_content_id IS NOT NULL) AS has_screenshot
-         FROM captures c JOIN pages p ON p.id = c.page_id
-         WHERE p.owner_user_id = ",
-        );
-        qb.push_bind(owner).push(" AND c.page_id IN (");
-        let mut list = qb.separated(", ");
-        for &id in page_ids {
-            list.push_bind(id);
-        }
-        list.push_unseparated(") ORDER BY c.page_id, c.captured_at DESC, c.id DESC");
-
-        let rows: Vec<Self> = qb.build_query_as().fetch_all(executor).await?;
-        Ok(group_by(rows.into_iter().map(|row| (row.page_id, row))))
     }
 }
 

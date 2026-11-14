@@ -7,6 +7,7 @@ set default-list
 # export OUT_DIR := "../static/vite"
 # export APP_SERVER__HOST := "0.0.0.0"
 # export APP_SERVER__PORT := "8889"
+# export APP_PUBLIC_URL := "http://localhost:8889"
 # export APP_DATABASE__URL := "sqlite://data/db/app.sqlite3"
 # export APP_DATA_DIR := "./data"
 # export DATABASE_URL := "sqlite://data/db/app.sqlite3"

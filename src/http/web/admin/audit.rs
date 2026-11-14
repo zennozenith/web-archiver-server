@@ -12,7 +12,7 @@ use crate::{
         htmx::Render,
         web::{
             account::AccountOverview,
-            view::{Section, Shell, Stamp, pct_encode},
+            viewmodels::{Section, Shell, Stamp, pct_encode},
         },
     },
     prelude::*,

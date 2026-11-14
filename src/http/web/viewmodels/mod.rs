@@ -1,6 +1,8 @@
 //! Display-ready view-models shared by the templates. Everything here is plain
 //! data (strings, numbers, flags) so the templates stay free of logic.
 
+pub(crate) mod archive;
+
 use chrono::{DateTime, SecondsFormat, Utc};
 
 use crate::{
@@ -117,7 +119,7 @@ impl Shell {
             .unwrap_or_else(|| "Signed in".to_owned());
         Self {
             title: active.title(),
-            account_href: if user.is_super() {
+            account_href: if user.is_super_admin() {
                 "/account"
             } else {
                 "/account/profile"
@@ -335,7 +337,6 @@ pub(crate) fn status_options(selected: &str) -> Vec<StatusOption> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Pager {
-    pub(crate) page: i64,
     pub(crate) total: i64,
     pub(crate) from: i64,
     pub(crate) to: i64,
@@ -363,7 +364,6 @@ impl Pager {
         };
         let to = page.saturating_mul(per_page).min(total);
         Self {
-            page,
             total,
             from,
             to,

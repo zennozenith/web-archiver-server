@@ -16,7 +16,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::{
     db::content::Content,
-    error::{AppError, Result, join_err},
+    error::{AppError, Result},
     infra::{Blake3Hash, BlobStore, Compression, compress},
     util::mime::MimeType,
 };
@@ -58,7 +58,7 @@ fn etag_matches(if_none_match: &str, etag: &str) -> bool {
 }
 
 fn hv(s: &str) -> Result<HeaderValue> {
-    HeaderValue::from_str(s).map_err(|e| AppError::Internal(Box::new(e)))
+    HeaderValue::from_str(s).map_err(AppError::internal)
 }
 
 pub(crate) fn etag_for(hash: &Blake3Hash) -> String {
@@ -66,15 +66,11 @@ pub(crate) fn etag_for(hash: &Blake3Hash) -> String {
 }
 
 async fn decompress_blocking(data: Vec<u8>, comp: Compression) -> Result<Vec<u8>> {
-    tokio::task::spawn_blocking(move || compress::decompress(&data, comp))
-        .await
-        .map_err(join_err)?
+    tokio::task::spawn_blocking(move || compress::decompress(&data, comp)).await?
 }
 
 async fn compress_blocking(data: Vec<u8>, comp: Compression) -> Result<Vec<u8>> {
-    tokio::task::spawn_blocking(move || compress::compress(&data, comp))
-        .await
-        .map_err(join_err)?
+    tokio::task::spawn_blocking(move || compress::compress(&data, comp)).await?
 }
 
 /// How the stored bytes become the response body.
@@ -142,7 +138,7 @@ pub(crate) async fn serve_content_with_csp(
     } = row;
 
     let hash = Blake3Hash::from_bytes(hash)
-        .map_err(|e| AppError::Internal(format!("Invaild hash stored in data base: {e}").into()))?;
+        .map_err(|e| AppError::internal(format!("invalid hash stored in database: {e}")))?;
 
     let accept = req
         .get(ACCEPT_ENCODING)
@@ -211,8 +207,8 @@ pub(crate) async fn serve_content_with_csp(
             })
         }
         (None, None) => {
-            return Err(AppError::Internal(
-                "content row has neither data nor storage_ref".into(),
+            return Err(AppError::internal(
+                "content row has neither data nor storage_ref",
             ));
         }
     };

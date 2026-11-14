@@ -51,7 +51,7 @@ where
             .headers()
             .get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
-            .map_or_default(str::to_ascii_lowercase);
+            .map_or_else(String::new, str::to_ascii_lowercase);
 
         if ct.starts_with("application/json") {
             let Json(v) = req.extract().await?;

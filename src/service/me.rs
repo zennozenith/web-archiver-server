@@ -10,7 +10,7 @@ use crate::{
         ProfileView, SessionView, UserView,
     },
     db::{self, api_key::InsertApiKey, audit::audit, permission::PermissionInfo},
-    error::{AppError, ForbiddenReason, Result},
+    error::{AppError, ForbiddenReason, Resource, Result},
     infra::sha256_hex,
     util::time::now_ms,
 };
@@ -29,7 +29,7 @@ pub(crate) async fn available_scopes(
     Ok(db::permission::all(&ctx.db)
         .await?
         .into_iter()
-        .filter(|p| actor.has(&p.name))
+        .filter(|p| actor.has_scope(&p.name))
         .collect())
 }
 
@@ -94,7 +94,7 @@ pub(crate) async fn revoke_session(
 ) -> Result<()> {
     // Users can only end their own sessions; there is no admin session endpoint yet.
     if !db::session::revoke(&ctx.db, actor.id, public_id, now_ms()).await? {
-        return Err(AppError::NotFound("session"));
+        return Err(AppError::NotFound(Resource::Session));
     }
     audit(
         &ctx.db,
@@ -123,8 +123,8 @@ pub(crate) async fn create_api_key(
         return Err(AppError::Forbidden(ForbiddenReason::ApiKeyMint));
     }
     // A key may only carry scopes its owner actually has.
-    if req.scopes().iter().any(|s| !actor.has(s)) {
-        return Err(AppError::Forbidden(ForbiddenReason::Permission));
+    if req.scopes().iter().any(|s| !actor.has_scope(s)) {
+        return Err(AppError::Forbidden(ForbiddenReason::MissingPermission));
     }
 
     let key = ApiKeyToken::new()?;
@@ -162,7 +162,7 @@ pub(crate) async fn revoke_api_key(
     public_id: &str,
 ) -> Result<()> {
     if !db::api_key::revoke(&ctx.db, actor.id, public_id, now_ms()).await? {
-        return Err(AppError::NotFound("api_key"));
+        return Err(AppError::NotFound(Resource::ApiKey));
     }
     audit(
         &ctx.db,

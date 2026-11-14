@@ -23,8 +23,7 @@ mod library;
 mod links;
 mod pending;
 mod tags;
-mod view;
-mod view_archive;
+pub(crate) mod viewmodels;
 
 use axum::{Router, middleware::from_fn, response::Redirect, routing::get};
 

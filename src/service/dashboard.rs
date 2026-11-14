@@ -4,11 +4,10 @@
 
 use crate::{
     app::AppState,
-    auth::{AuditEntry, AuthUser, Permission, UserView},
+    auth::{AuditEntry, AuthUser, Permission, UserFilter, UserView},
     db::{
         self,
         stats::{DayCount, SecurityCounts, UserCounts},
-        user::UserSearch,
     },
     error::{AppError, ForbiddenReason, Result},
     util::time::now_ms,
@@ -30,8 +29,8 @@ pub(crate) struct Overview {
 }
 
 pub(crate) async fn overview(ctx: &AppState, actor: &AuthUser) -> Result<Overview> {
-    if !actor.is_super() {
-        return Err(AppError::Forbidden(ForbiddenReason::Permission));
+    if !actor.is_super_admin() {
+        return Err(AppError::Forbidden(ForbiddenReason::MissingPermission));
     }
 
     let now = now_ms();
@@ -39,7 +38,12 @@ pub(crate) async fn overview(ctx: &AppState, actor: &AuthUser) -> Result<Overvie
 
     let (users, recent_users) = if actor.can(Permission::USERS_READ) {
         let counts = db::stats::user_counts(&ctx.db, now).await?;
-        let recent = db::user::search(&ctx.db, &UserSearch::default(), RECENT, 0).await?;
+        let filter = UserFilter {
+            limit: RECENT,
+            offset: 0,
+            ..UserFilter::new(None, None, None, None)?
+        };
+        let recent = db::user::search(&ctx.db, &filter).await?;
         (Some(counts), recent)
     } else {
         (None, Vec::new())

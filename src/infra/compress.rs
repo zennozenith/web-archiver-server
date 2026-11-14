@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, Result};
+use crate::error::Result;
 
 const MIN_COMPRESS_SIZE: usize = 256;
 /// Guards against decompression bombs when serving.
@@ -48,25 +48,21 @@ pub(crate) fn is_compressible(mime: &str) -> bool {
         )
 }
 
-fn io_err(e: std::io::Error) -> AppError {
-    AppError::Internal(Box::new(e))
-}
-
 pub(crate) fn compress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
     match alg {
         Compression::None => Ok(data.to_vec()),
         Compression::Gzip => {
             let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::new(6));
-            enc.write_all(data).map_err(io_err)?;
-            enc.finish().map_err(io_err)
+            enc.write_all(data)?;
+            Ok(enc.finish()?)
         }
         Compression::Brotli => {
             let mut out = Vec::with_capacity(data.len() / 3);
             {
                 // quality 5 keeps ingest fast; 11 is much slower for little gain
                 let mut w = brotli::CompressorWriter::new(&mut out, 4096, 5, 22);
-                w.write_all(data).map_err(io_err)?;
-                w.flush().map_err(io_err)?;
+                w.write_all(data)?;
+                w.flush()?;
             } // dropped here -> stream finalized
             Ok(out)
         }
@@ -80,10 +76,7 @@ pub(crate) fn decompress(data: &[u8], alg: Compression) -> Result<Vec<u8>> {
         Compression::Brotli => Box::new(brotli::Decompressor::new(data, 4096)),
     };
     let mut out = Vec::new();
-    reader
-        .take(MAX_DECOMPRESSED)
-        .read_to_end(&mut out)
-        .map_err(io_err)?;
+    reader.take(MAX_DECOMPRESSED).read_to_end(&mut out)?;
     Ok(out)
 }
 

@@ -10,7 +10,7 @@ use crate::{
         htmx::{Fragments, Render, ToastKind},
         web::{
             account::overview::AccountOverview,
-            view::{Section, Shell, Stamp},
+            viewmodels::{Section, Shell, Stamp},
         },
     },
     prelude::*,

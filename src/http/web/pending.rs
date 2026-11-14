@@ -18,8 +18,8 @@ use crate::{
         htmx::{Fragments, Render, ToastKind},
         web::{
             dashboard::LibraryDashboard,
-            view::{Section, Shell},
-            view_archive::PendingView,
+            viewmodels::archive::PendingView,
+            viewmodels::{Section, Shell},
         },
     },
     service,

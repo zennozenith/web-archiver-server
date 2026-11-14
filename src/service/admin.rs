@@ -9,14 +9,8 @@ use crate::{
     auth::{
         AccountStatus, AuditEntry, AuthUser, Permission, RoleView, UserFilter, UserView, policy,
     },
-    db::{
-        self,
-        audit::audit,
-        permission::PermissionInfo,
-        role::RoleSummary,
-        user::{UserExtra, UserSearch},
-    },
-    error::{AppError, Result},
+    db::{self, audit::audit, permission::PermissionInfo, role::RoleSummary, user::UserExtra},
+    error::{AppError, Resource, Result},
     util::time::now_ms,
 };
 
@@ -27,7 +21,7 @@ const AUDIT_PAGE: usize = 50;
 async fn target_id(ctx: &AppState, public_id: &str) -> Result<i64> {
     db::user::find_id_by_public_id(&ctx.db, public_id)
         .await?
-        .ok_or(AppError::NotFound("user"))
+        .ok_or(AppError::NotFound(Resource::User))
 }
 
 // ----------------------------------------------------------------- users
@@ -54,7 +48,7 @@ pub(crate) async fn set_status(
 
     let reason = reason.map(str::trim).filter(|r| !r.is_empty());
     if !db::user::set_status(&ctx.db, target, status, reason).await? {
-        return Err(AppError::NotFound("user"));
+        return Err(AppError::NotFound(Resource::User));
     }
 
     audit(
@@ -74,7 +68,7 @@ pub(crate) async fn delete_user(ctx: &AppState, actor: &AuthUser, public_id: &st
     policy::check_not_self(actor.id, target, "you cannot delete yourself")?;
 
     if !db::user::soft_delete(&ctx.db, target, now_ms()).await? {
-        return Err(AppError::NotFound("user"));
+        return Err(AppError::NotFound(Resource::User));
     }
     audit(&ctx.db, Some(actor.id), Some(target), "user.deleted", None).await;
     Ok(())
@@ -90,13 +84,13 @@ pub(crate) struct UserPage {
 pub(crate) async fn search_users(
     ctx: &AppState,
     actor: &AuthUser,
-    search: &UserSearch<'_>,
+    filter: &UserFilter,
     page: i64,
     per_page: i64,
 ) -> Result<UserPage> {
     actor.require(Permission::USERS_READ)?;
     let per_page = per_page.clamp(1, 100);
-    let total = db::user::count(&ctx.db, search).await?;
+    let total = db::user::count(&ctx.db, filter).await?;
     let pages = total
         .saturating_add(per_page.saturating_sub(1))
         .checked_div(per_page)
@@ -104,7 +98,12 @@ pub(crate) async fn search_users(
         .max(1);
     let page = page.clamp(1, pages);
     let offset = page.saturating_sub(1).saturating_mul(per_page);
-    let rows = db::user::search(&ctx.db, search, per_page, offset).await?;
+    let filter = UserFilter {
+        limit: per_page,
+        offset,
+        ..filter.clone()
+    };
+    let rows = db::user::search(&ctx.db, &filter).await?;
     Ok(UserPage { rows, total, page })
 }
 
@@ -180,7 +179,7 @@ pub(crate) async fn grant_role(
     let target = target_id(ctx, public_id).await?;
     let role_id = db::role::find_id(&ctx.db, role)
         .await?
-        .ok_or(AppError::NotFound("role"))?;
+        .ok_or(AppError::NotFound(Resource::Role))?;
 
     // Granting twice is a no-op, and not worth an audit row.
     if db::role::grant(&ctx.db, target, role_id, actor.id).await? {
@@ -207,7 +206,7 @@ pub(crate) async fn revoke_role(
 
     let target = target_id(ctx, public_id).await?;
     if !db::role::revoke(&ctx.db, target, role).await? {
-        return Err(AppError::NotFound("user_or_role"));
+        return Err(AppError::NotFound(Resource::UserOrRole));
     }
     audit(
         &ctx.db,

@@ -21,6 +21,11 @@ use std::{
 pub struct Blake3Hash([u8; 32]);
 
 impl Blake3Hash {
+    /// Public URL path that serves these bytes.
+    pub fn content_path(self) -> String {
+        format!("/api/content/{}", self.to_hex())
+    }
+
     pub fn to_hex(self) -> String {
         let mut out = String::with_capacity(self.0.len().saturating_mul(2));
         for byte in self.0 {

@@ -4,14 +4,14 @@ use secrecy::ExposeSecret as _;
 
 use crate::{
     AppState,
-    auth::{ApiKeyView, AuthUser, NewApiKey},
+    auth::{ApiKeyView, AuthUser, NewApiKey, Permission},
     error::AppError,
     http::{
         extract::body::{AppForm, AppPath},
         htmx::{Fragments, Render, ToastKind},
         web::{
             account::overview::AccountOverview,
-            view::{Section, Shell, Stamp},
+            viewmodels::{Section, Shell, Stamp},
         },
     },
     prelude::*,
@@ -19,9 +19,9 @@ use crate::{
 };
 
 /// Pre-ticked in the "new key" form.
-const DEFAULT_SCOPE: &str = "profile:read";
+const DEFAULT_SCOPE: &str = Permission::PROFILE_READ.as_str();
 /// The wildcard scope, flagged as dangerous in the UI.
-const WILDCARD: &str = "*";
+const WILDCARD: &str = Permission::WILDCARD.as_str();
 
 #[derive(Debug)]
 pub(crate) struct KeyItem {
@@ -29,7 +29,6 @@ pub(crate) struct KeyItem {
     pub(crate) name: String,
     pub(crate) prefix: String,
     pub(crate) scopes: Vec<String>,
-    pub(crate) created: Stamp,
     pub(crate) last_used: Stamp,
     pub(crate) expires: Stamp,
 }
@@ -38,7 +37,6 @@ impl From<ApiKeyView> for KeyItem {
     fn from(k: ApiKeyView) -> Self {
         Self {
             scopes: k.scopes(),
-            created: Stamp::from_ms(k.created_at),
             last_used: Stamp::from_opt_ms(k.last_used_at, "Never"),
             expires: Stamp::from_opt_ms(k.expires_at, "Never"),
             public_id: k.public_id,

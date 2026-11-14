@@ -13,12 +13,10 @@ use crate::{
         },
         tag::Tag,
     },
-    error::{AppError, Result},
+    error::{AppError, Resource, Result},
     infra::{TagId, TagName},
     util::limit::Limit,
 };
-
-const PAGE: &str = "page";
 
 /// Query accepted by the link listing. The owner is filled in by the service.
 #[derive(Debug, Default)]
@@ -64,7 +62,7 @@ pub(crate) async fn get(ctx: &AppState, actor: &AuthUser, id: PageId) -> Result<
     actor.require(Permission::ARCHIVE_READ)?;
     PageDetail::load(&ctx.db, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(PAGE))
+        .ok_or(AppError::NotFound(Resource::Page))
 }
 
 pub(crate) async fn lookup(ctx: &AppState, actor: &AuthUser, url: &str) -> Result<PageDetail> {
@@ -72,7 +70,7 @@ pub(crate) async fn lookup(ctx: &AppState, actor: &AuthUser, url: &str) -> Resul
     let url = page::parse_url(url)?;
     PageDetail::load_by_url(&ctx.db, actor.id, &url)
         .await?
-        .ok_or(AppError::NotFound(PAGE))
+        .ok_or(AppError::NotFound(Resource::Page))
 }
 
 pub(crate) async fn create(
@@ -94,14 +92,14 @@ pub(crate) async fn patch(
     actor.require(Permission::ARCHIVE_WRITE)?;
 
     if let FieldPatch::Set(raw) = &update.collection_id {
-        let collection_id = CollectionId::parse_or(Some(raw));
+        let collection_id = CollectionId::parse_opt(Some(raw.as_str()));
         ensure_collection(ctx, actor, collection_id).await?;
     }
 
     if update.apply(&ctx.db, actor.id, id).await? {
         Ok(())
     } else {
-        Err(AppError::NotFound(PAGE))
+        Err(AppError::NotFound(Resource::Page))
     }
 }
 
@@ -110,7 +108,7 @@ pub(crate) async fn delete(ctx: &AppState, actor: &AuthUser, id: PageId) -> Resu
     if PageId::delete(id, &ctx.db, actor.id).await? {
         Ok(())
     } else {
-        Err(AppError::NotFound(PAGE))
+        Err(AppError::NotFound(Resource::Page))
     }
 }
 
@@ -118,7 +116,7 @@ pub(crate) async fn toggle_pin(ctx: &AppState, actor: &AuthUser, id: PageId) -> 
     actor.require(Permission::ARCHIVE_WRITE)?;
     page::toggle_pinned(&ctx.db, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(PAGE))
+        .ok_or(AppError::NotFound(Resource::Page))
 }
 
 /// Replaces the page thumbnail. `None` clears it.
@@ -135,7 +133,7 @@ pub(crate) async fn set_thumbnail(
     {
         Ok(())
     } else {
-        Err(AppError::NotFound(PAGE))
+        Err(AppError::NotFound(Resource::Page))
     }
 }
 
@@ -148,7 +146,7 @@ pub(crate) async fn captures(
 ) -> Result<CursorPage<CaptureSummary>> {
     actor.require(Permission::ARCHIVE_READ)?;
     if !page::exists(&ctx.db, actor.id, id).await? {
-        return Err(AppError::NotFound(PAGE));
+        return Err(AppError::NotFound(Resource::Page));
     }
     Ok(CaptureSummary::list(
         &ctx.db,
@@ -171,7 +169,7 @@ pub(crate) async fn put_tags(
     actor.require(Permission::ARCHIVE_WRITE)?;
     page::put_tags(&ctx.db, actor.id, id, names)
         .await?
-        .ok_or(AppError::NotFound(PAGE))
+        .ok_or(AppError::NotFound(Resource::Page))
 }
 
 pub(crate) async fn add_tag(
@@ -183,7 +181,7 @@ pub(crate) async fn add_tag(
     actor.require(Permission::ARCHIVE_WRITE)?;
     page::add_tag(&ctx.db, actor.id, id, name)
         .await?
-        .ok_or(AppError::NotFound(PAGE))
+        .ok_or(AppError::NotFound(Resource::Page))
 }
 
 pub(crate) async fn remove_tag(
@@ -196,7 +194,7 @@ pub(crate) async fn remove_tag(
     if page::remove_tag(&ctx.db, actor.id, id, tag_id).await? {
         Ok(())
     } else {
-        Err(AppError::NotFound("tag on page"))
+        Err(AppError::NotFound(Resource::PageTag))
     }
 }
 
@@ -238,7 +236,7 @@ pub(crate) async fn add_highlight(
     }
 
     if !page::exists(&ctx.db, actor.id, id).await? {
-        return Err(AppError::NotFound(PAGE));
+        return Err(AppError::NotFound(Resource::Page));
     }
     Ok(HighlightRecord::add(&ctx.db, actor.id, id, text, color).await?)
 }
@@ -253,7 +251,7 @@ pub(crate) async fn update_highlight(
     actor.require(Permission::ARCHIVE_WRITE)?;
     HighlightRecord::update(&ctx.db, actor.id, id, text, color)
         .await?
-        .ok_or(AppError::NotFound("highlight"))
+        .ok_or(AppError::NotFound(Resource::Highlight))
 }
 
 pub(crate) async fn delete_highlight(ctx: &AppState, actor: &AuthUser, id: i64) -> Result<()> {
@@ -261,7 +259,7 @@ pub(crate) async fn delete_highlight(ctx: &AppState, actor: &AuthUser, id: i64) 
     if HighlightRecord::delete(&ctx.db, actor.id, id).await? {
         Ok(())
     } else {
-        Err(AppError::NotFound("highlight"))
+        Err(AppError::NotFound(Resource::Highlight))
     }
 }
 

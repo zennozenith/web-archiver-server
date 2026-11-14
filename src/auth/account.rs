@@ -36,10 +36,12 @@ pub(crate) enum AccountStatus {
 impl From<AccountStatus> for ForbiddenReason {
     fn from(value: AccountStatus) -> Self {
         match value {
-            AccountStatus::Pending => Self::Pending,
+            AccountStatus::Pending => Self::EmailUnverified,
             AccountStatus::Suspended => Self::Suspended,
             AccountStatus::Deactivated => Self::Deactivated,
-            AccountStatus::Active => Self::Unknown,
+            // Callers only convert non-active statuses into a 403. Keep the
+            // match exhaustive instead of adding an "unknown" fallback arm.
+            AccountStatus::Active => Self::MissingPermission,
         }
     }
 }

@@ -1,15 +1,20 @@
-use axum::extract::FromRequestParts;
+use axum::extract::{FromRef, FromRequestParts};
 use http::request::Parts;
 
-use crate::{auth::ClientInfo, error::AppError};
+use crate::{app::AppState, auth::ClientInfo, error::AppError};
 
-impl<S: Send + Sync> FromRequestParts<S> for ClientInfo {
+impl<S> FromRequestParts<S> for ClientInfo
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
     type Rejection = AppError;
 
     fn from_request_parts(
         parts: &mut Parts,
-        _: &S,
+        state: &S,
     ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        std::future::ready(Self::extract(parts))
+        let trusted_proxy = AppState::from_ref(state).trusted_proxy;
+        std::future::ready(Self::extract(parts, trusted_proxy))
     }
 }

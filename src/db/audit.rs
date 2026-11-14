@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sqlx::SqlitePool;
 
-use crate::auth::AuditEntry;
+use crate::{auth::AuditEntry, util::like_contains_pattern};
 
 /// Append a row to the append-only `audit_log`. Failures are logged, never bubbled up.
 pub(crate) async fn audit(
@@ -58,15 +58,16 @@ pub(crate) async fn search(
     before: Option<i64>,
     limit: i64,
 ) -> sqlx::Result<Vec<AuditEntry>> {
+    let pattern = (!q.is_empty()).then(|| like_contains_pattern(q));
     sqlx::query_as(concat!(
         audit_select!(),
-        " WHERE (?1 = '' OR a.action LIKE '%' || ?1 || '%'
-                         OR actor.email LIKE '%' || ?1 || '%'
-                         OR target.email LIKE '%' || ?1 || '%')
+        " WHERE (?1 IS NULL OR a.action LIKE ?1 ESCAPE '\\'
+                         OR actor.email LIKE ?1 ESCAPE '\\'
+                         OR target.email LIKE ?1 ESCAPE '\\')
             AND (?2 IS NULL OR a.id < ?2)
           ORDER BY a.id DESC LIMIT ?3"
     ))
-    .bind(q)
+    .bind(pattern)
     .bind(before)
     .bind(limit)
     .fetch_all(pool)

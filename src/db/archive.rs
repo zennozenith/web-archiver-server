@@ -101,6 +101,7 @@ struct AssetCollector<'a> {
     total_bytes: usize,
     seen: HashSet<String>,
     saved: Vec<PreparedAsset>,
+    saved_by_url: HashMap<String, Blake3Hash>,
 }
 
 impl AssetCollector<'_> {
@@ -123,7 +124,7 @@ impl AssetCollector<'_> {
         Box::pin(async move {
             let key = url.to_string();
             // A nested reference may point at a resource the HTML already listed.
-            if self.saved.iter().any(|asset| asset.url == key) {
+            if self.saved_by_url.contains_key(&key) {
                 return Ok(());
             }
             if self.saved.len() >= MAX_ASSETS {
@@ -178,6 +179,7 @@ impl AssetCollector<'_> {
             if blob.existed {
                 self.summary.deduplicated = self.summary.deduplicated.saturating_add(1);
             }
+            self.saved_by_url.insert(key.clone(), blob.hash);
             self.saved.push(PreparedAsset {
                 url: key,
                 kind: kind.as_str(),
@@ -213,8 +215,8 @@ impl AssetCollector<'_> {
             let key = resource.url.to_string();
 
             if !self.seen.insert(key.clone()) {
-                if let Some(asset) = self.saved.iter().find(|asset| asset.url == key) {
-                    replacements.insert(key, format!("/api/content/{}", asset.hash.to_hex()));
+                if let Some(hash) = self.saved_by_url.get(&key) {
+                    replacements.insert(key, hash.content_path());
                 }
                 continue;
             }
@@ -239,8 +241,8 @@ impl AssetCollector<'_> {
                         depth.saturating_add(1),
                     )
                     .await?;
-                    if let Some(asset) = self.saved.iter().find(|asset| asset.url == key) {
-                        replacements.insert(key, format!("/api/content/{}", asset.hash.to_hex()));
+                    if let Some(hash) = self.saved_by_url.get(&key) {
+                        replacements.insert(key, hash.content_path());
                     }
                 }
                 Err(e) => {
@@ -285,6 +287,7 @@ pub(crate) async fn collect_assets(
         total_bytes: 0,
         seen: HashSet::new(),
         saved: Vec::with_capacity(resources.len()),
+        saved_by_url: HashMap::with_capacity(resources.len()),
     };
 
     let mut in_flight = stream::iter(resources)

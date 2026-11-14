@@ -25,8 +25,8 @@ use crate::{
         web::{
             dashboard::LibraryDashboard,
             library::{self, LinkQuery},
-            view::{Section, Shell},
-            view_archive::{CaptureView, CollectionChoice, HighlightView, LinkCard},
+            viewmodels::archive::{CaptureView, CollectionChoice, HighlightView, LinkCard},
+            viewmodels::{Section, Shell},
         },
     },
     infra::{Image, ImageFormat},
@@ -202,7 +202,7 @@ pub(super) async fn update(
     State(ctx): State<AppState>,
     user: AuthUser,
     AppPath(id): AppPath<PageId>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     multipart: std::result::Result<Multipart, MultipartRejection>,
 ) -> Result<Fragments> {
     let mut mp = multipart?;

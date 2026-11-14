@@ -25,27 +25,6 @@ macro_rules! id_type {
         #[serde(transparent, rename_all = "camelCase")]
         $vis struct $name(i64);
 
-        #[allow(dead_code, reason = "Might be needed later")]
-        impl $name {
-
-            pub(crate) const fn new(id: i64) -> Self {
-                Self(id)
-            }
-
-            pub(crate) const fn get(self) -> i64 {
-                self.0
-            }
-
-            pub(crate) fn parse_or(value: Option<&String>) -> Option<Self> {
-                value
-                    .map(|value| value.trim())
-                    .filter(|value| !value.is_empty())
-                    .and_then(|value| value.parse::<i64>().ok())
-                    .filter(|id| *id >= 0)
-                    .map(Self::from)
-            }
-        }
-
         impl From<i64> for $name {
             fn from(id: i64) -> Self {
                 Self(id)
@@ -241,14 +220,3 @@ pub(crate) fn group_by<K: Hash + Eq, V>(
     }
     groups
 }
-
-// // ───────────────────────────────────────────────────────────────────────────
-// // Matching
-// // ───────────────────────────────────────────────────────────────────────────
-// #[derive(Debug, Default, Deserialize)]
-// #[serde(rename_all = "lowercase")]
-// pub(crate) enum MatchMode {
-//     #[default]
-//     All,
-//     Any,
-// }

@@ -4,7 +4,9 @@ use axum::{extract::State, http::HeaderMap, response::Response};
 use secrecy::SecretString;
 use serde::Deserialize;
 
-use super::{LOGIN, session};
+use super::session;
+
+use crate::http::LOGIN_PATH;
 use crate::{
     AppState,
     auth::{ClientInfo, LoginCredentials, NewAccount},
@@ -38,7 +40,7 @@ pub(super) async fn login(
 ) -> Result<Response> {
     let creds = LoginCredentials::new(&form.identifier, form.password);
     let token = service::auth::login(&ctx, &client, creds).await?;
-    session::sign_in(&token)
+    session::sign_in(&token, ctx.secure_cookie)
 }
 
 /// Always ends with a cleared cookie and a redirect, even if the session was
@@ -47,7 +49,7 @@ pub(super) async fn logout(State(ctx): State<AppState>, headers: HeaderMap) -> R
     if let Some(token) = SessionCookie::get(&headers) {
         service::auth::logout(&ctx, token).await?;
     }
-    Ok(session::sign_out(LOGIN))
+    Ok(session::sign_out(LOGIN_PATH, ctx.secure_cookie))
 }
 
 // ------------------------------------------------------------------ register
@@ -97,7 +99,7 @@ pub(super) async fn verify(
     let token = parse_token(&form.token)?;
     service::auth::verify_email(&ctx.db, token).await?;
 
-    Ok(Alert::success("E-mail verified. You can sign in now.").link(LOGIN, "Sign in"))
+    Ok(Alert::success("E-mail verified. You can sign in now.").link(LOGIN_PATH, "Sign in"))
 }
 
 // ------------------------------------------------------------ forgot / reset
@@ -133,5 +135,8 @@ pub(super) async fn reset(
     let token = parse_token(&form.token)?;
     service::auth::reset_password(&ctx.db, token, form.new_password).await?;
 
-    Ok(Alert::success("Password updated. Every session was signed out.").link(LOGIN, "Sign in"))
+    Ok(
+        Alert::success("Password updated. Every session was signed out.")
+            .link(LOGIN_PATH, "Sign in"),
+    )
 }

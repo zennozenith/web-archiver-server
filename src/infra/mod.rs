@@ -1,6 +1,6 @@
 mod blob_store;
 pub(crate) mod compress;
-mod crypto;
+pub(crate) mod crypto;
 pub(crate) mod downloader;
 mod hash;
 mod image;

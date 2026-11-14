@@ -36,8 +36,8 @@ pub(crate) async fn was_recently_used(
 
 /// Only a wildcard holder may hand out or take away the top role.
 pub(crate) fn check_role_assignable(actor: &AuthUser, role: &str) -> Result<()> {
-    if role == SUPER_ADMIN_ROLE && !actor.is_super() {
-        return Err(AppError::Forbidden(ForbiddenReason::Permission));
+    if role == SUPER_ADMIN_ROLE && !actor.is_super_admin() {
+        return Err(AppError::Forbidden(ForbiddenReason::MissingPermission));
     }
     Ok(())
 }

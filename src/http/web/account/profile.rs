@@ -10,7 +10,7 @@ use crate::{
         htmx::{Fragments, Render, ToastKind},
         web::{
             account::overview::{AccountOverview, Mine},
-            view::{Section, Shell, Stamp, UserItem},
+            viewmodels::{Section, Shell, UserItem},
         },
     },
     prelude::*,
@@ -26,7 +26,6 @@ pub(crate) struct ProfileFields {
     pub(crate) bio: String,
     pub(crate) locale: String,
     pub(crate) timezone: String,
-    pub(crate) updated: Stamp,
 }
 
 #[derive(Debug, Template)]
@@ -48,10 +47,6 @@ pub(super) async fn page(
 
     let p = data.profile;
     let mine = Mine {
-        name: me.name,
-        status: me.status,
-        status_class: me.status_class,
-        roles: me.roles,
         last_login: me.last_login,
         sessions: data.mine.sessions,
         api_keys: data.mine.api_keys,
@@ -67,7 +62,6 @@ pub(super) async fn page(
             last_name: p.last_name.unwrap_or_default(),
             birth_date: p.birth_date.unwrap_or_default(),
             bio: p.bio.unwrap_or_default(),
-            updated: Stamp::from_ms(p.updated_at),
             locale: p.locale,
             timezone: p.timezone,
         },

@@ -13,13 +13,16 @@ use crate::{
 };
 
 /// `HX-Redirect` home, carrying the new session cookie.
-pub(super) fn sign_in(token: &SessionToken) -> Result<Response, AppError> {
-    Ok(redirect_with_cookie(HOME, SessionCookie::issue(token)?))
+pub(super) fn sign_in(token: &SessionToken, secure: bool) -> Result<Response, AppError> {
+    Ok(redirect_with_cookie(
+        HOME,
+        SessionCookie::issue(token, secure)?,
+    ))
 }
 
 /// `HX-Redirect` to `to`, clearing the session cookie.
-pub(super) fn sign_out(to: &str) -> Response {
-    redirect_with_cookie(to, SessionCookie::clear())
+pub(super) fn sign_out(to: &str, secure: bool) -> Response {
+    redirect_with_cookie(to, SessionCookie::clear(secure))
 }
 
 fn redirect_with_cookie(to: &str, cookie: HeaderValue) -> Response {

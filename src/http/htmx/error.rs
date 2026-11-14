@@ -1,7 +1,7 @@
 //! Renders `AppError` for the HTML side of the app.
 //!
 //! Handlers and extractors just return `AppError`. `AppError::into_response`
-//! logs server errors once and attaches a sanitized `ErrorInfo`; this layer
+//! logs server errors once and attaches a sanitized `ErrorContext`; this layer
 //! turns that into a toast, an error page, or leaves the JSON alone,
 //! depending on what the request is.
 
@@ -14,10 +14,7 @@ use axum::{
 };
 
 use super::{Fragments, HtmxRequest, HxHeaders, Render, ToastKind, header, with_redirect};
-use crate::error::ErrorInfo;
-
-/// Where unauthenticated users are sent.
-const LOGIN_PATH: &str = "/login";
+use crate::{error::ErrorContext, http::LOGIN_PATH};
 
 /// Shown instead of the sanitized-but-terse message for server errors.
 const GENERIC_SERVER_MESSAGE: &str = "An unexpected error occurred. Please try again.";
@@ -67,7 +64,7 @@ pub(crate) async fn render_errors(req: Request, next: Next) -> Response {
     let surface = Surface::detect(req.headers());
     let mut res = next.run(req).await;
 
-    let Some(info) = res.extensions_mut().remove::<ErrorInfo>() else {
+    let Some(info) = res.extensions_mut().remove::<ErrorContext>() else {
         return res;
     };
 
@@ -96,7 +93,7 @@ fn login_redirect(surface: Surface) -> Response {
     }
 }
 
-fn display_message(info: &ErrorInfo) -> String {
+fn display_message(info: &ErrorContext) -> String {
     if info.status.is_server_error() {
         GENERIC_SERVER_MESSAGE.to_owned()
     } else {
@@ -104,7 +101,7 @@ fn display_message(info: &ErrorInfo) -> String {
     }
 }
 
-fn toast_response(info: &ErrorInfo) -> Response {
+fn toast_response(info: &ErrorContext) -> Response {
     let message = display_message(info);
     Fragments::new()
         .status(info.status)
@@ -116,7 +113,7 @@ fn toast_response(info: &ErrorInfo) -> Response {
         )
 }
 
-fn page_response(info: &ErrorInfo) -> Response {
+fn page_response(info: &ErrorContext) -> Response {
     let page = ErrorTpl {
         title: title_for(info.status),
         code: info.status.as_u16(),

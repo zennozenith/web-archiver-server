@@ -10,7 +10,7 @@ use sqlx::{FromRow, QueryBuilder, Sqlite, SqliteConnection, SqliteExecutor, Sqli
 
 use crate::{
     db::{
-        capture::{CaptureOverview, CaptureSummary},
+        capture::CaptureSummary,
         collection::CollectionId,
         content::ContentId,
         helper::{CursorPage, FieldPatch, InvalidCursor, group_by, id_type},
@@ -19,7 +19,10 @@ use crate::{
     },
     error::Result,
     infra::{BlobStore, Image, TagId, TagName, comma_separated_tags},
-    util::{CanonicalUrl, NonEmptyString, escape_like, limit::Limit, url_canon::canonicalize_url},
+    util::{
+        CanonicalUrl, NonEmptyString, like_contains_pattern, limit::Limit,
+        url_canon::canonicalize_url,
+    },
 };
 
 id_type! {
@@ -113,7 +116,6 @@ pub(crate) struct HighlightRecord {
     pub id: i64,
     pub text: String,
     pub color: String,
-    pub created_at: i64,
 }
 
 #[derive(Debug, FromRow)]
@@ -167,7 +169,7 @@ impl FromStr for PageCursor {
         let (created_at, id) = s.split_once(':').ok_or(InvalidCursor)?;
         Ok(Self {
             created_at: created_at.parse().map_err(|_| InvalidCursor)?,
-            id: PageId::new(id.parse().map_err(|_| InvalidCursor)?),
+            id: PageId::from(id.parse::<i64>().map_err(|_| InvalidCursor)?),
         })
     }
 }
@@ -331,20 +333,6 @@ impl PageItem {
             },
         })
     }
-
-    /// Loads every page of one owner without pagination (dashboard/export).
-    pub(crate) async fn all(pool: &SqlitePool, owner: i64) -> Result<Vec<Self>> {
-        Self::list(
-            pool,
-            &PageFilter {
-                owner_user_id: owner,
-                limit: Limit::MAX,
-                ..PageFilter::default()
-            },
-        )
-        .await
-        .map(|page| page.items)
-    }
 }
 
 impl PageDetail {
@@ -460,7 +448,7 @@ impl PageFilter {
             .map(str::trim)
             .filter(|text| !text.is_empty())
         {
-            let pattern = format!("%{}%", escape_like(text));
+            let pattern = like_contains_pattern(text);
             match self.field {
                 PageField::Name => {
                     qb.push(" AND p.display_title LIKE ")
@@ -671,7 +659,7 @@ impl UpdatePage {
         let collection_id = match self.collection_id {
             FieldPatch::Unchanged => current.record.collection_id,
             FieldPatch::Clear => None,
-            FieldPatch::Set(s) => CollectionId::parse_or(Some(&s)),
+            FieldPatch::Set(s) => CollectionId::parse_opt(Some(s.as_str())),
         };
 
         let pinned = self.pinned.apply(Some(current.record.pinned));
@@ -705,6 +693,10 @@ impl UpdatePage {
 }
 
 impl PageId {
+    pub(crate) const fn get(self) -> i64 {
+        self.0
+    }
+
     /// Replaces the page's thumbnail. `None` removes the custom thumbnail.
     /// Returns `false` when the page does not exist.
     pub(crate) async fn set_thumbnail(
@@ -789,16 +781,6 @@ pub(crate) async fn toggle_pinned<'e>(
     .await
 }
 
-/// Number of links that are not filed in any collection.
-pub(crate) async fn count_unorganized(pool: &SqlitePool, owner: i64) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar(
-        "SELECT COUNT(*) FROM pages WHERE owner_user_id = ? AND collection_id IS NULL",
-    )
-    .bind(owner)
-    .fetch_one(pool)
-    .await
-}
-
 pub(crate) async fn stats(pool: &SqlitePool, owner: i64) -> Result<PageStats, sqlx::Error> {
     sqlx::query_as(
         "SELECT
@@ -810,20 +792,6 @@ pub(crate) async fn stats(pool: &SqlitePool, owner: i64) -> Result<PageStats, sq
     .bind(owner)
     .fetch_one(pool)
     .await
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Others
-// ───────────────────────────────────────────────────────────────────────────
-
-#[expect(dead_code, reason = "Might be needed later")]
-/// Captures for many pages in one query, newest first per page.
-pub(crate) async fn captures_for_pages(
-    pool: &SqlitePool,
-    owner: i64,
-    ids: &[PageId],
-) -> Result<HashMap<PageId, Vec<CaptureOverview>>, sqlx::Error> {
-    CaptureOverview::overviews_by_page(pool, owner, ids).await
 }
 
 // ───────────────────────────────────────────────────────────────────────────

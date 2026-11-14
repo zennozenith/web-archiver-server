@@ -1,3 +1,5 @@
+use std::{io, net::AddrParseError};
+
 use axum::{
     Json,
     extract::{
@@ -6,13 +8,13 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use http::StatusCode;
+use http::{StatusCode, header::InvalidHeaderValue};
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
     error::AppError::{
-        Forbidden, HashParse, InvalidCredentials, TooManyRequest, UnsupportedMediaType,
+        Forbidden, HashParse, InvalidCredentials, TooManyRequests, UnsupportedMediaType,
     },
     infra::HashParseError,
 };
@@ -20,7 +22,7 @@ use crate::{
 pub(crate) type Result<T, E = AppError> = std::result::Result<T, E>;
 
 #[derive(Clone)]
-pub(crate) struct ErrorInfo {
+pub(crate) struct ErrorContext {
     pub status: StatusCode,
     pub code: &'static str,
     pub message: String,
@@ -29,17 +31,65 @@ pub(crate) struct ErrorInfo {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ErrorBody<'a> {
-    error: ErrorInner<'a>,
+struct ErrorResponse<'a> {
+    error: ErrorPayload<'a>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ErrorInner<'a> {
+struct ErrorPayload<'a> {
     code: &'a str,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     details: Option<Value>,
+}
+
+/// Typed description of the resource a `NotFound` refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resource {
+    Other,
+    Page,
+    Capture,
+    CaptureContent,
+    PendingItem,
+    User,
+    Role,
+    UserOrRole,
+    Collection,
+    PublicCollection,
+    Tag,
+    PageTag,
+    Highlight,
+    ApiKey,
+    Session,
+    Content,
+    Asset,
+    Thumbnail,
+}
+
+impl std::fmt::Display for Resource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Other => "resource",
+            Self::Page => "page",
+            Self::Capture => "capture",
+            Self::CaptureContent => "capture content",
+            Self::PendingItem => "pending item",
+            Self::User => "user",
+            Self::Role => "role",
+            Self::UserOrRole => "user or role",
+            Self::Collection => "collection",
+            Self::PublicCollection => "public collection",
+            Self::Tag => "tag",
+            Self::PageTag => "tag on page",
+            Self::Highlight => "highlight",
+            Self::ApiKey => "api_key",
+            Self::Session => "session",
+            Self::Content => "content",
+            Self::Asset => "asset",
+            Self::Thumbnail => "thumbnail",
+        })
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -64,7 +114,7 @@ pub enum AppError {
 
     // 404
     #[error("{0} not found")]
-    NotFound(&'static str),
+    NotFound(Resource),
 
     // 409
     #[error("{msg}. Existing id: {existing_id}")]
@@ -73,8 +123,8 @@ pub enum AppError {
     Conflict(String),
 
     // 413
-    #[error("payload exceeds {limit} bytes")]
-    PayloadTooLarge { limit: usize },
+    #[error("payload{} too large", limit.map_or_else(String::new, |limit| format!(" exceeds {limit} bytes")))]
+    PayloadTooLarge { limit: Option<usize> },
 
     // 415
     #[error("unsupported media type")]
@@ -82,21 +132,17 @@ pub enum AppError {
 
     // 429
     #[error("{0}")]
-    TooManyRequest(&'static str),
-
-    // // pass-through for any other axum rejection (e.g. 413 from body limits)
-    // #[error("{message}")]
-    // Rejection { status: StatusCode, message: String },
+    TooManyRequests(&'static str),
 
     // 422
     #[error("{message}")]
-    Unprocessable { code: &'static str, message: String },
+    Invalid { code: &'static str, message: String },
 
     // 500
     #[error("Failed to render template. Error: {0}")]
     Render(#[from] askama::Error),
     #[error("database error")]
-    Database(sqlx::Error),
+    Database(#[source] sqlx::Error),
     #[error("internal error")]
     Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -104,8 +150,8 @@ pub enum AppError {
 impl AppError {
     pub(crate) fn parts(&self) -> (StatusCode, &'static str, Option<Value>) {
         use AppError::{
-            BadRequest, Conflict, Database, Duplicate, Internal, InvalidUrl, NotFound,
-            PayloadTooLarge, Render, Unauthorized, Unprocessable,
+            BadRequest, Conflict, Database, Duplicate, Internal, Invalid, InvalidUrl, NotFound,
+            PayloadTooLarge, Render, Unauthorized,
         };
         match self {
             InvalidUrl(_) => (StatusCode::BAD_REQUEST, "invalid_url", None),
@@ -113,17 +159,12 @@ impl AppError {
             BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", None),
             Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials", None),
-            Forbidden(e) => {
-                if *e == ForbiddenReason::Unknown {
-                    tracing::error!("New field for forbidden reason");
-                }
-                (StatusCode::FORBIDDEN, "forbidden", None)
-            }
+            Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden", None),
             NotFound(_) => (StatusCode::NOT_FOUND, "not_found", None),
             Duplicate { existing_id, msg } => (
                 StatusCode::CONFLICT,
                 "duplicate",
-                Some(json!({ "existingId": existing_id, "error": msg })),
+                Some(json!({ "existingId": existing_id, "message": msg })),
             ),
             Conflict(_) => (StatusCode::CONFLICT, "conflict", None),
             PayloadTooLarge { limit } => (
@@ -136,49 +177,40 @@ impl AppError {
                 "unsupported_media_type",
                 None,
             ),
-            TooManyRequest(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_request", None),
-            Unprocessable { code, .. } => (StatusCode::UNPROCESSABLE_ENTITY, code, None),
+            TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests", None),
+            Invalid { code, .. } => (StatusCode::UNPROCESSABLE_ENTITY, code, None),
             Database(_) | Internal(_) | Render(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal", None)
             }
         }
     }
 
-    pub fn invalid(code: &'static str, message: impl Into<String>) -> Self {
-        Self::Unprocessable {
+    pub(crate) fn invalid(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Invalid {
             code,
             message: message.into(),
         }
     }
 
-    /// Message safe to show a client. Server errors are logged with their full
-    /// cause and replaced with a generic message, so internals never leak.
-    pub(crate) fn public_message(&self, status: StatusCode) -> String {
-        if status.is_server_error() {
-            tracing::error!(error = ?self, %status, "request failed");
-            "internal server error".to_owned()
-        } else {
-            self.to_string()
-        }
+    pub(crate) fn internal(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        Self::Internal(error.into())
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum ForbiddenReason {
     #[error("please verify your e-mail address first")]
-    Pending,
+    EmailUnverified,
     #[error("this account is suspended")]
     Suspended,
     #[error("this account is deactivated")]
     Deactivated,
     #[error("you do not have permission")]
-    Permission,
+    MissingPermission,
     #[error("keys cannot mint more keys")]
     ApiKeyMint,
     #[error("request must come from the app")]
     Csrf,
-    #[error("unknown reason, report admin")]
-    Unknown,
 }
 
 impl IntoResponse for AppError {
@@ -187,13 +219,13 @@ impl IntoResponse for AppError {
 
         // Log server errors with the full cause chain, but never leak it to clients.
         let message = if status.is_server_error() {
-            tracing::error!(error = ?self, "request failed");
+            tracing::error!(error = ?self, %status, "request failed");
             "internal server error".to_owned()
         } else {
             self.to_string()
         };
 
-        let info = ErrorInfo {
+        let info = ErrorContext {
             status,
             code,
             message,
@@ -203,8 +235,8 @@ impl IntoResponse for AppError {
         // Default representation: JSON
         let mut res = (
             status,
-            Json(ErrorBody {
-                error: ErrorInner {
+            Json(ErrorResponse {
+                error: ErrorPayload {
                     code: info.code,
                     message: info.message.clone(),
                     details: info.details.clone(),
@@ -228,11 +260,11 @@ impl From<sqlx::Error> for AppError {
     )]
     fn from(e: sqlx::Error) -> Self {
         match &e {
-            sqlx::Error::RowNotFound => Self::NotFound("resource"),
+            sqlx::Error::RowNotFound => Self::NotFound(Resource::Other),
             sqlx::Error::Database(db) if db.is_unique_violation() => {
                 Self::Conflict("resource already exists".into())
             }
-            sqlx::Error::Database(db) if db.is_foreign_key_violation() => Self::Unprocessable {
+            sqlx::Error::Database(db) if db.is_foreign_key_violation() => Self::Invalid {
                 code: "invalid_reference",
                 message: "referenced resource does not exist".into(),
             },
@@ -241,23 +273,48 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
-impl From<MultipartError> for AppError {
-    fn from(e: MultipartError) -> Self {
-        match e.status() {
-            StatusCode::PAYLOAD_TOO_LARGE => Self::PayloadTooLarge { limit: 0 },
-            _ => Self::BadRequest(format!("invalid multipart body: {}", e.body_text())),
-        }
+impl From<io::Error> for AppError {
+    fn from(e: io::Error) -> Self {
+        Self::internal(e)
     }
 }
 
+impl From<tokio::task::JoinError> for AppError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        Self::internal(e)
+    }
+}
+
+impl From<getrandom::Error> for AppError {
+    fn from(e: getrandom::Error) -> Self {
+        Self::internal(e)
+    }
+}
+
+impl From<InvalidHeaderValue> for AppError {
+    fn from(e: InvalidHeaderValue) -> Self {
+        Self::internal(e)
+    }
+}
+
+impl From<AddrParseError> for AppError {
+    fn from(e: AddrParseError) -> Self {
+        Self::internal(e)
+    }
+}
+
+impl From<MultipartError> for AppError {
+    fn from(e: MultipartError) -> Self {
+        from_rejection(e.status(), e.body_text())
+    }
+}
+
+/// Map any axum rejection from its status and client-safe body text.
 fn from_rejection(status: StatusCode, message: String) -> AppError {
     match status {
-        StatusCode::UNSUPPORTED_MEDIA_TYPE => AppError::UnsupportedMediaType,
-        StatusCode::PAYLOAD_TOO_LARGE => AppError::PayloadTooLarge { limit: 0 },
-        StatusCode::UNPROCESSABLE_ENTITY => AppError::Unprocessable {
-            code: "invalid_body",
-            message,
-        },
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => UnsupportedMediaType,
+        StatusCode::PAYLOAD_TOO_LARGE => AppError::PayloadTooLarge { limit: None },
+        StatusCode::UNPROCESSABLE_ENTITY => AppError::invalid("invalid_body", message),
         _ => AppError::BadRequest(message),
     }
 }
@@ -288,24 +345,6 @@ impl From<FormRejection> for AppError {
 
 impl From<MultipartRejection> for AppError {
     fn from(r: MultipartRejection) -> Self {
-        match r.status() {
-            StatusCode::PAYLOAD_TOO_LARGE => Self::PayloadTooLarge { limit: 0 },
-            _ => Self::BadRequest(r.body_text()),
-        }
+        from_rejection(r.status(), r.body_text())
     }
-}
-
-/// Extension to turn `Option` into `NotFound` ergonomically:
-/// `row.or_not_found("page")?`
-pub(crate) trait OptionExt<T> {
-    fn or_not_found(self, what: &'static str) -> Result<T>;
-}
-impl<T> OptionExt<T> for Option<T> {
-    fn or_not_found(self, what: &'static str) -> Result<T> {
-        self.ok_or(AppError::NotFound(what))
-    }
-}
-
-pub(crate) fn join_err(e: tokio::task::JoinError) -> AppError {
-    AppError::Internal(Box::new(e))
 }

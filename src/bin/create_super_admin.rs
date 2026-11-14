@@ -11,8 +11,6 @@ use std::io::{self, Write};
 use std::str::FromStr;
 use std::time::Duration;
 
-use argon2::{Algorithm, Argon2, Params, Version};
-use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use secrecy::{ExposeSecret, SecretString};
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
@@ -20,13 +18,6 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 type BoxResult<T> = Result<T, Box<dyn Error>>;
 
 const MIN_PASSWORD_LEN: usize = 12;
-
-// Argon2id parameters (OWASP-recommended minimum: m=19 MiB, t=2, p=1).
-const ARGON_M_KIB: u32 = 19_456;
-const ARGON_T: u32 = 2;
-const ARGON_P: u32 = 1;
-const ARGON_OUT_LEN: usize = 32;
-const SALT_LEN: usize = 16;
 
 // ----------------------------------------------------------------------------
 // Entry point
@@ -81,8 +72,7 @@ async fn run() -> BoxResult<()> {
         return Ok(());
     }
 
-    // Argon2 is CPU/memory heavy; keep it off the async executor.
-    let hash = tokio::task::spawn_blocking(move || hash_password(&password)).await??;
+    let hash = web_archiver::admin::hash_password(password).await?;
 
     let (id, public_id) = create_super_admin(
         &pool,
@@ -285,33 +275,6 @@ async fn create_super_admin(
 
     tx.commit().await?;
     Ok((user_id, public_id))
-}
-
-// ----------------------------------------------------------------------------
-// Password hashing (Argon2id -> PHC string, as the schema expects)
-// ----------------------------------------------------------------------------
-
-// Returns `String` as the error (not `Box<dyn Error>`) so the result is `Send`
-// and can cross the `spawn_blocking` boundary.
-fn hash_password(password: &SecretString) -> Result<String, String> {
-    let params = Params::new(ARGON_M_KIB, ARGON_T, ARGON_P, Some(ARGON_OUT_LEN))
-        .map_err(|e| format!("invalid argon2 params: {e}"))?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-
-    let mut salt = [0u8; SALT_LEN];
-    getrandom::fill(&mut salt).map_err(|e| format!("failed to get random salt: {e}"))?;
-
-    let mut out = [0u8; ARGON_OUT_LEN];
-    argon2
-        .hash_password_into(password.expose_secret().as_bytes(), &salt, &mut out)
-        .map_err(|e| format!("argon2 hashing failed: {e}"))?;
-
-    // $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>   (unpadded standard base64)
-    Ok(format!(
-        "$argon2id$v=19$m={ARGON_M_KIB},t={ARGON_T},p={ARGON_P}${}${}",
-        STANDARD_NO_PAD.encode(salt),
-        STANDARD_NO_PAD.encode(out),
-    ))
 }
 
 // ----------------------------------------------------------------------------

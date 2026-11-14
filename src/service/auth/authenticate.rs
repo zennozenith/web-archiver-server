@@ -4,7 +4,7 @@ use secrecy::ExposeSecret;
 use sqlx::SqlitePool;
 
 use crate::{
-    auth::{AuthUser, Credential, Origin},
+    auth::{AuthMethod, AuthUser, Credential, Permission},
     db,
     error::{AppError, Result},
     infra::sha256_hex,
@@ -28,7 +28,7 @@ pub(crate) async fn authenticate(pool: &SqlitePool, cred: Credential) -> Result<
             }
 
             let (roles, perms) = db::auth::roles_and_permissions(pool, hit.user.id).await?;
-            let origin = Origin::Session {
+            let origin = AuthMethod::Session {
                 public_id: hit.session_public_id,
             };
             Ok(AuthUser::new(hit.user, roles, perms, origin))
@@ -46,12 +46,12 @@ pub(crate) async fn authenticate(pool: &SqlitePool, cred: Credential) -> Result<
             let (roles, owner_perms) = db::auth::roles_and_permissions(pool, hit.user.id).await?;
 
             // A key never exceeds its owner, and is further limited to its own scopes.
-            let perms = if owner_perms.contains("*") {
+            let perms = if owner_perms.contains(Permission::WILDCARD.as_str()) {
                 scopes
             } else {
                 owner_perms.intersection(&scopes).cloned().collect()
             };
-            Ok(AuthUser::new(hit.user, roles, perms, Origin::ApiKey))
+            Ok(AuthUser::new(hit.user, roles, perms, AuthMethod::ApiKey))
         }
     }
 }

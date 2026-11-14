@@ -15,7 +15,7 @@ use crate::{
         pending::{PendingId, PendingRecord},
         store::{insert_blob, prepare_blob},
     },
-    error::{AppError, Result},
+    error::{AppError, Resource, Result},
     infra::{Image, extractor::html},
     util::{NonEmptyString, time::now_ms},
 };
@@ -77,8 +77,8 @@ pub(crate) async fn archive(
 
     let page = PageRecord::load(&ctx.db, actor.id, page_id)
         .await?
-        .ok_or(AppError::NotFound("page"))?;
-    let page_url = url::Url::parse(&page.url).map_err(|e| AppError::Internal(Box::new(e)))?;
+        .ok_or(AppError::NotFound(Resource::Page))?;
+    let page_url = url::Url::parse(&page.url).map_err(AppError::internal)?;
 
     let title = upload
         .title
@@ -94,12 +94,7 @@ pub(crate) async fn archive(
 
     let replacements: HashMap<String, String> = assets
         .iter()
-        .map(|asset| {
-            (
-                asset.url.clone(),
-                format!("/api/content/{}", asset.hash.to_hex()),
-            )
-        })
+        .map(|asset| (asset.url.clone(), asset.hash.content_path()))
         .collect();
     let rewritten = html::rewrite_resources(&upload.html, &page_url, &replacements);
 

@@ -19,8 +19,8 @@ use crate::{
         web::{
             dashboard::LibraryDashboard,
             library,
-            view::{Section, Shell},
-            view_archive::{CollectionCard, LinkCard},
+            viewmodels::archive::{CollectionCard, LinkCard},
+            viewmodels::{Section, Shell},
         },
     },
     service,

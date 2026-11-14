@@ -18,16 +18,14 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::AppState;
+use crate::{AppState, http::LOGIN_PATH};
 
 /// Where a signed-in user lands.
 const HOME: &str = "/";
-/// The sign-in page.
-const LOGIN: &str = "/login";
 
 pub(super) fn router() -> Router<AppState> {
     Router::new()
-        .route("/login", get(pages::login).post(actions::login))
+        .route(LOGIN_PATH, get(pages::login).post(actions::login))
         .route("/register", get(pages::register).post(actions::register))
         .route("/verify", get(pages::verify).post(actions::verify))
         .route("/forgot", get(pages::forgot).post(actions::forgot))

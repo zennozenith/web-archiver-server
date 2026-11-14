@@ -69,7 +69,7 @@ impl NewApiKey {
     }
 
     pub(crate) fn scopes_json(&self) -> Result<String> {
-        serde_json::to_string(&self.scopes).map_err(|e| AppError::Internal(Box::new(e)))
+        serde_json::to_string(&self.scopes).map_err(AppError::internal)
     }
 
     pub(crate) fn expires_at(&self, now: i64) -> Option<i64> {

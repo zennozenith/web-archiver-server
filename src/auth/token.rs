@@ -43,7 +43,7 @@ pub(crate) struct OsRng;
 impl Rng for OsRng {
     #[inline]
     fn fill(&self, buf: &mut [u8]) -> Result<(), AppError> {
-        getrandom::fill(buf).map_err(|e| AppError::Internal(Box::new(e)))
+        getrandom::fill(buf).map_err(AppError::internal)
     }
 }
 
@@ -86,12 +86,11 @@ pub(crate) fn generate_secret(prefix: &str, rng: &impl Rng) -> Result<SecretStri
     // Pre-size the allocation: prefix + 64 hex chars, no reallocation.
     let mut out = String::with_capacity(prefix.len().saturating_add(TOKEN_HEX_LEN));
     out.push_str(prefix);
-    hex::encode_to_slice(buf, &mut [0u8; TOKEN_HEX_LEN])
-        .map_err(|e| AppError::Internal(Box::new(e)))?;
+    hex::encode_to_slice(buf, &mut [0u8; TOKEN_HEX_LEN]).map_err(AppError::internal)?;
     // SAFETY-FREE variant: build the hex into a stack buffer, then push.
     let mut hex_buf = [0u8; TOKEN_HEX_LEN];
-    hex::encode_to_slice(buf, &mut hex_buf).map_err(|e| AppError::Internal(Box::new(e)))?;
-    out.push_str(std::str::from_utf8(&hex_buf).map_err(|e| AppError::Internal(Box::new(e)))?);
+    hex::encode_to_slice(buf, &mut hex_buf).map_err(AppError::internal)?;
+    out.push_str(std::str::from_utf8(&hex_buf).map_err(AppError::internal)?);
 
     Ok(SecretString::new(out.into_boxed_str()))
 }

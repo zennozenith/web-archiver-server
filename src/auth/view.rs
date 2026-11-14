@@ -3,10 +3,10 @@
 
 use sqlx::FromRow;
 
-use crate::{auth::AccountStatus, prelude::*, util::escape_like};
+use crate::{auth::AccountStatus, prelude::*, util::like_contains_pattern};
 
 fn split_csv(csv: Option<&str>) -> Vec<String> {
-    csv.map_or_default(|s| {
+    csv.map_or_else(Vec::new, |s| {
         s.split(',')
             .filter(|p| !p.is_empty())
             .map(str::to_owned)
@@ -106,12 +106,13 @@ impl RoleView {
     }
 }
 
-/// Admin user list filter. Built with `new`, so limits are always sane.
-#[derive(Debug)]
+/// Admin user directory filter. Built with `new`, so limits are always sane.
+#[derive(Debug, Clone)]
 pub(crate) struct UserFilter {
-    /// Ready-made `LIKE` pattern (escaped), `None` = no text filter.
-    pub pattern: Option<String>,
+    /// Raw search text; the database layer escapes it for `LIKE`.
+    pub q: Option<String>,
     pub status: Option<AccountStatus>,
+    pub role: Option<String>,
     pub limit: i64,
     pub offset: i64,
 }
@@ -126,10 +127,10 @@ impl UserFilter {
         limit: Option<i64>,
         offset: Option<i64>,
     ) -> Result<Self> {
-        let pattern = search
+        let q = search
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .map(escape_like);
+            .map(str::to_owned);
 
         let status = match status.map(str::trim).filter(|s| !s.is_empty()) {
             Some(s) => Some(
@@ -140,10 +141,24 @@ impl UserFilter {
         };
 
         Ok(Self {
-            pattern,
+            q,
             status,
+            role: None,
             limit: limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT),
             offset: offset.unwrap_or(0).max(0),
         })
+    }
+
+    #[must_use]
+    pub(crate) fn with_role(mut self, role: Option<&str>) -> Self {
+        self.role = role
+            .map(str::trim)
+            .filter(|role| !role.is_empty())
+            .map(str::to_owned);
+        self
+    }
+
+    pub(crate) fn like_pattern(&self) -> Option<String> {
+        self.q.as_deref().map(like_contains_pattern)
     }
 }

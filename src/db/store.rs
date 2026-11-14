@@ -4,7 +4,7 @@
 use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
-    error::{AppError, Result, join_err},
+    error::{AppError, Result},
     infra::{Blake3Hash, BlobStore, Compression, compress},
 };
 
@@ -42,8 +42,7 @@ pub(crate) async fn prepare_blob(
         let h: Blake3Hash = blake3::hash(&bytes).as_bytes().into();
         (h, bytes)
     })
-    .await
-    .map_err(join_err)?;
+    .await?;
 
     let existed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM contents WHERE hash = ?)")
         .bind(hash)
@@ -56,8 +55,7 @@ pub(crate) async fn prepare_blob(
         let m = mime.clone();
         let (stored, compression) =
             tokio::task::spawn_blocking(move || compress::compress_for_storage(&m, bytes))
-                .await
-                .map_err(join_err)??;
+                .await??;
 
         let size_stored = i64::try_from(stored.len()).unwrap_or(i64::MAX);
         let location = if stored.len() > store.inline_threshold() {

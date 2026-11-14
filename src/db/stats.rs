@@ -1,10 +1,14 @@
 use std::{collections::BTreeMap, time::Duration};
 
-use chrono::{Days, NaiveDate, Utc};
+use chrono::{Days, NaiveDate};
 use serde::Serialize;
 use sqlx::{FromRow, Result, SqlitePool};
 
-use crate::{infra::BlobStore, prelude::*, util::time::DAY_MS};
+use crate::{
+    infra::BlobStore,
+    prelude::*,
+    util::time::{DAY_MS, today},
+};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -198,7 +202,7 @@ pub(crate) struct DayCount {
 
 /// Sign-ins per day for the last seven days (UTC), oldest first, zero-filled.
 pub(crate) async fn login_days(pool: &SqlitePool) -> sqlx::Result<Vec<DayCount>> {
-    let today = Utc::now().date_naive();
+    let today = today();
     let days: Vec<NaiveDate> = (0..7u64)
         .rev()
         .filter_map(|n| today.checked_sub_days(Days::new(n)))

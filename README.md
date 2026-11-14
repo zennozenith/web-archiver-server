@@ -132,6 +132,7 @@ The devenv environment sets these defaults:
 ```text
 APP_SERVER__HOST=0.0.0.0
 APP_SERVER__PORT=8889
+APP_PUBLIC_URL=http://localhost:8889
 APP_DATABASE__URL=sqlite://data/db/app.sqlite3
 APP_DATA_DIR=./data
 OUT_DIR=../static/vite
@@ -142,7 +143,7 @@ OUT_DIR=../static/vite
 
 ### Manual setup
 
-You need Rust (stable 1.85+ for the 2024 edition, or nightly), the Vite+ CLI
+You need Rust (stable 1.90+ for the 2024 edition), the Vite+ CLI
 (`vp`), and Node.js. Install Vite+ with:
 
 ```bash
@@ -159,7 +160,7 @@ vp install
 OUT_DIR=../static/vite vp build
 cd ..
 
-cargo run
+APP_PUBLIC_URL=http://localhost:8889 APP_SERVER__PORT=8889 cargo run
 ```
 
 `build.rs` currently invokes `devenv tasks run frontend` before compiling. If you
@@ -174,6 +175,7 @@ environment variables. Environment variables use the `APP_` prefix, `__` as the
 nested separator, and `_` after the prefix:
 
 ```bash
+APP_PUBLIC_URL='http://localhost:8889' \
 APP_SERVER__HOST=127.0.0.1 \
 APP_SERVER__PORT=8889 \
 APP_DATABASE__URL='sqlite://data/db/app.sqlite3' \
@@ -181,16 +183,30 @@ APP_DATA_DIR='./data' \
 cargo run
 ```
 
-| Variable                         | Default                   | Description                                    |
-| -------------------------------- | ------------------------- | ---------------------------------------------- |
-| `APP_ENV`                        | `local`                   | Selects `config/{APP_ENV}.toml` when it exists |
-| `APP_DATA_DIR`                   | `data`                    | Base directory for the blob store              |
-| `APP_SERVER__HOST`               | `127.0.0.1`               | Listen address                                 |
-| `APP_SERVER__PORT`               | _required_                | Listen port                                    |
-| `APP_DATABASE__URL`              | `sqlite://data/db/app.db` | SQLite connection URL                          |
-| `APP_DATABASE__MAX_CONNECTIONS`  | `10`                      | Connection pool size                           |
-| `APP_DATABASE__BUSY_TIMEOUT_SEC` | `5`                       | SQLite busy timeout in seconds                 |
-| `RUST_LOG`                       | `web_archiver=debug`      | `tracing-subscriber` environment filter        |
+| Variable                         | Default                   | Description                                                        |
+| -------------------------------- | ------------------------- | ------------------------------------------------------------------ |
+| `APP_ENV`                        | `local`                   | Selects `config/{APP_ENV}.toml` when it exists                     |
+| `APP_PUBLIC_URL`                 | _required_                | Absolute base URL used in verification and password-reset e-mails  |
+| `APP_DATA_DIR`                   | `data`                    | Base directory for the blob store                                  |
+| `APP_SERVER__HOST`               | `127.0.0.1`               | Listen address                                                     |
+| `APP_SERVER__PORT`               | _required_                | Listen port                                                        |
+| `APP_SERVER__TRUSTED_PROXY`      | `false`                   | Trust `Forwarded` / `X-Forwarded-For` from the socket peer         |
+| `APP_SERVER__SECURE_COOKIE`      | `true`                    | Add `Secure` to the session cookie (disable for plain-HTTP dev)    |
+| `APP_DATABASE__URL`              | `sqlite://data/db/app.db` | SQLite connection URL                                              |
+| `APP_DATABASE__MAX_CONNECTIONS`  | `10`                      | Connection pool size                                               |
+| `APP_DATABASE__BUSY_TIMEOUT_SECS`| `5`                       | SQLite busy timeout in seconds                                     |
+| `APP_MAIL__FROM`                 | _none_                    | Envelope sender, e.g. `Web Archiver <noreply@example.com>`         |
+| `APP_MAIL__SMTP__HOST`           | _none_                    | SMTP relay; when omitted, development logs mail to the console     |
+| `APP_MAIL__SMTP__PORT`           | `587`                     | SMTP port                                                          |
+| `APP_MAIL__SMTP__USERNAME`       | _required with SMTP_      | SMTP username                                                      |
+| `APP_MAIL__SMTP__PASSWORD`       | _required with SMTP_      | SMTP password                                                      |
+| `APP_MAIL__SMTP__STARTTLS`       | `true`                    | Use STARTTLS; disable for implicit TLS (usually port 465)          |
+| `RUST_LOG`                       | `web_archiver=debug`      | `tracing-subscriber` environment filter                            |
+
+Release builds require SMTP configuration; debug builds fall back to logging
+e-mails. `APP_PUBLIC_URL` must be an absolute `http` or `https` URL without
+credentials, and must match the URL users actually visit (including behind a
+reverse proxy).
 
 The database directory must exist before startup; SQLite creates the database
 file but not its parent directory. Blobs are stored under `APP_DATA_DIR/blobs`.

@@ -12,21 +12,21 @@ use crate::{
     util::time::now_ms,
 };
 
-static DUMMY_HASH: OnceCell<String> = OnceCell::const_new();
+static DECOY_HASH: OnceCell<String> = OnceCell::const_new();
 
 // Hash of a random password nobody knows, made with the live Argon2 params.
-pub(super) async fn dummy_hash() -> &'static str {
-    DUMMY_HASH
+pub(super) async fn decoy_hash() -> &'static str {
+    DECOY_HASH
         .get_or_init(|| async {
             let pw = SecretString::from(random_id().expect("rng available"));
-            hash_password(pw).await.expect("hash dummy password")
+            hash_password(pw).await.expect("hash decoy password")
         })
         .await
 }
 
 /// Spend the same time as a real verification, and discard the result.
 async fn burn_verify(password: SecretString) {
-    let _ = verify_password(password, dummy_hash().await.to_owned()).await;
+    let _ = verify_password(password, decoy_hash().await.to_owned()).await;
 }
 
 pub(crate) async fn login(
@@ -48,12 +48,12 @@ pub(crate) async fn login(
     };
 
     if user.locked_until.is_some_and(|t| t > now) {
+        // Run the same expensive verification as a normal failed login, then
+        // return the generic error so the response does not reveal whether the
+        // account exists or is locked.
+        burn_verify(password).await;
         return Err(attempt
-            .failed(
-                Some(user.id),
-                "locked",
-                AppError::TooManyRequest("account temporarily locked"),
-            )
+            .failed(Some(user.id), "locked", AppError::InvalidCredentials)
             .await);
     }
     if !verify_password(password, user.password_hash).await {

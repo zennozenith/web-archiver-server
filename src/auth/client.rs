@@ -1,7 +1,11 @@
 use std::net::{IpAddr, SocketAddr};
 
 use axum::extract::ConnectInfo;
-use http::{header::USER_AGENT, request::Parts};
+use http::{
+    HeaderMap,
+    header::{FORWARDED, USER_AGENT},
+    request::Parts,
+};
 
 use crate::error::AppError;
 
@@ -23,27 +27,64 @@ impl ClientInfo {
         Self { ip, user_agent }
     }
 
-    pub(crate) fn extract(parts: &Parts) -> Result<Self, AppError> {
-        // TODO:
-        // Settings
-        // pub trusted_proxy: bool,
-
-        // // extractor: only read the header when the connection came from your proxy
-        // let ip = if state.trusted_proxy {
-        //     forwarded_for(&parts.headers).unwrap_or(addr.ip())
-        // } else {
-        //     addr.ip()
-        // };
-        //
-        // axum-client-ip crate
-
+    pub(crate) fn extract(parts: &Parts, trusted_proxy: bool) -> Result<Self, AppError> {
         let ConnectInfo(addr) = parts
             .extensions
             .get::<ConnectInfo<SocketAddr>>()
             .copied()
-            .ok_or_else(|| AppError::Internal("missing ConnectInfo".into()))?;
+            .ok_or_else(|| AppError::internal("missing ConnectInfo"))?;
+
+        // Only trust forwarding headers when the socket peer is the proxy.
+        let ip = if trusted_proxy {
+            forwarded_ip(&parts.headers).unwrap_or_else(|| addr.ip())
+        } else {
+            addr.ip()
+        };
 
         let ua = parts.headers.get(USER_AGENT).and_then(|v| v.to_str().ok());
-        Ok(Self::new(addr.ip(), ua))
+        Ok(Self::new(ip, ua))
     }
+}
+
+/// First usable client address from `Forwarded`, `X-Forwarded-For`, or
+/// `X-Real-IP`.
+fn forwarded_ip(headers: &HeaderMap) -> Option<IpAddr> {
+    if let Some(ip) = headers
+        .get_all(FORWARDED)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .find_map(forwarded_for_param)
+    {
+        return Some(ip);
+    }
+
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .and_then(|v| v.trim().parse().ok())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.trim().parse().ok())
+        })
+}
+
+fn forwarded_for_param(entry: &str) -> Option<IpAddr> {
+    entry.split(';').find_map(|param| {
+        let (name, value) = param.trim().split_once('=')?;
+        if name.trim().eq_ignore_ascii_case("for") {
+            let value = value.trim().trim_matches('"');
+            value
+                .strip_prefix('[')
+                .and_then(|v| v.split_once(']').map(|(ip, _)| ip))
+                .unwrap_or(value)
+                .parse()
+                .ok()
+        } else {
+            None
+        }
+    })
 }

@@ -138,6 +138,7 @@
     OUT_DIR = "../static/vite";
     APP_SERVER__HOST = "0.0.0.0";
     APP_SERVER__PORT = 8889;
+    APP_PUBLIC_URL = "http://localhost:8877";
     APP_DATABASE__URL = "sqlite://data/db/app.sqlite3";
     APP_DATA_DIR = "./data";
 

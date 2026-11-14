@@ -4,7 +4,7 @@
 use askama::Template;
 use axum::extract::State;
 
-use super::super::view::{RoleChip, Section, Shell, Stamp, UserItem};
+use super::super::viewmodels::{Section, Shell, Stamp, UserItem};
 use crate::{
     AppState,
     auth::{AuthUser, Permission},
@@ -13,7 +13,7 @@ use crate::{
         htmx::Render,
         web::{
             admin::AuditItem,
-            view::{NavGroup, NavItem, NavProvider, icons},
+            viewmodels::{NavGroup, NavItem, NavProvider, icons},
         },
     },
     prelude::*,
@@ -55,10 +55,6 @@ pub(crate) struct SecurityStats {
 
 #[derive(Debug)]
 pub(crate) struct Mine {
-    pub(crate) name: String,
-    pub(crate) status: String,
-    pub(crate) status_class: &'static str,
-    pub(crate) roles: Vec<RoleChip>,
     pub(crate) last_login: Stamp,
     pub(crate) sessions: usize,
     pub(crate) api_keys: usize,
@@ -91,7 +87,7 @@ impl NavProvider for AccountOverview {
 
         let mut groups = vec![];
 
-        if user.is_super() {
+        if user.is_super_admin() {
             groups.push(NavGroup {
                 label: "Overview",
                 items: vec![item(

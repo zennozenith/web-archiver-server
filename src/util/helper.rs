@@ -2,8 +2,9 @@ use crate::error::AppError;
 
 use std::{fmt, ops::Deref, str::FromStr};
 
-/// Escapes `%`, `_` and `\` so user text is matched literally by `LIKE ... ESCAPE '\'`.
-pub(crate) fn escape_like(s: &str) -> String {
+/// Wraps user text in `%…%` and escapes `%`, `_` and `\` so it is matched
+/// literally by `LIKE ... ESCAPE '\'`.
+pub(crate) fn like_contains_pattern(s: &str) -> String {
     let mut out = String::with_capacity(s.len().saturating_add(2));
     out.push('%');
     for c in s.chars() {
@@ -109,18 +110,6 @@ impl NonEmptyString {
         }
     }
 
-    /// Returns a string slice of the inner data.
-    #[expect(dead_code, reason = "Might be needed later")]
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// Consumes the wrapper and returns the owned `String`.
-    #[expect(dead_code, reason = "Might be needed later")]
-    pub(crate) fn into_inner(self) -> String {
-        self.0.into_string()
-    }
-
     /// Trims whitespace from a string slice and returns an owned, non-empty `String`.
     ///
     /// Returns `None` if the input string is empty or consists entirely of whitespace.
@@ -177,29 +166,3 @@ impl fmt::Display for NonEmptyString {
         write!(f, "{}", self.0)
     }
 }
-
-// use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-// impl Serialize for NonEmptyString {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         // A NonEmptyString serializes just like a regular String
-//         self.0.serialize(serializer)
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for NonEmptyString {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         // First deserialize into a standard String
-//         let s = String::deserialize(deserializer)?;
-
-//         // Then validate it through NonEmptyString::new, mapping the error
-//         // into a Serde custom deserialization error
-//         Self::new(s).map_err(serde::de::Error::custom)
-//     }
-// }

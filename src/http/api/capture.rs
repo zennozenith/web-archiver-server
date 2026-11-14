@@ -17,6 +17,7 @@ use crate::{
     },
     error::Result,
     http::{
+        cache,
         dto::archive::CaptureDetailResponse,
         extract::body::{AppJson, AppPath},
         serve::{CSP, CSP_ARCHIVED_HTML, serve_content_with_csp},
@@ -24,8 +25,6 @@ use crate::{
     service,
     util::mime::MimeType,
 };
-
-const CAPTURE_CACHE_CONTROL: &str = "private, max-age=86400";
 
 /// How one kind of capture blob is exposed over HTTP.
 struct BlobRoute {
@@ -78,7 +77,7 @@ async fn serve_blob(
         headers,
         content,
         &content_type,
-        CAPTURE_CACHE_CONTROL,
+        cache::PRIVATE_DAY,
         route.csp,
     )
     .await
@@ -109,7 +108,7 @@ pub(super) async fn get_thumbnail(
         &headers,
         content,
         &content_type,
-        CAPTURE_CACHE_CONTROL,
+        cache::PRIVATE_DAY,
         CSP,
     )
     .await

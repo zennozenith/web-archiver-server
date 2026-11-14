@@ -10,6 +10,21 @@ id_type! {
     pub(crate) struct CollectionId;
 }
 
+impl CollectionId {
+    pub(crate) const fn get(self) -> i64 {
+        self.0
+    }
+
+    pub(crate) fn parse_opt(value: Option<&str>) -> Option<Self> {
+        value
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|value| value.parse::<i64>().ok())
+            .filter(|id| *id >= 0)
+            .map(Self::from)
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Models
 // ───────────────────────────────────────────────────────────────────────────

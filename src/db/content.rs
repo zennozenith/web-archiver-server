@@ -177,17 +177,7 @@ impl Content {
 }
 
 impl ContentHead {
-    pub(crate) async fn by_hash<'e>(
-        executor: impl SqliteExecutor<'e>,
-        hash: &Blake3Hash,
-    ) -> Result<Option<Self>> {
-        sqlx::query_as("SELECT size_original, mime_type FROM contents WHERE hash = ?")
-            .bind(hash)
-            .fetch_optional(executor)
-            .await
-    }
-
-    /// Like [`Self::by_hash`], but only when `owner` references the blob.
+    /// Loads the blob's metadata, but only when `owner` references the blob.
     pub(crate) async fn by_hash_visible<'e>(
         executor: impl SqliteExecutor<'e>,
         owner: i64,

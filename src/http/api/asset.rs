@@ -8,13 +8,12 @@ use crate::{
     db::{capture::CaptureAsset, page::PageId},
     error::Result,
     http::{
+        cache,
         extract::body::{AppJson, AppPath},
         serve::serve_content,
     },
     service,
 };
-
-const ASSET_CACHE: &str = "private, max-age=86400";
 
 pub(super) async fn capture_assets(
     State(ctx): State<AppState>,
@@ -32,7 +31,7 @@ pub(super) async fn latest_assets(
     AppPath(id): AppPath<i64>,
 ) -> Result<AppJson<Vec<CaptureAsset>>> {
     Ok(AppJson(
-        service::capture::latest_assets(&ctx, &user, PageId::new(id)).await?,
+        service::capture::latest_assets(&ctx, &user, PageId::from(id)).await?,
     ))
 }
 
@@ -44,5 +43,5 @@ pub(super) async fn capture_asset(
 ) -> Result<Response> {
     let row = service::capture::asset_blob(&ctx, &user, capture_id.into(), content_id).await?;
     let content_type = row.mime_type.clone();
-    serve_content(&ctx.store, &headers, row, &content_type, ASSET_CACHE).await
+    serve_content(&ctx.store, &headers, row, &content_type, cache::PRIVATE_DAY).await
 }

@@ -16,14 +16,13 @@ use crate::{
     auth::AuthUser,
     error::{AppError, Result},
     http::{
+        cache,
         extract::body::AppPath,
         serve::{etag_for, serve_content},
     },
     infra::Blake3Hash,
     service,
 };
-
-const IMMUTABLE_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
 
 async fn get_content(
     State(ctx): State<AppState>,
@@ -40,7 +39,7 @@ async fn get_content(
         &headers,
         content,
         &content_type,
-        IMMUTABLE_CACHE_CONTROL,
+        cache::PRIVATE_IMMUTABLE,
     )
     .await
 }
@@ -53,8 +52,7 @@ async fn head_content(
     let hash: Blake3Hash = hash.parse()?;
     let head = service::capture::content_head(&ctx, &user, &hash).await?;
 
-    let etag =
-        HeaderValue::from_str(&etag_for(&hash)).map_err(|e| AppError::Internal(Box::new(e)))?;
+    let etag = HeaderValue::from_str(&etag_for(&hash)).map_err(AppError::internal)?;
     let length = u64::try_from(head.size_original).unwrap_or_default();
 
     let mut headers = HeaderMap::new();

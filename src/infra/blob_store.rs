@@ -24,10 +24,6 @@ use super::hash::Blake3Hash;
 
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn io_err(e: std::io::Error) -> AppError {
-    AppError::Internal(Box::new(e))
-}
-
 #[derive(Debug, Clone)]
 pub struct BlobStore {
     root: Arc<Path>,
@@ -38,8 +34,8 @@ pub struct BlobStore {
 impl BlobStore {
     pub async fn open(root: impl Into<PathBuf>, inline_threshold: usize) -> Result<Self> {
         let root = root.into();
-        fs::create_dir_all(root.join("tmp")).await.map_err(io_err)?;
-        let root = fs::canonicalize(&root).await.map_err(io_err)?;
+        fs::create_dir_all(root.join("tmp")).await?;
+        let root = fs::canonicalize(&root).await?;
         Ok(Self {
             root: Arc::from(root),
             inline_threshold,
@@ -61,9 +57,7 @@ impl BlobStore {
     fn resolve(&self, rel: &str) -> Result<PathBuf> {
         let p = Path::new(rel);
         if rel.is_empty() || p.components().any(|c| !matches!(c, Component::Normal(_))) {
-            return Err(AppError::Internal(
-                format!("invalid storage_ref: {rel:?}").into(),
-            ));
+            return Err(AppError::internal(format!("invalid storage_ref: {rel:?}")));
         }
         Ok(self.root.join(p))
     }
@@ -95,17 +89,17 @@ impl BlobStore {
 
         if let Err(e) = res {
             let _err = fs::remove_file(&tmp).await;
-            return Err(io_err(e));
+            return Err(e.into());
         }
         Ok(rel)
     }
 
     pub async fn open_file(&self, rel: &str) -> Result<fs::File> {
-        fs::File::open(self.resolve(rel)?).await.map_err(io_err)
+        Ok(fs::File::open(self.resolve(rel)?).await?)
     }
 
     pub async fn read(&self, rel: &str) -> Result<Vec<u8>> {
-        fs::read(self.resolve(rel)?).await.map_err(io_err)
+        Ok(fs::read(self.resolve(rel)?).await?)
     }
 
     /// Idempotent: a missing file is fine.
@@ -113,7 +107,7 @@ impl BlobStore {
         match fs::remove_file(self.resolve(rel)?).await {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(io_err(e)),
+            Err(e) => Err(e.into()),
         }
     }
 

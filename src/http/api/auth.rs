@@ -59,23 +59,17 @@ async fn verify_email(
 
 // -------------------------------------------------------------------- login
 
-#[derive(Deserialize)]
-pub(crate) struct LoginReq {
-    pub identifier: String,
-    pub password: SecretString,
-}
-
 async fn login(
     State(ctx): State<AppState>,
     client: ClientInfo,
-    // ConnectInfo(addr): ConnectInfo<SocketAddr>,
     JsonOrForm(req): JsonOrForm<LoginRequest>,
 ) -> Result<impl IntoResponse> {
-    // let ip = addr.ip().to_string();
-
     let token = service::auth::login(&ctx, &client, req.into()).await?;
     Ok((
-        [(header::SET_COOKIE, SessionCookie::issue(&token)?)],
+        [(
+            header::SET_COOKIE,
+            SessionCookie::issue(&token, ctx.secure_cookie)?,
+        )],
         StatusCode::NO_CONTENT,
     ))
 }
@@ -91,7 +85,7 @@ async fn logout(
     }
 
     Ok((
-        [(header::SET_COOKIE, SessionCookie::clear())],
+        [(header::SET_COOKIE, SessionCookie::clear(ctx.secure_cookie))],
         StatusCode::NO_CONTENT,
     ))
 }

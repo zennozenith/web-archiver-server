@@ -14,7 +14,7 @@ max-fn-params-bools = 1
 max-struct-bools = 2
 trivial-copy-size-limit = 16
 avoid-breaking-exported-api = false
-# msrv = "1.80"
+msrv = "1.90"
 
 disallowed-macros = [
   { path = "std::println", reason = "use tracing/log" },

@@ -9,7 +9,7 @@ use axum::{
 
 use super::alert::Alert;
 use crate::{
-    error::{AppError, ErrorInfo, ForbiddenReason},
+    error::{AppError, ErrorContext, ForbiddenReason},
     http::htmx::HtmxRequest,
 };
 
@@ -25,7 +25,7 @@ pub(super) async fn inline_alerts(req: Request, next: Next) -> Response {
 
     let message = res
         .extensions()
-        .get::<ErrorInfo>()
+        .get::<ErrorContext>()
         .filter(|info| info.status.is_client_error())
         .map(|info| info.message.clone());
 
