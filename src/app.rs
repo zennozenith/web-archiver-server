@@ -24,13 +24,13 @@ use crate::{
 };
 
 /// Small default; upload routes opt into a larger limit explicitly.
-const DEFAULT_REQUEST_BYTES: usize = 2 * 1024 * 1024;
+const DEFAULT_BODY_BYTES: usize = 2 * 1024 * 1024;
 /// Multipart page forms, which may carry a thumbnail.
 pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = 16 * 1024 * 1024;
 /// A full capture plus its screenshot and rewritten document.
 pub(crate) const MAX_CAPTURE_BODY_BYTES: usize = 64 * 1024 * 1024;
 /// Default per-request deadline. Long-running captures opt in to `CAPTURE_TIMEOUT`.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Archiving a page and all of its sub-resources can legitimately take minutes.
 pub(crate) const CAPTURE_TIMEOUT: Duration = Duration::from_secs(300);
 /// `/readyz` must answer quickly even when the pool is saturated.
@@ -124,17 +124,18 @@ pub(super) fn app(state: AppState) -> Router {
         .merge(asset::router())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
-            REQUEST_TIMEOUT,
+            DEFAULT_TIMEOUT,
         ));
 
     // Capture uploads can legitimately run for minutes; keep them outside the
     // default deadline and give the group its own longer one.
-    let long_running = Router::new()
-        .nest("/api", api::long_running())
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            CAPTURE_TIMEOUT,
-        ));
+    let long_running =
+        Router::new()
+            .nest("/api", api::capture_routes())
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                CAPTURE_TIMEOUT,
+            ));
 
     let request_id = request_id_header();
     let app = normal
@@ -146,7 +147,7 @@ pub(super) fn app(state: AppState) -> Router {
             Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
             shed_requests,
         ))
-        .layer(DefaultBodyLimit::max(DEFAULT_REQUEST_BYTES))
+        .layer(DefaultBodyLimit::max(DEFAULT_BODY_BYTES))
         .with_state(state);
 
     probes.merge(app).layer(from_fn(security::headers))
