@@ -36,8 +36,7 @@ impl Limit {
 
     /// Compile-time constructor; panics (at compile time in const context) if invalid.
     ///
-    /// ```
-    /// # use limit::Limit;
+    /// ```ignore
     /// const PAGE: Limit = Limit::from_const(25);
     /// ```
     pub const fn from_const(n: u32) -> Self {

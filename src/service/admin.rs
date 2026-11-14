@@ -7,10 +7,16 @@ use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::{
-    db::{self, audit::audit, permission::PermissionInfo, role::RoleSummary, user::UserExtra},
-    error::{AppError, Resource, Result},
+    db::{
+        self,
+        audit::{AuditAction, audit},
+        permission::PermissionInfo,
+        role::RoleSummary,
+        user::UserExtra,
+    },
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{
-        AccountStatus, AuditEntry, AuthUser, Permission, RoleView, UserFilter, UserView, policy,
+        AccountStatus, AuditEntry, AuthUser, Permission, RoleView, UserFilter, UserView, roles,
     },
     util::time::now_ms,
 };
@@ -22,7 +28,7 @@ const AUDIT_PAGE: usize = 50;
 async fn target_id(pool: &SqlitePool, public_id: &str) -> Result<i64> {
     db::user::find_id_by_public_id(pool, public_id)
         .await?
-        .ok_or(AppError::NotFound(Resource::User))
+        .or_not_found(Resource::User)
 }
 
 // ----------------------------------------------------------------- users
@@ -45,7 +51,7 @@ pub(crate) async fn set_status(
 ) -> Result<()> {
     actor.require(Permission::USERS_WRITE)?;
     let target = target_id(pool, public_id).await?;
-    policy::check_not_self(actor.id, target, "you cannot change your own status")?;
+    roles::ensure_not_self(actor.id, target, "you cannot change your own status")?;
 
     let reason = reason.map(str::trim).filter(|r| !r.is_empty());
     if !db::user::set_status(pool, target, status, reason).await? {
@@ -56,7 +62,7 @@ pub(crate) async fn set_status(
         pool,
         Some(actor.id),
         Some(target),
-        "user.status_changed",
+        AuditAction::UserStatusChanged,
         Some(json!({ "status": status, "reason": reason })),
     )
     .await;
@@ -70,12 +76,19 @@ pub(crate) async fn delete_user(
 ) -> Result<()> {
     actor.require(Permission::USERS_DELETE)?;
     let target = target_id(pool, public_id).await?;
-    policy::check_not_self(actor.id, target, "you cannot delete yourself")?;
+    roles::ensure_not_self(actor.id, target, "you cannot delete yourself")?;
 
     if !db::user::soft_delete(pool, target, now_ms()).await? {
         return Err(AppError::NotFound(Resource::User));
     }
-    audit(pool, Some(actor.id), Some(target), "user.deleted", None).await;
+    audit(
+        pool,
+        Some(actor.id),
+        Some(target),
+        AuditAction::UserDeleted,
+        None,
+    )
+    .await;
     Ok(())
 }
 
@@ -145,7 +158,7 @@ pub(crate) async fn user_detail(
         .into_iter()
         .map(|r| RoleChoice {
             assigned: assigned.contains(&r.name),
-            assignable: !is_self && policy::check_role_assignable(actor, &r.name).is_ok(),
+            assignable: !is_self && roles::ensure_role_assignable(actor, &r.name).is_ok(),
             description: r.description,
             name: r.name,
         })
@@ -178,12 +191,12 @@ pub(crate) async fn grant_role(
     role: &str,
 ) -> Result<()> {
     actor.require(Permission::ROLES_WRITE)?;
-    policy::check_role_assignable(actor, role)?;
+    roles::ensure_role_assignable(actor, role)?;
 
     let target = target_id(pool, public_id).await?;
     let role_id = db::role::find_id(pool, role)
         .await?
-        .ok_or(AppError::NotFound(Resource::Role))?;
+        .or_not_found(Resource::Role)?;
 
     // Granting twice is a no-op, and not worth an audit row.
     if db::role::grant(pool, target, role_id, actor.id).await? {
@@ -191,7 +204,7 @@ pub(crate) async fn grant_role(
             pool,
             Some(actor.id),
             Some(target),
-            "role.granted",
+            AuditAction::RoleGranted,
             Some(json!({ "role": role })),
         )
         .await;
@@ -206,17 +219,17 @@ pub(crate) async fn revoke_role(
     role: &str,
 ) -> Result<()> {
     actor.require(Permission::ROLES_WRITE)?;
-    policy::check_role_assignable(actor, role)?;
+    roles::ensure_role_assignable(actor, role)?;
 
     let target = target_id(pool, public_id).await?;
     if !db::role::revoke(pool, target, role).await? {
-        return Err(AppError::NotFound(Resource::UserOrRole));
+        return Err(AppError::NotFound(Resource::Role));
     }
     audit(
         pool,
         Some(actor.id),
         Some(target),
-        "role.revoked",
+        AuditAction::RoleRevoked,
         Some(json!({ "role": role })),
     )
     .await;

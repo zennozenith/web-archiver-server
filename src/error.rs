@@ -39,22 +39,20 @@ struct ErrorResponse<'a> {
 #[serde(rename_all = "camelCase")]
 struct ErrorPayload<'a> {
     code: &'a str,
-    message: String,
+    message: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<Value>,
+    details: Option<&'a Value>,
 }
 
 /// Typed description of the resource a `NotFound` refers to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Resource {
-    Other,
     Page,
     Capture,
     CaptureContent,
     PendingItem,
     User,
     Role,
-    UserOrRole,
     Collection,
     PublicCollection,
     Tag,
@@ -70,20 +68,18 @@ pub enum Resource {
 impl std::fmt::Display for Resource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Other => "resource",
             Self::Page => "page",
             Self::Capture => "capture",
             Self::CaptureContent => "capture content",
             Self::PendingItem => "pending item",
             Self::User => "user",
             Self::Role => "role",
-            Self::UserOrRole => "user or role",
             Self::Collection => "collection",
             Self::PublicCollection => "public collection",
             Self::Tag => "tag",
             Self::PageTag => "tag on page",
             Self::Highlight => "highlight",
-            Self::ApiKey => "api_key",
+            Self::ApiKey => "api key",
             Self::Session => "session",
             Self::Content => "content",
             Self::Asset => "asset",
@@ -92,59 +88,124 @@ impl std::fmt::Display for Resource {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+/// Convert an absent row into a typed 404 without repeating `ok_or` at every
+/// load-after-write call site.
+pub(crate) trait OptionNotFound<T> {
+    fn or_not_found(self, resource: Resource) -> Result<T>;
+}
+
+impl<T> OptionNotFound<T> for Option<T> {
+    fn or_not_found(self, resource: Resource) -> Result<T> {
+        self.ok_or(AppError::NotFound(resource))
+    }
+}
+
+#[derive(Debug)]
 pub enum AppError {
     // 400
-    #[error("invalid url: {0}")]
     InvalidUrl(String),
-    #[error("Failed to parse hash: {0}")]
-    HashParse(#[from] HashParseError),
-    #[error("{0}")]
+    HashParse(HashParseError),
     BadRequest(String),
 
     // 401
-    #[error("authentication required")]
     Unauthorized,
-    #[error("invalid credentials")]
     InvalidCredentials,
 
     // 403
-    #[error("Forbidden: {0}")]
-    Forbidden(#[from] ForbiddenReason),
+    Forbidden(ForbiddenReason),
 
     // 404
-    #[error("{0} not found")]
     NotFound(Resource),
 
     // 409
-    #[error("{msg}. Existing id: {existing_id}")]
     Duplicate { existing_id: i64, msg: &'static str },
-    #[error("{0}")]
     Conflict(String),
 
     // 413
-    #[error("payload{} too large", limit.map_or_else(String::new, |limit| format!(" exceeds {limit} bytes")))]
     PayloadTooLarge { limit: Option<usize> },
 
     // 415
-    #[error("unsupported media type")]
     UnsupportedMediaType,
 
     // 429
-    #[error("{0}")]
     TooManyRequests(&'static str),
 
     // 422
-    #[error("{message}")]
     Invalid { code: &'static str, message: String },
 
     // 500
-    #[error("Failed to render template. Error: {0}")]
-    Render(#[from] askama::Error),
-    #[error("database error")]
-    Database(#[source] sqlx::Error),
-    #[error("internal error")]
-    Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
+    Render(askama::Error),
+    Database(sqlx::Error),
+    Internal(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidUrl(url) => write!(f, "invalid url: {url}"),
+            Self::HashParse(e) => write!(f, "Failed to parse hash: {e}"),
+            Self::BadRequest(message) | Self::Conflict(message) | Self::Invalid { message, .. } => {
+                f.write_str(message)
+            }
+            Self::Unauthorized => f.write_str("authentication required"),
+            Self::InvalidCredentials => f.write_str("invalid credentials"),
+            Self::Forbidden(reason) => write!(f, "Forbidden: {reason}"),
+            Self::NotFound(resource) => write!(f, "{resource} not found"),
+            Self::Duplicate { existing_id, msg } => {
+                write!(f, "{msg}. Existing id: {existing_id}")
+            }
+            Self::PayloadTooLarge { limit } => match limit {
+                Some(limit) => write!(f, "payload exceeds {limit} bytes"),
+                None => f.write_str("payload too large"),
+            },
+            Self::UnsupportedMediaType => f.write_str("unsupported media type"),
+            Self::TooManyRequests(message) => f.write_str(message),
+            Self::Render(e) => write!(f, "Failed to render template. Error: {e}"),
+            Self::Database(_) => f.write_str("database error"),
+            Self::Internal(_) => f.write_str("internal error"),
+        }
+    }
+}
+
+impl std::error::Error for AppError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::HashParse(e) => Some(e),
+            Self::Render(e) => Some(e),
+            Self::Database(e) => Some(e),
+            Self::Internal(e) => Some(e.as_ref()),
+            Self::InvalidUrl(_)
+            | Self::BadRequest(_)
+            | Self::Unauthorized
+            | Self::InvalidCredentials
+            | Self::Forbidden(_)
+            | Self::NotFound(_)
+            | Self::Duplicate { .. }
+            | Self::Conflict(_)
+            | Self::PayloadTooLarge { .. }
+            | Self::UnsupportedMediaType
+            | Self::TooManyRequests(_)
+            | Self::Invalid { .. } => None,
+        }
+    }
+}
+
+impl From<HashParseError> for AppError {
+    fn from(e: HashParseError) -> Self {
+        Self::HashParse(e)
+    }
+}
+
+impl From<ForbiddenReason> for AppError {
+    fn from(reason: ForbiddenReason) -> Self {
+        Self::Forbidden(reason)
+    }
+}
+
+impl From<askama::Error> for AppError {
+    fn from(e: askama::Error) -> Self {
+        Self::Render(e)
+    }
 }
 
 impl AppError {
@@ -159,7 +220,7 @@ impl AppError {
             BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", None),
             Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials", None),
-            Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden", None),
+            Forbidden(reason) => (StatusCode::FORBIDDEN, reason.as_code(), None),
             NotFound(_) => (StatusCode::NOT_FOUND, "not_found", None),
             Duplicate { existing_id, msg } => (
                 StatusCode::CONFLICT,
@@ -195,23 +256,60 @@ impl AppError {
     pub(crate) fn internal(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
         Self::Internal(error.into())
     }
+
+    /// Map a unique-constraint violation at the call site, where the conflicting
+    /// resource and a useful message are known.
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "sqlx::Error is non-exhaustive; every other variant keeps its normal mapping"
+    )]
+    pub(crate) fn unique(error: sqlx::Error, message: &'static str) -> Self {
+        match error {
+            sqlx::Error::Database(db) if db.is_unique_violation() => Self::Conflict(message.into()),
+            other => Self::from(other),
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ForbiddenReason {
-    #[error("please verify your e-mail address first")]
     EmailUnverified,
-    #[error("this account is suspended")]
     Suspended,
-    #[error("this account is deactivated")]
     Deactivated,
-    #[error("you do not have permission")]
     MissingPermission,
-    #[error("keys cannot mint more keys")]
     ApiKeyMint,
-    #[error("request must come from the app")]
     Csrf,
 }
+
+impl ForbiddenReason {
+    /// Machine-readable code so clients can distinguish "verify your e-mail"
+    /// from "account suspended" without parsing the message.
+    pub(crate) const fn as_code(self) -> &'static str {
+        match self {
+            Self::EmailUnverified => "email_unverified",
+            Self::Suspended => "suspended",
+            Self::Deactivated => "deactivated",
+            Self::MissingPermission => "missing_permission",
+            Self::ApiKeyMint => "api_key_mint",
+            Self::Csrf => "csrf",
+        }
+    }
+}
+
+impl std::fmt::Display for ForbiddenReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::EmailUnverified => "please verify your e-mail address first",
+            Self::Suspended => "this account is suspended",
+            Self::Deactivated => "this account is deactivated",
+            Self::MissingPermission => "you do not have permission",
+            Self::ApiKeyMint => "keys cannot mint more keys",
+            Self::Csrf => "request must come from the app",
+        })
+    }
+}
+
+impl std::error::Error for ForbiddenReason {}
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -232,14 +330,15 @@ impl IntoResponse for AppError {
             details,
         };
 
-        // Default representation: JSON
+        // Default representation: JSON. The payload borrows `info`, then the
+        // context is moved into the response for the negotiation middleware.
         let mut res = (
             status,
             Json(ErrorResponse {
                 error: ErrorPayload {
                     code: info.code,
-                    message: info.message.clone(),
-                    details: info.details.clone(),
+                    message: &info.message,
+                    details: info.details.as_ref(),
                 },
             }),
         )
@@ -260,10 +359,6 @@ impl From<sqlx::Error> for AppError {
     )]
     fn from(e: sqlx::Error) -> Self {
         match &e {
-            sqlx::Error::RowNotFound => Self::NotFound(Resource::Other),
-            sqlx::Error::Database(db) if db.is_unique_violation() => {
-                Self::Conflict("resource already exists".into())
-            }
             sqlx::Error::Database(db) if db.is_foreign_key_violation() => Self::Invalid {
                 code: "invalid_reference",
                 message: "referenced resource does not exist".into(),
@@ -346,5 +441,77 @@ impl From<FormRejection> for AppError {
 impl From<MultipartRejection> for AppError {
     fn from(r: MultipartRejection) -> Self {
         from_rejection(r.status(), r.body_text())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_and_code_mapping_is_explicit() {
+        let cases: &[(AppError, StatusCode, &str)] = &[
+            (
+                AppError::InvalidUrl("x".into()),
+                StatusCode::BAD_REQUEST,
+                "invalid_url",
+            ),
+            (
+                AppError::BadRequest("x".into()),
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+            ),
+            (
+                AppError::Unauthorized,
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+            ),
+            (
+                AppError::InvalidCredentials,
+                StatusCode::UNAUTHORIZED,
+                "invalid_credentials",
+            ),
+            (
+                AppError::Forbidden(ForbiddenReason::Suspended),
+                StatusCode::FORBIDDEN,
+                "suspended",
+            ),
+            (
+                AppError::NotFound(Resource::Page),
+                StatusCode::NOT_FOUND,
+                "not_found",
+            ),
+            (
+                AppError::PayloadTooLarge { limit: Some(10) },
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload_too_large",
+            ),
+            (
+                AppError::Invalid {
+                    code: "bad_field",
+                    message: "nope".into(),
+                },
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "bad_field",
+            ),
+        ];
+
+        for (error, status, code) in cases {
+            let (actual_status, actual_code, _) = error.parts();
+            assert_eq!(actual_status, *status, "{error}");
+            assert_eq!(actual_code, *code, "{error}");
+        }
+    }
+
+    #[test]
+    fn payload_too_large_display_is_clean() {
+        assert_eq!(
+            AppError::PayloadTooLarge { limit: None }.to_string(),
+            "payload too large"
+        );
+        assert_eq!(
+            AppError::PayloadTooLarge { limit: Some(42) }.to_string(),
+            "payload exceeds 42 bytes"
+        );
     }
 }

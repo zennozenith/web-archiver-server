@@ -6,10 +6,12 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 use crate::{
-    app::AppState,
+    app::{AppState, ServerConfig},
     config::Settings,
-    infra::{BlobStore, Mailer, downloader},
+    infra::{BlobFiles, Mailer, downloader},
 };
+
+pub mod admin;
 
 mod app;
 mod config;
@@ -23,23 +25,18 @@ mod service;
 mod transport;
 mod util;
 
-/// Helpers shared with the administrative CLI.
-pub mod admin {
-    use secrecy::SecretString;
-
-    /// Hash a password with the same Argon2 configuration the server uses.
-    pub async fn hash_password(password: SecretString) -> anyhow::Result<String> {
-        Ok(crate::infra::crypto::hash_password(password).await?)
-    }
-}
-
 pub fn init_tracing() {
+    let default_level = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "info"
+    };
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 format!(
-                    "{}=debug,tower_http=info,sqlx=warn",
-                    env!("CARGO_CRATE_NAME")
+                    "{crate_name}={default_level},tower_http=info,sqlx=warn",
+                    crate_name = env!("CARGO_CRATE_NAME"),
                 )
                 .into()
             }),
@@ -57,7 +54,7 @@ pub async fn run() -> anyhow::Result<()> {
     let cleanup = db::spawn_cleanup(db.clone(), shutdown.clone());
 
     let state = build_state(&settings, db.clone()).await?;
-    service::auth::warm_decoy_hash().await;
+    service::auth::warm_decoy_hash().await?;
 
     let result = serve(state, &settings, shutdown_signal()).await;
 
@@ -72,7 +69,7 @@ pub async fn run() -> anyhow::Result<()> {
 fn log_settings(settings: &Settings) {
     tracing::debug!(
         data_dir = %settings.data_dir.display(),
-        public_url = %settings.public_url,
+        public_url = %settings.public_base(),
         host = %settings.server.host,
         port = settings.server.port,
         "settings loaded"
@@ -90,10 +87,10 @@ async fn open_database(settings: &Settings) -> anyhow::Result<SqlitePool> {
 }
 
 async fn build_state(settings: &Settings, db: SqlitePool) -> anyhow::Result<AppState> {
-    let store = BlobStore::open(settings.data_dir.join("blobs"), 16 * 1024)
+    let blobs = BlobFiles::open(settings.data_dir.join("blobs"), 16 * 1024)
         .await
         .context("cannot create blob store")?;
-    let http = downloader::client_builder()
+    let fetch_client = downloader::client_builder()
         .user_agent(concat!(
             "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0 ",
             "web-archiver/",
@@ -104,15 +101,18 @@ async fn build_state(settings: &Settings, db: SqlitePool) -> anyhow::Result<AppS
         .context("unable to create HTTP client")?;
     let mailer =
         Arc::new(Mailer::from_settings(&settings.mail).context("invalid mail configuration")?);
+    let server = Arc::new(ServerConfig {
+        public_url: settings.public_base().to_owned(),
+        secure_cookie: settings.server.use_secure_cookie(&settings.public_url),
+        trusted_proxies: settings.server.trusted_proxies.clone(),
+    });
 
     Ok(AppState {
         db,
-        store,
-        http,
+        blobs,
+        fetch_client,
         mailer,
-        public_url: Arc::from(settings.public_url()),
-        trusted_proxy: settings.server.trusted_proxy,
-        secure_cookie: settings.server.secure_cookie,
+        server,
     })
 }
 

@@ -73,11 +73,11 @@ async fn serve_blob(
     let content_type = mime_for(route.content_type, &content.mime_type);
 
     serve_content_with_csp(
-        &state.store,
+        &state.blobs,
         headers,
         content,
         &content_type,
-        cache::PRIVATE_DAY,
+        cache::PRIVATE_1D,
         route.csp,
     )
     .await
@@ -105,11 +105,11 @@ pub(super) async fn get_thumbnail(
     let content = service::capture::page_thumbnail(&state.db, &user, id).await?;
     let content_type = content.mime_type.clone();
     serve_content_with_csp(
-        &state.store,
+        &state.blobs,
         &headers,
         content,
         &content_type,
-        cache::PRIVATE_DAY,
+        cache::PRIVATE_1D,
         CSP,
     )
     .await

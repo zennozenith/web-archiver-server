@@ -8,7 +8,7 @@ use crate::{
         patch::FieldPatch,
         tag::{PatchOutcome, Tag, TagPatch, TagSummary},
     },
-    error::{AppError, Resource, Result},
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
     infra::{TagColor, TagId, TagMerge, TagName, parse_optional_color},
 };
@@ -100,5 +100,5 @@ pub(crate) async fn merge(
     let merge = TagMerge::new(source, target).map_err(|e| AppError::BadRequest(e.to_string()))?;
     Tag::merge(pool, actor.id, merge)
         .await?
-        .ok_or(AppError::NotFound(Resource::Tag))
+        .or_not_found(Resource::Tag)
 }

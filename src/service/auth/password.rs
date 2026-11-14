@@ -5,10 +5,10 @@ use sqlx::SqlitePool;
 use crate::{
     db::{
         self,
-        audit::audit,
+        audit::{AuditAction, audit},
         auth::{NewAuthToken, ValidToken},
     },
-    identity::{ResetToken, TokenPurpose, policy},
+    identity::{ResetToken, TokenPurpose, password_policy},
     infra::{hash_password, sha256_hex},
     prelude::*,
     util::time::{HOUR, add_ms, now_ms},
@@ -19,7 +19,7 @@ pub(crate) async fn reset_password(
     token: ResetToken,
     new_password: SecretString,
 ) -> Result<()> {
-    policy::check_password_len(&new_password)?;
+    password_policy::ensure_password(&new_password)?;
     let now = now_ms();
     let mut tx = pool.begin().await?;
 
@@ -40,7 +40,7 @@ pub(crate) async fn reset_password(
     };
 
     let recent = db::auth::recent_password_hashes(&mut tx, user_id).await?;
-    if policy::was_recently_used(recent, &new_password).await {
+    if password_policy::password_was_recently_used(recent, &new_password).await {
         return Err(AppError::BadRequest(
             "choose a password you have not used recently".into(),
         ));
@@ -57,7 +57,7 @@ pub(crate) async fn reset_password(
         pool,
         Some(user_id),
         Some(user_id),
-        "password.changed",
+        AuditAction::PasswordChanged,
         Some(json!({"via":"reset"})),
     )
     .await;
@@ -101,13 +101,13 @@ pub(crate) async fn forgot_password(state: &AppState, email: String) -> Result<(
     // Send only after commit: never mail a link that failed to persist.
     super::mail::dispatch(
         state,
-        super::mail::password_reset(&state.public_url, email, &token),
+        super::mail::password_reset(&state.server.public_url, email, &token),
     );
     audit(
         &state.db,
         Some(user_id),
         Some(user_id),
-        "password.reset_requested",
+        AuditAction::PasswordResetRequested,
         None,
     )
     .await;

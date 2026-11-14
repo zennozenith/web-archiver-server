@@ -7,8 +7,10 @@ use crate::error::{AppError, ForbiddenReason};
 mod account;
 mod api_key;
 mod client;
-pub(crate) mod policy;
+pub(crate) mod lockout;
+pub(crate) mod password_policy;
 mod profile;
+pub(crate) mod roles;
 mod token;
 mod view;
 
@@ -25,6 +27,9 @@ pub(crate) use view::{
 };
 
 pub(crate) const SESSION_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+
+/// Version of the terms shown at registration; stored on the user row.
+pub(crate) const TERMS_VERSION: &str = "2026-01";
 
 /// A permission string known at compile time. `Permission::TAG_WRITE` instead of `"tag:write"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

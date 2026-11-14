@@ -40,7 +40,7 @@ pub(super) async fn login(
 ) -> Result<Response> {
     let creds = LoginCredentials::new(&form.identifier, form.password);
     let token = service::auth::login(&state.db, &client, creds).await?;
-    session::sign_in(&token, state.secure_cookie)
+    session::sign_in(&token, state.server.secure_cookie)
 }
 
 /// Always ends with a cleared cookie and a redirect, even if the session was
@@ -49,7 +49,7 @@ pub(super) async fn logout(State(state): State<AppState>, headers: HeaderMap) ->
     if let Some(token) = SessionCookie::get(&headers) {
         service::auth::logout(&state.db, token).await?;
     }
-    Ok(session::sign_out(LOGIN_PATH, state.secure_cookie))
+    session::sign_out(LOGIN_PATH, state.server.secure_cookie)
 }
 
 // ------------------------------------------------------------------ register

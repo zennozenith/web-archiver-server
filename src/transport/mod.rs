@@ -2,6 +2,7 @@ pub(crate) mod asset;
 pub(crate) mod cache;
 pub(crate) mod cookie;
 pub(crate) mod multipart;
+pub(crate) mod security;
 pub(crate) mod serve;
 
 pub(crate) mod api;

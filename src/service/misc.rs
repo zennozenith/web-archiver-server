@@ -20,5 +20,5 @@ pub(crate) async fn stats(state: &AppState, actor: &AuthUser) -> Result<Stats> {
 /// Deletes unreferenced blobs and stale temporary files.
 pub(crate) async fn gc(state: &AppState, actor: &AuthUser) -> Result<GCStat> {
     actor.require(Permission::ARCHIVE_ADMIN)?;
-    stats::gc_content(&state.db, &state.store).await
+    stats::gc_content(&state.db, &state.blobs).await
 }

@@ -2,7 +2,7 @@
 //!
 //! The original scratch implementation (see `examples/parallel_download.rs`)
 //! wrote every response to disk and compressed it there. Archived content is
-//! stored through `db::store`, which already compresses and deduplicates, so
+//! stored through `db::blob`, which already compresses and deduplicates, so
 //! this module only needs to fetch bytes and report the response metadata.
 //!
 //! Concurrency is handled by the caller with `futures::stream::buffer_unordered`.
@@ -64,6 +64,35 @@ pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
                 return is_public_ip(IpAddr::V4(mapped));
             }
             let segments = ip.segments();
+
+            // 2002::/16 (6to4) embeds an IPv4 address in bits 16..48.
+            // 64:ff9b::/96 (NAT64) embeds one in the last 32 bits. Either can
+            // smuggle a private IPv4 address past a naive IPv6 check.
+            if segments[0] == 0x2002 {
+                let embedded = std::net::Ipv4Addr::new(
+                    u8::try_from(segments[1] >> 8).unwrap_or_default(),
+                    u8::try_from(segments[1] & 0x00ff).unwrap_or_default(),
+                    u8::try_from(segments[2] >> 8).unwrap_or_default(),
+                    u8::try_from(segments[2] & 0x00ff).unwrap_or_default(),
+                );
+                return is_public_ip(IpAddr::V4(embedded));
+            }
+            if segments[0] == 0x0064
+                && segments[1] == 0xff9b
+                && segments[2] == 0
+                && segments[3] == 0
+                && segments[4] == 0
+                && segments[5] == 0
+            {
+                let embedded = std::net::Ipv4Addr::new(
+                    u8::try_from(segments[6] >> 8).unwrap_or_default(),
+                    u8::try_from(segments[6] & 0x00ff).unwrap_or_default(),
+                    u8::try_from(segments[7] >> 8).unwrap_or_default(),
+                    u8::try_from(segments[7] & 0x00ff).unwrap_or_default(),
+                );
+                return is_public_ip(IpAddr::V4(embedded));
+            }
+
             !(ip.is_loopback()
                 || ip.is_unspecified()
                 || ip.is_multicast()
@@ -121,6 +150,8 @@ impl Resolve for PublicOnlyResolver {
 /// Client for fetching user-supplied URLs and their sub-resources.
 pub(crate) fn client_builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
+        // A proxy resolves hostnames itself, bypassing `PublicOnlyResolver`.
+        .no_proxy()
         .dns_resolver(Arc::new(PublicOnlyResolver))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.previous().len() >= MAX_REDIRECTS {
@@ -194,4 +225,78 @@ pub(crate) async fn fetch(
         content_type,
         bytes,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn public(value: &str) -> bool {
+        is_public_ip(value.parse().expect("valid ip"))
+    }
+
+    #[test]
+    fn rejects_private_and_special_ipv4() {
+        for value in [
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "127.0.0.1",
+            "169.254.1.1",
+            "100.64.0.1",
+            "0.0.0.0",
+            "192.0.2.1",
+            "198.18.0.1",
+            "224.0.0.1",
+            "240.0.0.1",
+        ] {
+            assert!(!public(value), "{value} should not be public");
+        }
+        assert!(public("8.8.8.8"));
+    }
+
+    #[test]
+    fn rejects_private_and_special_ipv6() {
+        for value in [
+            "::1",
+            "::",
+            "fc00::1",
+            "fe80::1",
+            "ff02::1",
+            "2001:db8::1",
+            "::ffff:10.0.0.1",
+        ] {
+            assert!(!public(value), "{value} should not be public");
+        }
+        assert!(public("2001:4860:4860::8888"));
+    }
+
+    #[test]
+    fn embedded_ipv4_ranges_are_checked() {
+        // 6to4 wrapping 10.0.0.1 and NAT64 wrapping 192.168.1.1.
+        assert!(!public("2002:0a00:0001::1"));
+        assert!(!public("64:ff9b::c0a8:0101"));
+        // Public embedded addresses remain public.
+        assert!(public("2002:0808:0808::1"));
+        assert!(public("64:ff9b::808:808"));
+    }
+
+    #[test]
+    fn validate_public_url_blocks_local_names_and_schemes() {
+        let ok = Url::parse("https://example.com/a").expect("url");
+        assert!(validate_public_url(&ok).is_ok());
+
+        for raw in [
+            "file:///etc/passwd",
+            "http://127.0.0.1/",
+            "http://[::1]/",
+            "http://localhost/",
+            "http://foo.localhost/",
+        ] {
+            assert!(
+                validate_public_url(&Url::parse(raw).expect("url")).is_err(),
+                "{raw} should be blocked"
+            );
+        }
+    }
 }

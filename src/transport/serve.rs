@@ -17,7 +17,7 @@ use tokio_util::io::ReaderStream;
 use crate::{
     db::content::Content,
     error::{AppError, Result},
-    infra::{Blake3Hash, BlobStore, Compression, compress},
+    infra::{Blake3Hash, BlobFiles, Compression, compress},
     util::mime::MimeType,
 };
 
@@ -103,7 +103,7 @@ fn body_plan(comp: Compression, accept: &str) -> (Option<&'static str>, BodyPlan
 }
 
 pub(crate) async fn serve_content(
-    store: &BlobStore,
+    store: &BlobFiles,
     req: &HeaderMap,
     row: Content,
     content_type: &MimeType,
@@ -121,7 +121,7 @@ pub(crate) async fn serve_content(
     reason = "response negotiation and body construction belong together"
 )]
 pub(crate) async fn serve_content_with_csp(
-    store: &BlobStore,
+    store: &BlobFiles,
     req: &HeaderMap,
     row: Content,
     content_type: &MimeType,

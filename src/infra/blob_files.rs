@@ -25,13 +25,13 @@ use super::hash::Blake3Hash;
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
-pub struct BlobStore {
+pub struct BlobFiles {
     root: Arc<Path>,
     /// Stored blobs larger than this go to disk; 0 = everything on disk.
     inline_threshold: usize,
 }
 
-impl BlobStore {
+impl BlobFiles {
     pub async fn open(root: impl Into<PathBuf>, inline_threshold: usize) -> Result<Self> {
         let root = root.into();
         fs::create_dir_all(root.join("tmp")).await?;

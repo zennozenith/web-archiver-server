@@ -68,7 +68,7 @@ async fn login(
     Ok((
         [(
             header::SET_COOKIE,
-            SessionCookie::issue(&token, state.secure_cookie)?,
+            SessionCookie::issue(&token, state.server.secure_cookie)?,
         )],
         StatusCode::NO_CONTENT,
     ))
@@ -87,7 +87,7 @@ async fn logout(
     Ok((
         [(
             header::SET_COOKIE,
-            SessionCookie::clear(state.secure_cookie),
+            SessionCookie::clear(state.server.secure_cookie)?,
         )],
         StatusCode::NO_CONTENT,
     ))

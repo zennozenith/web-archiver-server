@@ -10,7 +10,7 @@ use crate::{
         cursor::{Cursor, CursorPage},
         pending::{PendingId, PendingResponse, PendingRow, PendingStatus, PendingUpdate},
     },
-    error::{AppError, Resource, Result},
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
     infra::{TagName, parse_tag_names},
     util::{
@@ -116,7 +116,7 @@ pub(crate) async fn patch(
     let mut tx = pool.begin().await?;
     let current = PendingRow::status_of(&mut *tx, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(Resource::PendingItem))?;
+        .or_not_found(Resource::PendingItem)?;
 
     if status.is_some() && current == PendingStatus::InProgress {
         return Err(AppError::Conflict(

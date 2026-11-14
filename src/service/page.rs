@@ -13,7 +13,7 @@ use crate::{
         patch::FieldPatch,
         tag::Tag,
     },
-    error::{AppError, Resource, Result},
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
     infra::{TagId, TagName},
     util::limit::Limit,
@@ -63,7 +63,7 @@ pub(crate) async fn get(state: &AppState, actor: &AuthUser, id: PageId) -> Resul
     actor.require(Permission::ARCHIVE_READ)?;
     PageDetail::load(&state.db, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(Resource::Page))
+        .or_not_found(Resource::Page)
 }
 
 pub(crate) async fn lookup(state: &AppState, actor: &AuthUser, url: &str) -> Result<PageDetail> {
@@ -71,7 +71,7 @@ pub(crate) async fn lookup(state: &AppState, actor: &AuthUser, url: &str) -> Res
     let url = page::parse_url(url)?;
     PageDetail::load_by_url(&state.db, actor.id, &url)
         .await?
-        .ok_or(AppError::NotFound(Resource::Page))
+        .or_not_found(Resource::Page)
 }
 
 pub(crate) async fn create(
@@ -81,7 +81,7 @@ pub(crate) async fn create(
 ) -> Result<PageItem> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     ensure_collection(state, actor, upload.collection_id).await?;
-    upload.execute(&state.db, actor.id, &state.store).await
+    upload.execute(&state.db, actor.id, &state.blobs).await
 }
 
 pub(crate) async fn patch(
@@ -117,7 +117,7 @@ pub(crate) async fn toggle_pin(state: &AppState, actor: &AuthUser, id: PageId) -
     actor.require(Permission::ARCHIVE_WRITE)?;
     page::toggle_pinned(&state.db, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(Resource::Page))
+        .or_not_found(Resource::Page)
 }
 
 /// Replaces the page thumbnail. `None` clears it.
@@ -129,7 +129,7 @@ pub(crate) async fn set_thumbnail(
 ) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     if id
-        .set_thumbnail(&state.db, actor.id, &state.store, thumbnail)
+        .set_thumbnail(&state.db, actor.id, &state.blobs, thumbnail)
         .await?
     {
         Ok(())
@@ -170,7 +170,7 @@ pub(crate) async fn put_tags(
     actor.require(Permission::ARCHIVE_WRITE)?;
     page::put_tags(&state.db, actor.id, id, names)
         .await?
-        .ok_or(AppError::NotFound(Resource::Page))
+        .or_not_found(Resource::Page)
 }
 
 pub(crate) async fn add_tag(
@@ -182,7 +182,7 @@ pub(crate) async fn add_tag(
     actor.require(Permission::ARCHIVE_WRITE)?;
     page::add_tag(&state.db, actor.id, id, name)
         .await?
-        .ok_or(AppError::NotFound(Resource::Page))
+        .or_not_found(Resource::Page)
 }
 
 pub(crate) async fn remove_tag(
@@ -252,7 +252,7 @@ pub(crate) async fn update_highlight(
     actor.require(Permission::ARCHIVE_WRITE)?;
     HighlightRecord::update(&state.db, actor.id, id, text, color)
         .await?
-        .ok_or(AppError::NotFound(Resource::Highlight))
+        .or_not_found(Resource::Highlight)
 }
 
 pub(crate) async fn delete_highlight(state: &AppState, actor: &AuthUser, id: i64) -> Result<()> {

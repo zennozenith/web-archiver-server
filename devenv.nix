@@ -21,6 +21,7 @@
     cargo-nextest
     cargo-update
     sqlx-cli
+    just
 
     openssl
     pkg-config
@@ -63,24 +64,12 @@
   };
 
   tasks."frontend:build" = {
-    exec = "vpr lint && vpr fmt && vpr build";
+    exec = "vpr build";
     execIfModified = [
       "frontend"
     ];
     cwd = "./frontend";
   };
-
-  # tasks."frontend:tailwind" = {
-  #   exec = ''
-  #     echo $PWD
-  #     bunx @tailwindcss/cli -i ./frontend/input.css -o ./static/css/build/tailwind.css
-  #   '';
-  #   execIfModified = [
-  #     "frontend/input.css"
-  #     "templates"
-  #   ];
-  #   before = ["frontend:build"];
-  # };
 
   scripts."run" = {
     exec = "devenv tasks run frontend:build && cargo run";

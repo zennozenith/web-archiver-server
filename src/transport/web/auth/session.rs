@@ -21,8 +21,8 @@ pub(super) fn sign_in(token: &SessionToken, secure: bool) -> Result<Response, Ap
 }
 
 /// `HX-Redirect` to `to`, clearing the session cookie.
-pub(super) fn sign_out(to: &str, secure: bool) -> Response {
-    redirect_with_cookie(to, SessionCookie::clear(secure))
+pub(super) fn sign_out(to: &str, secure: bool) -> Result<Response, AppError> {
+    Ok(redirect_with_cookie(to, SessionCookie::clear(secure)?))
 }
 
 fn redirect_with_cookie(to: &str, cookie: HeaderValue) -> Response {

@@ -44,11 +44,11 @@ pub(super) async fn capture_asset(
     let row = service::capture::asset_blob(&state.db, &user, capture_id.into(), content_id).await?;
     let content_type = row.mime_type.clone();
     serve_content(
-        &state.store,
+        &state.blobs,
         &headers,
         row,
         &content_type,
-        cache::PRIVATE_DAY,
+        cache::PRIVATE_1D,
     )
     .await
 }

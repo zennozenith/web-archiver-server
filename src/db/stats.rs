@@ -5,7 +5,7 @@ use serde::Serialize;
 use sqlx::{FromRow, Result, SqlitePool};
 
 use crate::{
-    infra::BlobStore,
+    infra::BlobFiles,
     prelude::*,
     util::time::{DAY, HOUR, days_ms, duration_ms, now_ms, today},
 };
@@ -110,7 +110,7 @@ pub(crate) async fn health(pool: &SqlitePool) -> Result<()> {
 // document, screenshot and every saved sub-resource.
 //
 // DB first, files second: a crash in between leaves an orphan file, never a row pointing at nothing.
-pub(crate) async fn gc_content(pool: &SqlitePool, store: &BlobStore) -> Result<GCStat, AppError> {
+pub(crate) async fn gc_content(pool: &SqlitePool, store: &BlobFiles) -> Result<GCStat, AppError> {
     let cutoff = now_ms().saturating_sub(duration_ms(HOUR));
     let refs: Vec<Option<String>> = sqlx::query_scalar(
         "DELETE FROM contents

@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use crate::{
     app::AppState,
-    error::{AppError, Resource, Result},
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
     infra::{TagId, TagName},
     service,
@@ -100,7 +100,7 @@ pub(super) async fn show(
 ) -> Result<Render<TagTpl>> {
     let tag = service::tag::find(&state.db, &user, &name)
         .await?
-        .ok_or(AppError::NotFound(Resource::Tag))?;
+        .or_not_found(Resource::Tag)?;
     let links = library::load_tagged(&state, &user, tag.id, PAGE_LINKS).await?;
     Ok(Render(TagTpl {
         shell: Shell::new::<LibraryDashboard>(&user, Section::Tags),
@@ -167,7 +167,7 @@ async fn resolve_id(
     service::tag::find(&state.db, user, name)
         .await?
         .map(|tag| tag.id)
-        .ok_or(AppError::NotFound(Resource::Tag))
+        .or_not_found(Resource::Tag)
 }
 
 pub(crate) fn router() -> Router<AppState> {

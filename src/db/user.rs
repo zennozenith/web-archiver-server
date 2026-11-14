@@ -6,7 +6,6 @@ use crate::identity::{AccountStatus, UserFilter, UserView};
 
 /// Base query over `v_users` (live users + profile, never credentials), with
 /// the active roles folded into one comma separated column.
-#[macro_export]
 macro_rules! user_select {
     () => {
         "SELECT id, public_id, email, email_verified_at, username, phone_e164, \
@@ -15,6 +14,11 @@ macro_rules! user_select {
        FROM v_users"
     };
 }
+#[expect(
+    unused_imports,
+    reason = "keeps the SQL macro crate-internal instead of exporting it at the crate root"
+)]
+pub(crate) use user_select;
 
 pub(crate) async fn find<'e>(ex: impl SqliteExecutor<'e>, user_id: i64) -> Result<UserView> {
     sqlx::query_as(concat!(user_select!(), " WHERE id = ?"))

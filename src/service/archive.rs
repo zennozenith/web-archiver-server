@@ -9,12 +9,12 @@ use crate::{
     app::AppState,
     db::{
         archive::{AssetSummary, collect_assets, insert_assets},
+        blob::{insert_blob, prepare_blob},
         capture::NewCapture,
         page::{PageId, PageRecord},
         pending::{PendingId, PendingRow},
-        store::{insert_blob, prepare_blob},
     },
-    error::{AppError, Resource, Result},
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
     infra::{Image, extractor::html},
     util::{NonEmptyString, time::now_ms},
@@ -77,7 +77,7 @@ pub(crate) async fn archive(
 
     let page = PageRecord::load(&state.db, actor.id, page_id)
         .await?
-        .ok_or(AppError::NotFound(Resource::Page))?;
+        .or_not_found(Resource::Page)?;
     let page_url = url::Url::parse(&page.url).map_err(AppError::internal)?;
 
     let title = upload
@@ -89,8 +89,8 @@ pub(crate) async fn archive(
     let (assets, asset_summary) = if upload.save_assets {
         collect_assets(
             &state.db,
-            &state.store,
-            &state.http,
+            &state.blobs,
+            &state.fetch_client,
             &page_url,
             &upload.html,
         )
@@ -105,16 +105,16 @@ pub(crate) async fn archive(
         .collect();
     let rewritten = html::rewrite_resources(&upload.html, &page_url, &replacements);
 
-    let original_blob = prepare_blob(&state.db, &state.store, upload.html, "text/html").await?;
+    let original_blob = prepare_blob(&state.db, &state.blobs, upload.html, "text/html").await?;
     let served_blob = match rewritten {
-        Some(bytes) => Some(prepare_blob(&state.db, &state.store, bytes, "text/html").await?),
+        Some(bytes) => Some(prepare_blob(&state.db, &state.blobs, bytes, "text/html").await?),
         None => None,
     };
     let shot_blob = match upload.screenshot {
         Some(image) => {
             let format = image.format();
             let data = image.into_data();
-            Some(prepare_blob(&state.db, &state.store, data, format.mime_type()).await?)
+            Some(prepare_blob(&state.db, &state.blobs, data, format.mime_type()).await?)
         }
         None => None,
     };

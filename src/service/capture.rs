@@ -8,7 +8,7 @@ use crate::{
         content::{Content, ContentHead},
         page::PageId,
     },
-    error::{AppError, Resource, Result},
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
     infra::Blake3Hash,
 };
@@ -21,7 +21,7 @@ pub(crate) async fn detail(
     actor.require(Permission::ARCHIVE_READ)?;
     CaptureDetail::load(pool, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(Resource::Capture))
+        .or_not_found(Resource::Capture)
 }
 
 pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: CaptureId) -> Result<()> {
@@ -42,7 +42,7 @@ pub(crate) async fn blob(
     actor.require(Permission::ARCHIVE_READ)?;
     Content::for_capture(pool, actor.id, id, blob)
         .await?
-        .ok_or(AppError::NotFound(Resource::CaptureContent))
+        .or_not_found(Resource::CaptureContent)
 }
 
 pub(crate) async fn page_thumbnail(
@@ -53,7 +53,7 @@ pub(crate) async fn page_thumbnail(
     actor.require(Permission::ARCHIVE_READ)?;
     Content::for_page(pool, actor.id, page_id)
         .await?
-        .ok_or(AppError::NotFound(Resource::Thumbnail))
+        .or_not_found(Resource::Thumbnail)
 }
 
 /// Latest capture of the page that has `blob`, used for redirects.
@@ -66,7 +66,7 @@ pub(crate) async fn latest_with_blob(
     actor.require(Permission::ARCHIVE_READ)?;
     blob.latest_capture_id(pool, actor.id, page_id)
         .await?
-        .ok_or(AppError::NotFound(Resource::CaptureContent))
+        .or_not_found(Resource::CaptureContent)
 }
 
 pub(crate) async fn assets(
@@ -86,7 +86,7 @@ pub(crate) async fn latest_assets(
     actor.require(Permission::ARCHIVE_READ)?;
     CaptureAsset::for_latest_capture(pool, actor.id, page_id)
         .await?
-        .ok_or(AppError::NotFound(Resource::Page))
+        .or_not_found(Resource::Page)
 }
 
 pub(crate) async fn asset_blob(
@@ -98,7 +98,7 @@ pub(crate) async fn asset_blob(
     actor.require(Permission::ARCHIVE_READ)?;
     Content::for_capture_asset(pool, actor.id, capture_id, content_id.into())
         .await?
-        .ok_or(AppError::NotFound(Resource::Asset))
+        .or_not_found(Resource::Asset)
 }
 
 pub(crate) async fn content(
@@ -109,7 +109,7 @@ pub(crate) async fn content(
     actor.require(Permission::ARCHIVE_READ)?;
     let content = Content::by_hash(pool, hash)
         .await?
-        .ok_or(AppError::NotFound(Resource::Content))?;
+        .or_not_found(Resource::Content)?;
     if !Content::visible_to(pool, actor.id, content.id).await? {
         return Err(AppError::NotFound(Resource::Content));
     }
@@ -124,5 +124,5 @@ pub(crate) async fn content_head(
     actor.require(Permission::ARCHIVE_READ)?;
     ContentHead::by_hash_visible(pool, actor.id, hash)
         .await?
-        .ok_or(AppError::NotFound(Resource::Content))
+        .or_not_found(Resource::Content)
 }

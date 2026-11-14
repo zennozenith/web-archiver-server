@@ -9,7 +9,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    app::AppState,
+    app::{AppState, CAPTURE_REQUEST_BYTES, UPLOAD_REQUEST_BYTES},
     db::{
         capture::CaptureSummary,
         collection::CollectionId,
@@ -29,7 +29,6 @@ use crate::{
 };
 
 const DEFAULT_LIMIT: Limit = Limit::from_const(50);
-const ARCHIVE_BODY_LIMIT: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -186,7 +185,12 @@ async fn remove_page_tag(
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route("/page", get(list_pages).post(create_page))
+        .route(
+            "/page",
+            get(list_pages)
+                .post(create_page)
+                .layer(DefaultBodyLimit::max(UPLOAD_REQUEST_BYTES)),
+        )
         .route("/page/lookup", get(lookup_page))
         .route(
             "/page/{id}",
@@ -197,7 +201,7 @@ pub(super) fn routes() -> Router<AppState> {
             "/page/{id}/capture",
             get(list_page_captures)
                 .post(super::archive::archive)
-                .layer(DefaultBodyLimit::max(ARCHIVE_BODY_LIMIT)),
+                .layer(DefaultBodyLimit::max(CAPTURE_REQUEST_BYTES)),
         )
         .route("/page/{id}/tag", post(add_page_tag).put(put_page_tags))
         .route("/page/{id}/tag/{tag_id}", delete(remove_page_tag))

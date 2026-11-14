@@ -6,6 +6,8 @@ use crate::{
     identity::ClientInfo,
 };
 
+use super::LoginFailure;
+
 /// Records login attempts for one `login` call. Logging is best effort: a
 /// failed insert is warned about but never changes the login outcome.
 pub(super) struct AttemptLog<'a> {
@@ -29,10 +31,10 @@ impl<'a> AttemptLog<'a> {
     pub(super) async fn failed(
         &self,
         user_id: Option<i64>,
-        reason: &str,
+        reason: LoginFailure,
         error: AppError,
     ) -> AppError {
-        self.record(user_id, Some(reason)).await;
+        self.record(user_id, Some(reason.as_str())).await;
         error
     }
 

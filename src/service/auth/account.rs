@@ -3,12 +3,13 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
     app::AppState,
-    db::{self, audit::audit, auth::NewAuthToken},
-    error::{AppError, Result},
-    identity::{
-        NewAccount, TokenPurpose, VerifyToken,
-        policy::{DEFAULT_ROLE, TERMS_VERSION},
+    db::{
+        self,
+        audit::{AuditAction, audit},
+        auth::NewAuthToken,
     },
+    error::{AppError, Result},
+    identity::{NewAccount, TERMS_VERSION, TokenPurpose, VerifyToken, roles::DEFAULT_ROLE},
     infra::{hash_password, sha256_hex},
     util::time::{DAY, add_ms, now_ms},
 };
@@ -49,7 +50,7 @@ pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Res
                 drop(tx); // roll back
                 super::mail::dispatch(
                     state,
-                    super::mail::already_registered(&state.public_url, &account.email),
+                    super::mail::already_registered(&state.server.public_url, &account.email),
                 );
                 return Ok(());
             }
@@ -75,13 +76,13 @@ pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Res
     // Send only after commit: never mail a link that failed to persist.
     super::mail::dispatch(
         state,
-        super::mail::verification(&state.public_url, &account.email, &verify_token),
+        super::mail::verification(&state.server.public_url, &account.email, &verify_token),
     );
     audit(
         &state.db,
         Some(user_id),
         Some(user_id),
-        "user.created",
+        AuditAction::UserCreated,
         None,
     )
     .await;
@@ -112,7 +113,14 @@ pub(crate) async fn verify_email(pool: &SqlitePool, token: VerifyToken) -> Resul
     }
 
     tx.commit().await?;
-    audit(pool, Some(user_id), Some(user_id), "email.verified", None).await;
+    audit(
+        pool,
+        Some(user_id),
+        Some(user_id),
+        AuditAction::EmailVerified,
+        None,
+    )
+    .await;
     Ok(())
 }
 

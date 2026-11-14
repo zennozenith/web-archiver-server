@@ -3,7 +3,7 @@ pub(crate) use smtp::SmtpMailer;
 
 use crate::config::MailSettings;
 
-pub(crate) trait MailerTrait: Send + Sync + 'static {
+pub(crate) trait MailTransport: Send + Sync + 'static {
     async fn send(&self, message: Message) -> Result<(), MailError>;
 }
 
@@ -37,7 +37,9 @@ impl Mailer {
     /// release builds; development logs messages instead.
     pub(crate) fn from_settings(mail: &MailSettings) -> anyhow::Result<Self> {
         match (&mail.from, &mail.smtp) {
-            (Some(from), Some(smtp)) => Ok(Self::Smtp(Box::new(SmtpMailer::new(from, smtp)?))),
+            (Some(from), Some(smtp)) => {
+                Ok(Self::Smtp(Box::new(SmtpMailer::new(from.clone(), smtp)?)))
+            }
             (None, Some(_)) => anyhow::bail!("mail.from must be configured when mail.smtp is set"),
             (_, None) if cfg!(debug_assertions) => Ok(Self::Log(LogMailer)),
             (_, None) => anyhow::bail!("mail.smtp must be configured in release builds"),
@@ -45,7 +47,7 @@ impl Mailer {
     }
 }
 
-impl MailerTrait for Mailer {
+impl MailTransport for Mailer {
     async fn send(&self, message: Message) -> Result<(), MailError> {
         match self {
             Self::Log(log_mailer) => log_mailer.send(message).await,
@@ -55,14 +57,14 @@ impl MailerTrait for Mailer {
 }
 
 mod log {
-    use super::{MailError, MailerTrait, Message};
+    use super::{MailError, MailTransport, Message};
 
     /// Prints mail to the log instead of sending it. Development only: bodies
     /// contain live tokens.
     #[derive(Debug)]
     pub(crate) struct LogMailer;
 
-    impl MailerTrait for LogMailer {
+    impl MailTransport for LogMailer {
         #[expect(clippy::unused_async_trait_impl, reason = "keeps the trait uniform")]
         async fn send(&self, m: Message) -> Result<(), MailError> {
             tracing::info!(
@@ -87,7 +89,7 @@ mod smtp {
 
     use crate::config::SmtpSettings;
 
-    use super::{MailError, MailerTrait, Message};
+    use super::{MailError, MailTransport, Message};
 
     #[derive(Debug)]
     pub(crate) struct SmtpMailer {
@@ -96,11 +98,7 @@ mod smtp {
     }
 
     impl SmtpMailer {
-        pub(crate) fn new(from: &str, smtp: &SmtpSettings) -> Result<Self, MailError> {
-            let from: Mailbox = from
-                .parse()
-                .map_err(|_| MailError::Address(from.to_owned()))?;
-
+        pub(crate) fn new(from: Mailbox, smtp: &SmtpSettings) -> Result<Self, MailError> {
             let builder = if smtp.starttls {
                 AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)
             } else {
@@ -121,7 +119,7 @@ mod smtp {
         }
     }
 
-    impl MailerTrait for SmtpMailer {
+    impl MailTransport for SmtpMailer {
         async fn send(&self, m: Message) -> Result<(), MailError> {
             let to: Mailbox = m.to.parse().map_err(|_| MailError::Address(m.to.clone()))?;
             let email = LettreMessage::builder()

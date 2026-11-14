@@ -35,7 +35,7 @@ async fn get_content(
     let content_type = content.mime_type.clone();
 
     serve_content(
-        &state.store,
+        &state.blobs,
         &headers,
         content,
         &content_type,

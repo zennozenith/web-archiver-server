@@ -5,12 +5,12 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
     error::{AppError, Result},
-    infra::{Blake3Hash, BlobStore, Compression, compress},
+    infra::{Blake3Hash, BlobFiles, Compression, compress},
 };
 
 pub(crate) enum Location {
     Inline(Vec<u8>),
-    /// relative path, see `BlobStore`
+    /// relative path, see `BlobFiles`
     File(String),
 }
 
@@ -31,7 +31,7 @@ pub(crate) struct PreparedBlob {
 
 pub(crate) async fn prepare_blob(
     pool: &SqlitePool,
-    store: &BlobStore,
+    store: &BlobFiles,
     bytes: Vec<u8>,
     mime: &str,
 ) -> Result<PreparedBlob> {

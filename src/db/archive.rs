@@ -10,11 +10,11 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
     db::{
+        blob::{insert_blob, prepare_blob},
         capture::CaptureId,
-        store::{insert_blob, prepare_blob},
     },
     infra::{
-        Blake3Hash, BlobStore, downloader,
+        Blake3Hash, BlobFiles, downloader,
         extractor::{css, html},
     },
     prelude::*,
@@ -95,7 +95,7 @@ type StoreFuture<'b> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'b>>;
 /// State shared by the top-level fetch loop and the CSS recursion.
 struct AssetCollector<'a> {
     pool: &'a SqlitePool,
-    store: &'a BlobStore,
+    store: &'a BlobFiles,
     client: &'a reqwest::Client,
     summary: AssetSummary,
     total_bytes: usize,
@@ -266,7 +266,7 @@ impl AssetCollector<'_> {
 /// unreferenced rows have `ref_count` = 0 and are removed by the normal GC.
 pub(crate) async fn collect_assets(
     pool: &SqlitePool,
-    store: &BlobStore,
+    store: &BlobFiles,
     client: &reqwest::Client,
     page_url: &url::Url,
     html: &[u8],

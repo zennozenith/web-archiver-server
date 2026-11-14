@@ -14,7 +14,6 @@ where
         parts: &mut Parts,
         state: &S,
     ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        let trusted_proxy = AppState::from_ref(state).trusted_proxy;
-        std::future::ready(Self::extract(parts, trusted_proxy))
+        std::future::ready(Self::extract(parts, &AppState::from_ref(state).server))
     }
 }

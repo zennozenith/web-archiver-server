@@ -3,14 +3,14 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Multipart, State, multipart::MultipartRejection},
+    extract::{DefaultBodyLimit, Multipart, State, multipart::MultipartRejection},
     http::HeaderMap,
     routing::{get, post, put},
 };
 use serde::Deserialize;
 
 use crate::{
-    app::AppState,
+    app::{AppState, UPLOAD_REQUEST_BYTES},
     db::{
         collection::CollectionId,
         page::{PageId, UpdatePage},
@@ -322,11 +322,22 @@ pub(super) async fn delete_highlight(
 
 pub(super) fn router() -> Router<AppState> {
     Router::new()
-        .route("/links", get(index).post(create))
+        .route(
+            "/links",
+            get(index)
+                .post(create)
+                .layer(DefaultBodyLimit::max(UPLOAD_REQUEST_BYTES)),
+        )
         .route("/links/search", get(search))
         .route("/links/pinned", get(pinned))
         .route("/links/unorganized", get(unorganized))
-        .route("/links/{id}", get(detail).put(update).delete(remove))
+        .route(
+            "/links/{id}",
+            get(detail)
+                .put(update)
+                .delete(remove)
+                .layer(DefaultBodyLimit::max(UPLOAD_REQUEST_BYTES)),
+        )
         .route("/links/{id}/pin", post(pin))
         .route("/links/{id}/highlights", post(add_highlight))
         .route(

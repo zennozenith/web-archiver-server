@@ -10,6 +10,7 @@ use sqlx::{FromRow, QueryBuilder, Sqlite, SqliteConnection, SqliteExecutor, Sqli
 
 use crate::{
     db::{
+        blob::{insert_blob, prepare_blob},
         capture::CaptureSummary,
         collection::CollectionId,
         content::ContentId,
@@ -17,11 +18,10 @@ use crate::{
         group::group_by,
         ids::id_type,
         patch::FieldPatch,
-        store::{insert_blob, prepare_blob},
         tag::Tag,
     },
     error::Result,
-    infra::{BlobStore, Image, TagId, TagName, comma_separated_tags},
+    infra::{BlobFiles, Image, TagId, TagName, comma_separated_tags},
     util::{
         CanonicalUrl, NonEmptyString, like_contains_pattern, limit::Limit,
         url_canon::canonicalize_url,
@@ -579,7 +579,7 @@ impl CreatePage {
         self,
         pool: &SqlitePool,
         owner: i64,
-        store: &BlobStore,
+        store: &BlobFiles,
     ) -> Result<PageItem> {
         let mut tx = pool.begin().await?;
 
@@ -706,7 +706,7 @@ impl PageId {
         self,
         pool: &SqlitePool,
         owner: i64,
-        store: &BlobStore,
+        store: &BlobFiles,
         thumbnail: Option<Image>,
     ) -> Result<bool> {
         let mut tx = pool.begin().await?;

@@ -4,7 +4,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::collection::{CollectionId, CollectionInput, CollectionRecord},
-    error::{AppError, Resource, Result},
+    error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
 };
 
@@ -54,7 +54,7 @@ pub(crate) async fn get(
     actor.require(Permission::ARCHIVE_READ)?;
     CollectionRecord::load(pool, actor.id, id)
         .await?
-        .ok_or(AppError::NotFound(Resource::Collection))
+        .or_not_found(Resource::Collection)
 }
 
 pub(crate) async fn create(
@@ -64,7 +64,9 @@ pub(crate) async fn create(
 ) -> Result<CollectionRecord> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     let input = fields.input()?;
-    Ok(CollectionRecord::create(pool, actor.id, &input).await?)
+    CollectionRecord::create(pool, actor.id, &input)
+        .await
+        .map_err(|e| AppError::unique(e, "a collection with that name already exists"))
 }
 
 pub(crate) async fn update(
@@ -76,8 +78,9 @@ pub(crate) async fn update(
     actor.require(Permission::ARCHIVE_WRITE)?;
     let input = fields.input()?;
     CollectionRecord::update(pool, actor.id, id, &input)
-        .await?
-        .ok_or(AppError::NotFound(Resource::Collection))
+        .await
+        .map_err(|e| AppError::unique(e, "a collection with that name already exists"))?
+        .or_not_found(Resource::Collection)
 }
 
 pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: CollectionId) -> Result<()> {
@@ -107,7 +110,7 @@ pub(crate) async fn set_public(
 pub(crate) async fn public(pool: &SqlitePool, id: CollectionId) -> Result<CollectionRecord> {
     CollectionRecord::load_public(pool, id)
         .await?
-        .ok_or(AppError::NotFound(Resource::PublicCollection))
+        .or_not_found(Resource::PublicCollection)
 }
 
 /// A public collection together with its links. No sign-in required.

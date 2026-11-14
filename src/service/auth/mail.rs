@@ -3,7 +3,7 @@ use secrecy::ExposeSecret as _;
 use crate::{
     AppState,
     identity::{ResetToken, VerifyToken},
-    infra::{MailerTrait as _, mailer::Message},
+    infra::{MailTransport as _, mailer::Message},
 };
 
 pub(super) fn verification(public_url: &str, to: &str, token: &VerifyToken) -> Message {

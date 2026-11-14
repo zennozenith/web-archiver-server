@@ -1,23 +1,24 @@
 //! Interactive CLI: create a `super_admin` account.
 //!
-//!   cargo run --features admin-cli --bin create_super_admin -- --database sqlite://data/db/app.db --migrate
+//!   cargo run --features admin-cli --bin `create_super_admin` -- --database <sqlite://data/db/app.db> --migrate
 //!
 //! Options:
-//!   --database <url|path>   SQLite URL/path (default: $DATABASE_URL, else sqlite://app.db)
+//!   --database <url|path>   SQLite URL/path (default: `$DATABASE_URL`, else <sqlite://app.db>)
 //!   --migrate               Run ./migrations first (useful on a fresh database)
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::disallowed_macros,
+    clippy::exit,
+    reason = "interactive operator CLI: console output and process exit are the interface"
+)]
 
-use std::error::Error;
 use std::io::{self, Write};
-use std::str::FromStr;
-use std::time::Duration;
 
+use anyhow::{Result, bail};
 use secrecy::{ExposeSecret, SecretString};
 use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-
-type BoxResult<T> = Result<T, Box<dyn Error>>;
-
-const MIN_PASSWORD_LEN: usize = 12;
+use web_archiver::admin;
 
 // ----------------------------------------------------------------------------
 // Entry point
@@ -26,21 +27,20 @@ const MIN_PASSWORD_LEN: usize = 12;
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
-        eprintln!("\nError: {e}");
+        eprintln!("\nError: {e:#}");
         std::process::exit(1);
     }
 }
 
-async fn run() -> BoxResult<()> {
+async fn run() -> Result<()> {
     let args = parse_args()?;
-    let pool = connect(&args.database).await?;
+    let pool = admin::connect(&args.database).await?;
 
     if args.migrate {
         println!("Running migrations...");
-        sqlx::migrate!("./migrations").run(&pool).await?;
+        admin::migrate(&pool).await?;
     }
 
-    ensure_schema(&pool).await?;
     warn_if_super_admin_exists(&pool).await?;
 
     println!("\n=== Create super admin ===\n");
@@ -72,9 +72,9 @@ async fn run() -> BoxResult<()> {
         return Ok(());
     }
 
-    let hash = web_archiver::admin::hash_password(password).await?;
+    let hash = admin::hash_password(password).await?;
 
-    let (id, public_id) = create_super_admin(
+    let created = admin::create_super_admin(
         &pool,
         &email,
         username.as_deref(),
@@ -84,8 +84,8 @@ async fn run() -> BoxResult<()> {
     .await?;
 
     println!("\nSuper admin created.");
-    println!("  id:        {id}");
-    println!("  public_id: {public_id}");
+    println!("  id:        {}", created.id);
+    println!("  public_id: {}", created.public_id);
     Ok(())
 }
 
@@ -101,7 +101,7 @@ struct Args {
     display_name: Option<String>,
 }
 
-fn parse_args() -> BoxResult<Args> {
+fn parse_args() -> Result<Args> {
     let mut database = std::env::var("DATABASE_URL").ok();
     let mut migrate = false;
     let mut email = None;
@@ -112,7 +112,10 @@ fn parse_args() -> BoxResult<Args> {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--database" | "-d" => {
-                database = Some(it.next().ok_or("--database requires a value")?);
+                database = Some(
+                    it.next()
+                        .ok_or_else(|| anyhow::anyhow!("--database requires a value"))?,
+                );
             }
             "--migrate" => migrate = true,
             "--email" => email = it.next(),
@@ -125,12 +128,12 @@ fn parse_args() -> BoxResult<Args> {
                 );
                 std::process::exit(0);
             }
-            other => return Err(format!("unknown argument: {other}").into()),
+            other => bail!("unknown argument: {other}"),
         }
     }
 
     Ok(Args {
-        database: database.unwrap_or_else(|| "sqlite://app.db".to_string()),
+        database: database.unwrap_or_else(|| "sqlite://app.db".to_owned()),
         migrate,
         email,
         username,
@@ -139,63 +142,31 @@ fn parse_args() -> BoxResult<Args> {
 }
 
 // ----------------------------------------------------------------------------
-// Database
+// Prompts
 // ----------------------------------------------------------------------------
 
-async fn connect(database: &str) -> BoxResult<SqlitePool> {
-    let url = if database.starts_with("sqlite:") {
-        database.to_string()
-    } else {
-        format!("sqlite://{database}")
-    };
-
-    // Mirror the per-connection PRAGMAs the app sets in src/db.rs.
-    // Foreign keys MUST be on or ON DELETE / REFERENCES won't be enforced.
-    let opts = SqliteConnectOptions::from_str(&url)?
-        .create_if_missing(true)
-        .foreign_keys(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal)
-        .busy_timeout(Duration::from_secs(5));
-
-    Ok(SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(opts)
-        .await?)
+fn read_line(prompt: &str) -> Result<String> {
+    print!("{prompt}");
+    io::stdout().flush()?;
+    let mut buf = String::new();
+    if io::stdin().read_line(&mut buf)? == 0 {
+        bail!("unexpected end of input");
+    }
+    Ok(buf.trim().to_owned())
 }
 
-async fn ensure_schema(pool: &SqlitePool) -> BoxResult<()> {
-    let has_users: Option<i64> =
-        sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'")
-            .fetch_optional(pool)
-            .await?;
-
-    if has_users.is_none() {
-        return Err(
-            "`users` table not found. Run your migrations first (or pass --migrate).".into(),
-        );
-    }
-
-    let role: Option<i64> = sqlx::query_scalar("SELECT id FROM roles WHERE name = 'super_admin'")
-        .fetch_optional(pool)
-        .await?;
-    if role.is_none() {
-        return Err("`super_admin` role not found. Was the seed migration applied?".into());
-    }
-    Ok(())
+fn prompt_optional(prompt: &str) -> Result<Option<String>> {
+    let s = read_line(prompt)?;
+    Ok(if s.is_empty() { None } else { Some(s) })
 }
 
-async fn warn_if_super_admin_exists(pool: &SqlitePool) -> BoxResult<()> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)
-           FROM user_roles ur
-           JOIN roles r ON r.id = ur.role_id
-           JOIN users u ON u.id = ur.user_id
-          WHERE r.name = 'super_admin' AND u.deleted_at IS NULL",
-    )
-    .fetch_one(pool)
-    .await?;
+fn confirm(prompt: &str) -> Result<bool> {
+    let s = read_line(prompt)?.to_ascii_lowercase();
+    Ok(matches!(s.as_str(), "y" | "yes"))
+}
 
+async fn warn_if_super_admin_exists(pool: &SqlitePool) -> Result<()> {
+    let count = admin::super_admin_count(pool).await?;
     if count > 0 {
         println!("Note: {count} super admin account(s) already exist.");
         if !confirm("Create another one? [y/N]: ")? {
@@ -206,114 +177,14 @@ async fn warn_if_super_admin_exists(pool: &SqlitePool) -> BoxResult<()> {
     Ok(())
 }
 
-async fn create_super_admin(
-    pool: &SqlitePool,
-    email: &str,
-    username: Option<&str>,
-    display_name: Option<&str>,
-    password_hash: &str,
-) -> BoxResult<(i64, String)> {
-    let now = chrono::Utc::now().timestamp_millis();
-    let mut tx = pool.begin().await?;
-
-    // Pre-verified, active account (an operator is creating this by hand).
-    let (user_id, public_id): (i64, String) = sqlx::query_as(
-        "INSERT INTO users (email, email_verified_at, username, status, status_reason)
-         VALUES (?, ?, ?, 'active', 'created via create_super_admin CLI')
-         RETURNING id, public_id",
-    )
-    .bind(email)
-    .bind(now)
-    .bind(username)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    // trg_users_create_profile already inserted an empty profile row.
-    if let Some(name) = display_name {
-        sqlx::query("UPDATE user_profiles SET display_name = ? WHERE user_id = ?")
-            .bind(name)
-            .bind(user_id)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    sqlx::query(
-        "INSERT INTO user_credentials (user_id, password_hash, password_algo)
-         VALUES (?, ?, 'argon2id')",
-    )
-    .bind(user_id)
-    .bind(password_hash)
-    .execute(&mut *tx)
-    .await?;
-
-    let role_id: i64 = sqlx::query_scalar("SELECT id FROM roles WHERE name = 'super_admin'")
-        .fetch_one(&mut *tx)
-        .await?;
-
-    sqlx::query("INSERT INTO user_roles (user_id, role_id, granted_by) VALUES (?, ?, NULL)")
-        .bind(user_id)
-        .bind(role_id)
-        .execute(&mut *tx)
-        .await?;
-
-    // Audit trail (append-only table).
-    for (action, entity_type, entity_id) in [
-        ("user.created", "user", user_id.to_string()),
-        ("role.granted", "role", "super_admin".to_string()),
-    ] {
-        sqlx::query(
-            "INSERT INTO audit_log (actor_user_id, target_user_id, action, entity_type, entity_id, details)
-             VALUES (NULL, ?, ?, ?, ?, json_object('source', 'create_super_admin_cli'))",
-        )
-        .bind(user_id)
-        .bind(action)
-        .bind(entity_type)
-        .bind(entity_id)
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
-    Ok((user_id, public_id))
-}
-
-// ----------------------------------------------------------------------------
-// Prompts & validation (mirrors the CHECK constraints in the users table)
-// ----------------------------------------------------------------------------
-
-fn read_line(prompt: &str) -> BoxResult<String> {
-    print!("{prompt}");
-    io::stdout().flush()?;
-    let mut buf = String::new();
-    if io::stdin().read_line(&mut buf)? == 0 {
-        return Err("unexpected end of input".into());
-    }
-    Ok(buf.trim().to_string())
-}
-
-fn prompt_optional(prompt: &str) -> BoxResult<Option<String>> {
-    let s = read_line(prompt)?;
-    Ok(if s.is_empty() { None } else { Some(s) })
-}
-
-fn confirm(prompt: &str) -> BoxResult<bool> {
-    let s = read_line(prompt)?.to_ascii_lowercase();
-    Ok(matches!(s.as_str(), "y" | "yes"))
-}
-
-async fn prompt_email(pool: &SqlitePool) -> BoxResult<String> {
+async fn prompt_email(pool: &SqlitePool) -> Result<String> {
     loop {
         let email = read_line("Email: ")?;
-        if let Err(msg) = validate_email(&email) {
+        if let Err(msg) = admin::validate_email(&email) {
             eprintln!("  ✗ {msg}");
             continue;
         }
-        let taken: Option<i64> =
-            sqlx::query_scalar("SELECT 1 FROM users WHERE email = ? AND deleted_at IS NULL")
-                .bind(&email)
-                .fetch_optional(pool)
-                .await?;
-        if taken.is_some() {
+        if admin::email_in_use(pool, &email).await? {
             eprintln!("  ✗ That email is already in use.");
             continue;
         }
@@ -321,21 +192,16 @@ async fn prompt_email(pool: &SqlitePool) -> BoxResult<String> {
     }
 }
 
-async fn prompt_username(pool: &SqlitePool) -> BoxResult<Option<String>> {
+async fn prompt_username(pool: &SqlitePool) -> Result<Option<String>> {
     loop {
         let Some(username) = prompt_optional("Username (optional): ")? else {
             return Ok(None);
         };
-        if let Err(msg) = validate_username(&username) {
+        if let Err(msg) = admin::validate_username(&username) {
             eprintln!("  ✗ {msg}");
             continue;
         }
-        let taken: Option<i64> =
-            sqlx::query_scalar("SELECT 1 FROM users WHERE username = ? AND deleted_at IS NULL")
-                .bind(&username)
-                .fetch_optional(pool)
-                .await?;
-        if taken.is_some() {
+        if admin::username_in_use(pool, &username).await? {
             eprintln!("  ✗ That username is already in use.");
             continue;
         }
@@ -343,11 +209,12 @@ async fn prompt_username(pool: &SqlitePool) -> BoxResult<Option<String>> {
     }
 }
 
-fn prompt_password() -> BoxResult<SecretString> {
+fn prompt_password() -> Result<SecretString> {
+    let (min, max) = admin::password_bounds();
     loop {
         let pw = SecretString::from(rpassword::prompt_password("Password: ")?);
-        if let Err(msg) = validate_password(pw.expose_secret()) {
-            eprintln!("  ✗ {msg}");
+        if let Err(msg) = admin::validate_password(pw.expose_secret()) {
+            eprintln!("  ✗ {msg} (allowed length: {min}-{max})");
             continue;
         }
         let again = SecretString::from(rpassword::prompt_password("Confirm password: ")?);
@@ -357,57 +224,4 @@ fn prompt_password() -> BoxResult<SecretString> {
         }
         return Ok(pw);
     }
-}
-
-fn validate_email(email: &str) -> Result<(), &'static str> {
-    if !(3..=254).contains(&email.len()) {
-        return Err("Email must be 3-254 characters.");
-    }
-    if email.chars().any(char::is_whitespace) {
-        return Err("Email must not contain whitespace.");
-    }
-    // Equivalent of the schema's  LIKE '_%@_%._%'
-    let Some((local, domain)) = email.split_once('@') else {
-        return Err("Email must contain '@'.");
-    };
-    let dot_ok = domain
-        .char_indices()
-        .any(|(i, c)| c == '.' && i >= 1 && i < domain.len() - 1);
-    if local.is_empty() || !dot_ok {
-        return Err("Email must look like name@example.com.");
-    }
-    Ok(())
-}
-
-fn validate_username(u: &str) -> Result<(), &'static str> {
-    if !(3..=32).contains(&u.len()) {
-        return Err("Username must be 3-32 characters.");
-    }
-    if !u
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
-    {
-        return Err("Username may only contain letters, digits, '_', '.', '-'.");
-    }
-    Ok(())
-}
-
-fn validate_password(p: &str) -> Result<(), String> {
-    if p.chars().count() < MIN_PASSWORD_LEN {
-        return Err(format!(
-            "Password must be at least {MIN_PASSWORD_LEN} characters."
-        ));
-    }
-    let has_lower = p.chars().any(|c| c.is_lowercase());
-    let has_upper = p.chars().any(|c| c.is_uppercase());
-    let has_digit = p.chars().any(|c| c.is_ascii_digit());
-    let has_other = p.chars().any(|c| !c.is_alphanumeric());
-    let classes = [has_lower, has_upper, has_digit, has_other]
-        .iter()
-        .filter(|b| **b)
-        .count();
-    if classes < 3 {
-        return Err("Use at least 3 of: lowercase, uppercase, digits, symbols.".into());
-    }
-    Ok(())
 }

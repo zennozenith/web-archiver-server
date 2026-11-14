@@ -123,19 +123,11 @@ macro_rules! random_token {
             }
         }
 
-        #[allow(dead_code, reason = "Might be needed later")]
         impl $name {
             /// Generate a fresh token using the OS RNG.
             #[inline]
             $vis fn new() -> ::core::result::Result<Self, $crate::error::AppError> {
                 <Self as $crate::identity::RandomToken>::generate()
-            }
-
-            /// Generate using an arbitrary RNG (testing only).
-            #[inline]
-            #[cfg(test)]
-            $vis fn new_with(rng: &impl $crate::identity::Rng) -> ::core::result::Result<Self, $crate::error::AppError> {
-                <Self as $crate::identity::RandomToken>::generate_with(rng)
             }
         }
 

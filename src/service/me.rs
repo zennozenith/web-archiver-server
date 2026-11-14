@@ -6,7 +6,12 @@ use serde_json::json;
 use sqlx::SqlitePool;
 
 use crate::{
-    db::{self, api_key::InsertApiKey, audit::audit, permission::PermissionInfo},
+    db::{
+        self,
+        api_key::InsertApiKey,
+        audit::{AuditAction, audit},
+        permission::PermissionInfo,
+    },
     error::{AppError, ForbiddenReason, Resource, Result},
     identity::{
         ApiKeyToken, ApiKeyView, AuthUser, CreatedApiKey, NewApiKey, Permission, ProfileUpdate,
@@ -71,7 +76,7 @@ pub(crate) async fn update_profile(
         pool,
         Some(actor.id),
         Some(actor.id),
-        "profile.updated",
+        AuditAction::ProfileUpdated,
         None,
     )
     .await;
@@ -101,7 +106,7 @@ pub(crate) async fn revoke_session(
         pool,
         Some(actor.id),
         Some(actor.id),
-        "session.revoked",
+        AuditAction::SessionRevoked,
         Some(json!({ "session": public_id })),
     )
     .await;
@@ -149,7 +154,7 @@ pub(crate) async fn create_api_key(
         pool,
         Some(actor.id),
         Some(actor.id),
-        "api_key.created",
+        AuditAction::ApiKeyCreated,
         Some(json!({ "name": req.name() })),
     )
     .await;
@@ -169,7 +174,7 @@ pub(crate) async fn revoke_api_key(
         pool,
         Some(actor.id),
         Some(actor.id),
-        "api_key.revoked",
+        AuditAction::ApiKeyRevoked,
         Some(json!({ "key": public_id })),
     )
     .await;

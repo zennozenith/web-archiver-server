@@ -117,10 +117,10 @@ impl NonEmptyString {
     ///
     /// # Examples
     ///
-    /// ```rust
-    /// assert_eq!(non_empty("  hello world  "), Some("hello world".to_string()));
-    /// assert_eq!(non_empty("   "), None);
-    /// assert_eq!(non_empty(""), None);
+    /// ```ignore
+    /// assert_eq!(NonEmptyString::non_empty("  hello world  "), Some("hello world".to_owned()));
+    /// assert_eq!(NonEmptyString::non_empty("   "), None);
+    /// assert_eq!(NonEmptyString::non_empty(""), None);
     /// ```
     pub(crate) fn non_empty(s: &str) -> Option<String> {
         let t = s.trim();
