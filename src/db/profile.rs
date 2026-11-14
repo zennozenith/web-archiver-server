@@ -1,16 +1,23 @@
 use sqlx::{Result, SqliteExecutor};
 
-use crate::identity::{ProfileUpdate, ProfileView};
+use crate::{
+    error::{AppError, Resource},
+    identity::{ProfileUpdate, ProfileView},
+};
 
-pub(crate) async fn find<'e>(ex: impl SqliteExecutor<'e>, user_id: i64) -> Result<ProfileView> {
+pub(crate) async fn find<'e>(
+    ex: impl SqliteExecutor<'e>,
+    user_id: i64,
+) -> crate::error::Result<ProfileView> {
     sqlx::query_as(
         "SELECT display_name, first_name, last_name, avatar_url, bio, birth_date,
                 locale, timezone, updated_at
            FROM user_profiles WHERE user_id = ?",
     )
     .bind(user_id)
-    .fetch_one(ex)
-    .await
+    .fetch_optional(ex)
+    .await?
+    .ok_or(AppError::NotFound(Resource::User))
 }
 
 /// `updated_at` is maintained by `trg_profiles_updated_at`.

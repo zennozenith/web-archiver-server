@@ -14,6 +14,6 @@ where
         parts: &mut Parts,
         state: &S,
     ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        std::future::ready(Self::extract(parts, &AppState::from_ref(state).server))
+        std::future::ready(Self::extract(parts, &AppState::from_ref(state).config))
     }
 }

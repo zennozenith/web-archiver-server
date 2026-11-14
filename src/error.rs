@@ -100,112 +100,66 @@ impl<T> OptionNotFound<T> for Option<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum AppError {
     // 400
+    #[error("invalid url: {0}")]
     InvalidUrl(String),
-    HashParse(HashParseError),
+    #[error("Failed to parse hash: {0}")]
+    HashParse(#[from] HashParseError),
+    #[error("{0}")]
     BadRequest(String),
 
     // 401
+    #[error("authentication required")]
     Unauthorized,
+    #[error("invalid credentials")]
     InvalidCredentials,
 
     // 403
-    Forbidden(ForbiddenReason),
+    #[error("Forbidden: {0}")]
+    Forbidden(#[from] ForbiddenReason),
 
     // 404
+    #[error("{0} not found")]
     NotFound(Resource),
 
     // 409
+    #[error("{msg}. Existing id: {existing_id}")]
     Duplicate { existing_id: i64, msg: &'static str },
+    #[error("{0}")]
     Conflict(String),
 
     // 413
+    #[error("{}", payload_too_large_message(*limit))]
     PayloadTooLarge { limit: Option<usize> },
 
     // 415
+    #[error("unsupported media type")]
     UnsupportedMediaType,
 
     // 429
+    #[error("{0}")]
     TooManyRequests(&'static str),
 
     // 422
+    #[error("{message}")]
     Invalid { code: &'static str, message: String },
 
     // 500
-    Render(askama::Error),
-    Database(sqlx::Error),
-    Internal(Box<dyn std::error::Error + Send + Sync>),
+    #[error("Failed to render template. Error: {0}")]
+    Render(#[from] askama::Error),
+    #[error("database error")]
+    Database(#[source] sqlx::Error),
+    #[error("internal error")]
+    Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
-impl std::fmt::Display for AppError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidUrl(url) => write!(f, "invalid url: {url}"),
-            Self::HashParse(e) => write!(f, "Failed to parse hash: {e}"),
-            Self::BadRequest(message) | Self::Conflict(message) | Self::Invalid { message, .. } => {
-                f.write_str(message)
-            }
-            Self::Unauthorized => f.write_str("authentication required"),
-            Self::InvalidCredentials => f.write_str("invalid credentials"),
-            Self::Forbidden(reason) => write!(f, "Forbidden: {reason}"),
-            Self::NotFound(resource) => write!(f, "{resource} not found"),
-            Self::Duplicate { existing_id, msg } => {
-                write!(f, "{msg}. Existing id: {existing_id}")
-            }
-            Self::PayloadTooLarge { limit } => match limit {
-                Some(limit) => write!(f, "payload exceeds {limit} bytes"),
-                None => f.write_str("payload too large"),
-            },
-            Self::UnsupportedMediaType => f.write_str("unsupported media type"),
-            Self::TooManyRequests(message) => f.write_str(message),
-            Self::Render(e) => write!(f, "Failed to render template. Error: {e}"),
-            Self::Database(_) => f.write_str("database error"),
-            Self::Internal(_) => f.write_str("internal error"),
-        }
-    }
-}
-
-impl std::error::Error for AppError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::HashParse(e) => Some(e),
-            Self::Render(e) => Some(e),
-            Self::Database(e) => Some(e),
-            Self::Internal(e) => Some(e.as_ref()),
-            Self::InvalidUrl(_)
-            | Self::BadRequest(_)
-            | Self::Unauthorized
-            | Self::InvalidCredentials
-            | Self::Forbidden(_)
-            | Self::NotFound(_)
-            | Self::Duplicate { .. }
-            | Self::Conflict(_)
-            | Self::PayloadTooLarge { .. }
-            | Self::UnsupportedMediaType
-            | Self::TooManyRequests(_)
-            | Self::Invalid { .. } => None,
-        }
-    }
-}
-
-impl From<HashParseError> for AppError {
-    fn from(e: HashParseError) -> Self {
-        Self::HashParse(e)
-    }
-}
-
-impl From<ForbiddenReason> for AppError {
-    fn from(reason: ForbiddenReason) -> Self {
-        Self::Forbidden(reason)
-    }
-}
-
-impl From<askama::Error> for AppError {
-    fn from(e: askama::Error) -> Self {
-        Self::Render(e)
-    }
+fn payload_too_large_message(limit: Option<usize>) -> String {
+    limit.map_or_else(
+        || "payload too large".to_owned(),
+        |limit| format!("payload exceeds {limit} bytes"),
+    )
 }
 
 impl AppError {

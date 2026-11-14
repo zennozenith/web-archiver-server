@@ -8,13 +8,13 @@ use crate::{
 };
 
 pub(crate) async fn health(state: &AppState) -> Result<()> {
-    Ok(stats::health(&state.db).await?)
+    Ok(stats::health(state.db.reader()).await?)
 }
 
 /// Global installation statistics; only archive administrators may see them.
 pub(crate) async fn stats(state: &AppState, actor: &AuthUser) -> Result<Stats> {
     actor.require(Permission::ARCHIVE_ADMIN)?;
-    Ok(stats::stats(&state.db).await?)
+    Ok(stats::stats(state.db.reader()).await?)
 }
 
 /// Deletes unreferenced blobs and stale temporary files.

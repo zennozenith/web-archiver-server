@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
+        Database,
         create::CreateOutcome,
         patch::FieldPatch,
         tag::{PatchOutcome, Tag, TagPatch, TagSummary},
@@ -23,19 +24,19 @@ fn color_patch(raw: FieldPatch<String>) -> Result<FieldPatch<TagColor>> {
     })
 }
 
-pub(crate) async fn list(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<TagSummary>> {
+pub(crate) async fn list(pool: &Database, actor: &AuthUser) -> Result<Vec<TagSummary>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Ok(TagSummary::list(pool, actor.id).await?)
+    Ok(TagSummary::list(pool.reader(), actor.id).await?)
 }
 
 pub(crate) async fn find(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     name: &str,
 ) -> Result<Option<TagSummary>> {
     actor.require(Permission::ARCHIVE_READ)?;
     let name: TagName = name.parse()?;
-    Ok(TagSummary::find_by_name(pool, actor.id, &name).await?)
+    Ok(TagSummary::find_by_name(pool.reader(), actor.id, &name).await?)
 }
 
 pub(crate) async fn create(

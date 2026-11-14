@@ -48,6 +48,9 @@ export function registerReader(alpine: Alpine): void {
       this.selection = "";
       window.getSelection()?.removeAllRanges();
     },
+    highlightVals(color: string): string {
+      return JSON.stringify({ color, text: this.selection });
+    },
     async copy(text: string) {
       await navigator.clipboard.writeText(text);
       this.copied = true;

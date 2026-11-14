@@ -12,7 +12,7 @@
 <div class="mb-6 grid gap-4 lg:grid-cols-2">
   <section class="rounded-xl border border-line bg-surface p-4">
     <h2 class="text-base font-semibold">Add a link</h2>
-    <form class="mt-3 flex flex-col gap-3" hx-post="/pending" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+    <form class="mt-3 flex flex-col gap-3" hx-post="/pending" hx-swap="none" @htmx:after:request="$reload($event)">
       <fieldset class="fieldset"><legend class="fieldset-legend">URL</legend><input name="url" type="url" required placeholder="https://example.com" class="input w-full" /></fieldset>
       <fieldset class="fieldset"><legend class="fieldset-legend">Tags <span class="font-normal text-faint">(optional)</span></legend><input name="tags" type="text" placeholder="design, reading" class="input w-full" /></fieldset>
       <button type="submit" class="btn btn-primary btn-sm self-start">Add to queue</button>
@@ -21,7 +21,7 @@
 
   <section class="rounded-xl border border-line bg-surface p-4">
     <h2 class="text-base font-semibold">Bulk add</h2>
-    <form class="mt-3 flex flex-col gap-3" hx-post="/pending/bulk" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+    <form class="mt-3 flex flex-col gap-3" hx-post="/pending/bulk" hx-swap="none" @htmx:after:request="$reload($event)">
       <fieldset class="fieldset"><legend class="fieldset-legend">URLs</legend><textarea name="items" rows="5" required class="textarea w-full font-mono text-sm" placeholder="https://example.com&#10;https://example.com/article | design, reading"></textarea><p class="label">One URL per line. Tags after <code>|</code>, comma separated.</p></fieldset>
       <button type="submit" class="btn btn-primary btn-sm self-start">Add all</button>
     </form>
@@ -38,7 +38,7 @@
 
 <div class="flex flex-col gap-2">
   {% for item in pending %}
-  <article id="pending-{{ item.id }}" class="rounded-xl border border-line bg-surface p-4" x-data="{ editing: false }">
+  <article id="pending-{{ item.id }}" class="rounded-xl border border-line bg-surface p-4" x-data="pendingItem">
     <div class="flex flex-wrap items-start gap-2">
       <div class="min-w-0 flex-1">
         <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="block truncate font-medium link link-hover">{{ item.url }}</a>
@@ -54,14 +54,14 @@
       </div>
       {% if can_write %}
       <div class="flex shrink-0 items-center gap-1">
-        {% if item.retryable %}<button type="button" class="btn btn-ghost btn-xs" hx-post="/pending/{{ item.id }}/retry" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">Retry</button>{% endif %}
-        <button type="button" class="btn btn-ghost btn-xs" @click="editing = !editing">Edit</button>
+        {% if item.retryable %}<button type="button" class="btn btn-ghost btn-xs" hx-post="/pending/{{ item.id }}/retry" hx-swap="none" @htmx:after:request="$reload($event)">Retry</button>{% endif %}
+        <button type="button" class="btn btn-ghost btn-xs" @click="toggle()">Edit</button>
         <button type="button" class="btn btn-ghost btn-xs text-error" hx-delete="/pending/{{ item.id }}" hx-confirm="Remove this URL from the queue?" hx-target="closest article" hx-swap="outerHTML">Delete</button>
       </div>
       {% endif %}
     </div>
     {% if can_write %}
-    <form x-show="editing" x-cloak class="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3" hx-patch="/pending/{{ item.id }}" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+    <form x-show="editing" x-cloak class="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3" hx-patch="/pending/{{ item.id }}" hx-swap="none" @htmx:after:request="reload($event)">
       <fieldset class="fieldset min-w-56 flex-1"><legend class="fieldset-legend">URL</legend><input name="url" type="url" required value="{{ item.url }}" class="input input-sm w-full" /></fieldset>
       <fieldset class="fieldset min-w-48 flex-1"><legend class="fieldset-legend">Tags</legend><input name="tags" type="text" value="{{ item.tags_csv }}" class="input input-sm w-full" /></fieldset>
       <fieldset class="fieldset"><legend class="fieldset-legend">Status</legend>
@@ -84,8 +84,8 @@
 
 {% if can_write && (counts.queued > 0 || counts.failed > 0) %}
 <div class="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4">
-  {% if counts.queued > 0 %}<button type="button" class="btn btn-ghost btn-sm text-error" hx-delete="/pending?status=queued" hx-confirm="Remove all queued items?" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">Clear queued ({{ counts.queued }})</button>{% endif %}
-  {% if counts.failed > 0 %}<button type="button" class="btn btn-ghost btn-sm text-error" hx-delete="/pending?status=failed" hx-confirm="Remove all failed items?" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">Clear failed ({{ counts.failed }})</button>{% endif %}
+  {% if counts.queued > 0 %}<button type="button" class="btn btn-ghost btn-sm text-error" hx-delete="/pending?status=queued" hx-confirm="Remove all queued items?" hx-swap="none" @htmx:after:request="$reload($event)">Clear queued ({{ counts.queued }})</button>{% endif %}
+  {% if counts.failed > 0 %}<button type="button" class="btn btn-ghost btn-sm text-error" hx-delete="/pending?status=failed" hx-confirm="Remove all failed items?" hx-swap="none" @htmx:after:request="$reload($event)">Clear failed ({{ counts.failed }})</button>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

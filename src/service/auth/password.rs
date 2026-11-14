@@ -75,7 +75,8 @@ pub(crate) async fn forgot_password(state: &AppState, email: String) -> Result<(
         return Err(AppError::BadRequest("Email empty".into()));
     }
 
-    let Some(user_id) = db::auth::find_active_user_id_by_email(&state.db, email).await? else {
+    let Some(user_id) = db::auth::find_active_user_id_by_email(state.db.reader(), email).await?
+    else {
         return Ok(());
     };
 
@@ -101,10 +102,10 @@ pub(crate) async fn forgot_password(state: &AppState, email: String) -> Result<(
     // Send only after commit: never mail a link that failed to persist.
     super::mail::dispatch(
         state,
-        super::mail::password_reset(&state.server.public_url, email, &token),
+        super::mail::password_reset(&state.config.public_url, email, &token),
     );
     audit(
-        &state.db,
+        state.db.writer(),
         Some(user_id),
         Some(user_id),
         AuditAction::PasswordResetRequested,

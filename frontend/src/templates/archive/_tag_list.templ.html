@@ -5,7 +5,7 @@
       <span class="truncate font-medium"># {{ tag.name }}</span>
       <span class="badge badge-ghost badge-sm tabular-nums">{{ tag.page_count }}</span>
     </a>
-    <form x-show="editing" x-cloak class="join min-w-0 flex-1" hx-patch="/tags/{{ tag.name }}" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+    <form x-show="editing" x-cloak class="join min-w-0 flex-1" hx-patch="/tags/{{ tag.name }}" hx-swap="none" @htmx:after:request="reload($event)">
       <input x-ref="input" x-model="name" name="name" required class="input input-sm join-item min-w-0 flex-1" aria-label="Tag name" />
       <button class="btn btn-sm btn-primary join-item">Save</button>
       <button type="button" class="btn btn-sm join-item" @click="cancel()">Cancel</button>

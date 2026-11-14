@@ -72,14 +72,14 @@ async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let hash = admin::hash_password(password).await?;
-
     let created = admin::create_super_admin(
         &pool,
-        &email,
-        username.as_deref(),
-        display_name.as_deref(),
-        &hash,
+        admin::NewSuperAdmin {
+            email: &email,
+            username: username.as_deref(),
+            display_name: display_name.as_deref(),
+            password,
+        },
     )
     .await?;
 

@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        self,
+        self, Database,
         audit::{AuditAction, audit},
         permission::PermissionInfo,
         role::RoleSummary,
@@ -34,12 +34,12 @@ async fn target_id(pool: &SqlitePool, public_id: &str) -> Result<i64> {
 // ----------------------------------------------------------------- users
 
 pub(crate) async fn list_users(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     filter: &UserFilter,
 ) -> Result<Vec<UserView>> {
     actor.require(Permission::USERS_READ)?;
-    Ok(db::user::list(pool, filter).await?)
+    Ok(db::user::list(pool.reader(), filter).await?)
 }
 
 pub(crate) async fn set_status(
@@ -100,15 +100,16 @@ pub(crate) struct UserPage {
 }
 
 pub(crate) async fn search_users(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     filter: &UserFilter,
     page: i64,
     per_page: i64,
 ) -> Result<UserPage> {
     actor.require(Permission::USERS_READ)?;
+    let read = pool.reader();
     let per_page = per_page.clamp(1, 100);
-    let total = db::user::count(pool, filter).await?;
+    let total = db::user::count(read, filter).await?;
     let pages = total
         .saturating_add(per_page.saturating_sub(1))
         .checked_div(per_page)
@@ -121,7 +122,7 @@ pub(crate) async fn search_users(
         offset,
         ..filter.clone()
     };
-    let rows = db::user::search(pool, &filter).await?;
+    let rows = db::user::search(read, &filter).await?;
     Ok(UserPage { rows, total, page })
 }
 
@@ -142,18 +143,20 @@ pub(crate) struct UserDetail {
 }
 
 pub(crate) async fn user_detail(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     public_id: &str,
 ) -> Result<UserDetail> {
     actor.require(Permission::USERS_READ)?;
-    let id = target_id(pool, public_id).await?;
+    let read = pool.reader();
+    let id = target_id(read, public_id).await?;
 
-    let (user, extra) = tokio::try_join!(db::user::find(pool, id), db::user::extra(pool, id),)?;
+    let user = db::user::find(read, id).await?;
+    let extra = db::user::extra(read, id).await?;
 
     let assigned = user.roles();
     let is_self = actor.id == id;
-    let roles = db::role::list(pool)
+    let roles = db::role::list(read)
         .await?
         .into_iter()
         .map(|r| RoleChoice {
@@ -165,7 +168,7 @@ pub(crate) async fn user_detail(
         .collect();
 
     let activity = if actor.can(Permission::AUDIT_READ) {
-        db::audit::for_user(pool, id, 5).await?
+        db::audit::for_user(read, id, 5).await?
     } else {
         Vec::new()
     };
@@ -179,9 +182,9 @@ pub(crate) async fn user_detail(
 
 // ----------------------------------------------------------------- roles
 
-pub(crate) async fn list_roles(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<RoleView>> {
+pub(crate) async fn list_roles(pool: &Database, actor: &AuthUser) -> Result<Vec<RoleView>> {
     actor.require(Permission::ROLES_READ)?;
-    Ok(db::role::list(pool).await?)
+    Ok(db::role::list(pool.reader()).await?)
 }
 
 pub(crate) async fn grant_role(
@@ -237,9 +240,9 @@ pub(crate) async fn revoke_role(
 }
 
 /// Role names for filter dropdowns. Needs only `users:read`.
-pub(crate) async fn role_names(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<String>> {
+pub(crate) async fn role_names(pool: &Database, actor: &AuthUser) -> Result<Vec<String>> {
     actor.require(Permission::USERS_READ)?;
-    Ok(db::role::list(pool)
+    Ok(db::role::list(pool.reader())
         .await?
         .into_iter()
         .map(|r| r.name)
@@ -251,11 +254,12 @@ pub(crate) struct RoleCatalog {
     pub permissions: Vec<PermissionInfo>,
 }
 
-pub(crate) async fn role_catalog(pool: &SqlitePool, actor: &AuthUser) -> Result<RoleCatalog> {
+pub(crate) async fn role_catalog(pool: &Database, actor: &AuthUser) -> Result<RoleCatalog> {
     actor.require(Permission::ROLES_READ)?;
+    let read = pool.reader();
     let (roles, permissions) = tokio::try_join!(
-        db::role::summaries(pool, now_ms()),
-        db::permission::all(pool),
+        db::role::summaries(read, now_ms()),
+        db::permission::all(read),
     )?;
     Ok(RoleCatalog { roles, permissions })
 }
@@ -263,7 +267,7 @@ pub(crate) async fn role_catalog(pool: &SqlitePool, actor: &AuthUser) -> Result<
 // ----------------------------------------------------------------- audit
 
 pub(crate) async fn list_audit(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     limit: Option<i64>,
 ) -> Result<Vec<AuditEntry>> {
@@ -271,7 +275,9 @@ pub(crate) async fn list_audit(
     let limit = limit
         .unwrap_or(AUDIT_DEFAULT_LIMIT)
         .clamp(1, AUDIT_MAX_LIMIT);
-    db::audit::list(pool, limit).await.map_err(AppError::from)
+    db::audit::list(pool.reader(), limit)
+        .await
+        .map_err(AppError::from)
 }
 
 pub(crate) struct AuditPage {
@@ -281,7 +287,7 @@ pub(crate) struct AuditPage {
 
 /// Events matching `q` (action or e-mail), older than `before` when given.
 pub(crate) async fn search_audit(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     q: &str,
     before: Option<i64>,
@@ -289,7 +295,7 @@ pub(crate) async fn search_audit(
     actor.require(Permission::AUDIT_READ)?;
     // One extra row tells us whether anything older exists.
     let fetch = i64::try_from(AUDIT_PAGE + 1).unwrap_or(i64::MAX);
-    let mut entries = db::audit::search(pool, q.trim(), before, fetch).await?;
+    let mut entries = db::audit::search(pool.reader(), q.trim(), before, fetch).await?;
     let has_more = entries.len() > AUDIT_PAGE;
     entries.truncate(AUDIT_PAGE);
     Ok(AuditPage { entries, has_more })

@@ -17,7 +17,9 @@ pub(crate) struct Cidr {
 
 impl Cidr {
     pub(crate) fn contains(&self, ip: IpAddr) -> bool {
-        match (self.network, ip) {
+        // A dual-stack listener reports IPv4 peers as IPv4-mapped IPv6
+        // (`::ffff:10.0.0.1`). Canonicalize both sides so an IPv4 CIDR matches.
+        match (self.network.to_canonical(), ip.to_canonical()) {
             (IpAddr::V4(network), IpAddr::V4(ip)) => {
                 mask_v4(network, self.prefix) == mask_v4(ip, self.prefix)
             }

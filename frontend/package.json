@@ -16,6 +16,7 @@
     "lint:fix": "vp lint --fix"
   },
   "dependencies": {
+    "@alpinejs/csp": "^3.17.5",
     "@tailwindcss/vite": "^4.3.3",
     "alpinejs": "^3.17.5",
     "daisyui": "^5.7.50",

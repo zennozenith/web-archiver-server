@@ -125,7 +125,7 @@ impl PendingRow {
         owner: i64,
         url: &CanonicalUrl,
         tags: &[TagName],
-    ) -> Result<CreateOutcome<PendingId>> {
+    ) -> crate::error::Result<CreateOutcome<PendingId>> {
         let inserted: Option<PendingId> = sqlx::query_scalar(
             "INSERT INTO pending_items (owner_user_id, url) VALUES (?, ?)
              ON CONFLICT(owner_user_id, url) DO NOTHING
@@ -141,13 +141,20 @@ impl PendingRow {
             return Ok(CreateOutcome::Created(id));
         }
 
-        // TODO: merge the requested tags into the existing item.
         let id =
             sqlx::query_scalar("SELECT id FROM pending_items WHERE owner_user_id = ? AND url = ?")
                 .bind(owner)
                 .bind(&url.url)
-                .fetch_one(&mut *conn)
-                .await?;
+                .fetch_optional(&mut *conn)
+                .await?
+                .ok_or_else(|| {
+                    crate::error::AppError::Conflict(
+                        "pending item was removed concurrently, please retry".into(),
+                    )
+                })?;
+        // The URL was already queued; merge the requested tags into it instead
+        // of dropping them.
+        Self::merge_tags(&mut *conn, owner, id, tags).await?;
         Ok(CreateOutcome::Existing(id))
     }
 
@@ -163,6 +170,16 @@ impl PendingRow {
             .execute(&mut *conn)
             .await?;
 
+        Self::merge_tags(conn, owner, id, names).await
+    }
+
+    /// Adds `names` to the item's existing tags, ignoring duplicates.
+    pub(crate) async fn merge_tags(
+        conn: &mut SqliteConnection,
+        owner: i64,
+        id: PendingId,
+        names: &[TagName],
+    ) -> Result<()> {
         for name in names {
             let tag_id = Tag::get_or_create_id(&mut *conn, owner, name).await?;
             sqlx::query(

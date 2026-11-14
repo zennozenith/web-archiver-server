@@ -11,6 +11,47 @@ pub(crate) struct NewAccount {
     pub display_name: Option<String>,
 }
 
+/// Validate an e-mail address the way the `users` table expects.
+///
+/// Lengths count characters, not bytes, so a non-ASCII local part is not
+/// penalised. Returns a human-readable reason so the CLI can re-prompt.
+pub(crate) fn validate_email(email: &str) -> Result<(), String> {
+    let len = email.chars().count();
+    if !(3..=254).contains(&len) {
+        return Err("email must be 3-254 characters".to_owned());
+    }
+    if email.chars().any(char::is_whitespace) {
+        return Err("email must not contain whitespace".to_owned());
+    }
+    let Some((local, domain)) = email.split_once('@') else {
+        return Err("email must contain '@'".to_owned());
+    };
+    let chars: Vec<char> = domain.chars().collect();
+    let dot_ok = chars
+        .iter()
+        .enumerate()
+        .any(|(i, c)| *c == '.' && i >= 1 && i < chars.len().saturating_sub(1));
+    if local.is_empty() || !dot_ok {
+        return Err("email must look like name@example.com".to_owned());
+    }
+    Ok(())
+}
+
+/// Validate a username against the `users` table's CHECK constraint.
+pub(crate) fn validate_username(username: &str) -> Result<(), String> {
+    let len = username.chars().count();
+    if !(3..=32).contains(&len) {
+        return Err("username must be 3-32 characters".to_owned());
+    }
+    if !username
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+    {
+        return Err("username may only contain letters, digits, '_', '.', '-'".to_owned());
+    }
+    Ok(())
+}
+
 #[derive(
     Debug,
     strum::Display,

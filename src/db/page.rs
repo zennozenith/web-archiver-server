@@ -20,7 +20,7 @@ use crate::{
         patch::FieldPatch,
         tag::Tag,
     },
-    error::Result,
+    error::{AppError, Resource, Result},
     infra::{BlobFiles, Image, TagId, TagName, comma_separated_tags},
     util::{
         CanonicalUrl, NonEmptyString, like_contains_pattern, limit::Limit,
@@ -581,8 +581,9 @@ impl CreatePage {
         owner: i64,
         store: &BlobFiles,
     ) -> Result<PageItem> {
-        let mut tx = pool.begin().await?;
-
+        // Hash, compress and write the blob before taking the write connection:
+        // a one-connection pool would otherwise deadlock on `prepare_blob`'s
+        // dedup query.
         let thumbnail = match self.thumbnail {
             Some(image) => {
                 let format = image.format();
@@ -591,6 +592,8 @@ impl CreatePage {
             }
             None => None,
         };
+
+        let mut tx = pool.begin().await?;
 
         let thumbnail_id = match &thumbnail {
             Some(b) => Some(insert_blob(&mut tx, b).await?),
@@ -625,7 +628,7 @@ impl CreatePage {
 
         PageItem::load(pool, owner, page_id)
             .await?
-            .ok_or(sqlx::Error::RowNotFound.into())
+            .ok_or_else(|| AppError::Conflict("page was removed concurrently, please retry".into()))
     }
 }
 
@@ -709,15 +712,21 @@ impl PageId {
         store: &BlobFiles,
         thumbnail: Option<Image>,
     ) -> Result<bool> {
-        let mut tx = pool.begin().await?;
-
-        let thumbnail_id = match thumbnail {
+        // See `CreatePage::execute`: prepare outside the transaction so a
+        // one-connection pool cannot deadlock.
+        let blob = match thumbnail {
             Some(image) => {
                 let format = image.format();
                 let data = image.into_data();
-                let blob = prepare_blob(pool, store, data, format.mime_type()).await?;
-                Some(insert_blob(&mut tx, &blob).await?)
+                Some(prepare_blob(pool, store, data, format.mime_type()).await?)
             }
+            None => None,
+        };
+
+        let mut tx = pool.begin().await?;
+
+        let thumbnail_id = match &blob {
+            Some(blob) => Some(insert_blob(&mut tx, blob).await?),
             None => None,
         };
 
@@ -920,7 +929,7 @@ pub(crate) async fn add_tag(
         .await?;
     let tag = Tag::load(&mut *tx, owner, tag_id)
         .await?
-        .ok_or(sqlx::Error::RowNotFound)?;
+        .ok_or(AppError::NotFound(Resource::Tag))?;
 
     tx.commit().await?;
     Ok(Some(tag))
@@ -950,4 +959,65 @@ pub(crate) async fn remove_tag(
 /// Canonicalizes a raw URL for the create flow.
 pub(crate) fn parse_url(raw: &str) -> Result<CanonicalUrl> {
     canonicalize_url(raw)
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::*;
+    use crate::infra::{Image, ImageFormat};
+
+    #[tokio::test]
+    async fn create_page_with_thumbnail_on_one_connection() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        crate::db::migrate(&pool).await.expect("migrations");
+
+        let owner: i64 = sqlx::query_scalar(
+            "INSERT INTO users (email, status) VALUES ('thumb@example.com', 'active') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("insert user");
+
+        let dir = std::env::temp_dir().join(format!(
+            "web-archiver-page-test-{}-{}",
+            std::process::id(),
+            crate::util::time::now_ms()
+        ));
+        let store = BlobFiles::open(&dir, 1024).await.expect("blob store");
+
+        let image = Image::new(
+            ImageFormat::Png,
+            b"\x89PNG\r\n\x1a\nthumbnail-bytes".to_vec(),
+        )
+        .expect("png");
+        let page = CreatePage {
+            url: canonicalize_url("https://example.com/thumb").expect("url"),
+            display_title: NonEmptyString::trimmed("Thumbnail").expect("title"),
+            description: String::new(),
+            collection_id: None,
+            pinned: false,
+            tags: Vec::new(),
+            thumbnail: Some(image),
+        };
+
+        let created = page
+            .execute(&pool, owner, &store)
+            .await
+            .expect("create page");
+        assert!(created.record.thumbnail_content_id.is_some());
+
+        let reloaded = PageItem::load(&pool, owner, created.record.id)
+            .await
+            .expect("load page")
+            .expect("page exists");
+        assert!(reloaded.record.thumbnail_content_id.is_some());
+
+        drop(tokio::fs::remove_dir_all(dir).await);
+    }
 }

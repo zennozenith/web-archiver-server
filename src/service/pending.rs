@@ -5,7 +5,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        self,
+        self, Database,
         create::CreateOutcome,
         cursor::{Cursor, CursorPage},
         pending::{PendingId, PendingResponse, PendingRow, PendingStatus, PendingUpdate},
@@ -42,7 +42,7 @@ async fn conflict_or_not_found(
 }
 
 pub(crate) async fn list(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     status: Option<PendingStatus>,
     cursor: Option<Cursor>,
@@ -50,7 +50,7 @@ pub(crate) async fn list(
 ) -> Result<CursorPage<PendingResponse>> {
     actor.require(Permission::ARCHIVE_READ)?;
     Ok(PendingResponse::list(
-        pool,
+        pool.reader(),
         actor.id,
         status,
         cursor,
@@ -60,12 +60,12 @@ pub(crate) async fn list(
 }
 
 pub(crate) async fn get(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: PendingId,
 ) -> Result<PendingResponse> {
     actor.require(Permission::ARCHIVE_READ)?;
-    PendingResponse::get(pool, actor.id, id).await
+    PendingResponse::get(pool.reader(), actor.id, id).await
 }
 
 pub(crate) async fn create(
@@ -288,12 +288,13 @@ pub(crate) struct PendingCounts {
     pub total: i64,
 }
 
-pub(crate) async fn counts(pool: &SqlitePool, actor: &AuthUser) -> Result<PendingCounts> {
+pub(crate) async fn counts(pool: &Database, actor: &AuthUser) -> Result<PendingCounts> {
     actor.require(Permission::ARCHIVE_READ)?;
+    let read = pool.reader();
     let (queued, in_progress, failed) = tokio::try_join!(
-        db::pending::PendingRow::count_with_status(pool, actor.id, PendingStatus::Queued),
-        db::pending::PendingRow::count_with_status(pool, actor.id, PendingStatus::InProgress),
-        db::pending::PendingRow::count_with_status(pool, actor.id, PendingStatus::Failed),
+        db::pending::PendingRow::count_with_status(read, actor.id, PendingStatus::Queued),
+        db::pending::PendingRow::count_with_status(read, actor.id, PendingStatus::InProgress),
+        db::pending::PendingRow::count_with_status(read, actor.id, PendingStatus::Failed),
     )?;
     Ok(PendingCounts {
         queued,

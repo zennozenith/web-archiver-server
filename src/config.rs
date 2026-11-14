@@ -1,6 +1,6 @@
 use std::{
     net::{IpAddr, SocketAddr},
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     time::Duration,
 };
@@ -109,15 +109,6 @@ impl DatabaseSettings {
             .journal_mode(SqliteJournalMode::Wal) // PRAGMA journal_mode = WAL
             .synchronous(SqliteSynchronous::Normal) // PRAGMA synchronous = NORMAL
             .busy_timeout(Duration::from_secs(self.busy_timeout_secs))) // PRAGMA busy_timeout = ...
-    }
-
-    /// Parent directory of the database file, unless this is an in-memory URL.
-    pub(crate) fn parent_dir(options: &SqliteConnectOptions) -> Option<&Path> {
-        let filename = options.get_filename();
-        if filename == Path::new(":memory:") {
-            return None;
-        }
-        filename.parent().filter(|p| !p.as_os_str().is_empty())
     }
 }
 

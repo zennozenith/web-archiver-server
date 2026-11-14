@@ -2,7 +2,10 @@
 
 use sqlx::{Result, SqliteExecutor, SqlitePool, prelude::FromRow};
 
-use crate::identity::{AccountStatus, UserFilter, UserView};
+use crate::{
+    error::{AppError, Resource},
+    identity::{AccountStatus, UserFilter, UserView},
+};
 
 /// Base query over `v_users` (live users + profile, never credentials), with
 /// the active roles folded into one comma separated column.
@@ -20,11 +23,15 @@ macro_rules! user_select {
 )]
 pub(crate) use user_select;
 
-pub(crate) async fn find<'e>(ex: impl SqliteExecutor<'e>, user_id: i64) -> Result<UserView> {
+pub(crate) async fn find<'e>(
+    ex: impl SqliteExecutor<'e>,
+    user_id: i64,
+) -> crate::error::Result<UserView> {
     sqlx::query_as(concat!(user_select!(), " WHERE id = ?"))
         .bind(user_id)
-        .fetch_one(ex)
-        .await
+        .fetch_optional(ex)
+        .await?
+        .ok_or(AppError::NotFound(Resource::User))
 }
 
 pub(crate) async fn find_id_by_public_id<'e>(
@@ -110,6 +117,38 @@ pub(crate) async fn count(pool: &SqlitePool, filter: &UserFilter) -> sqlx::Resul
         .bind(filter.role.as_deref())
         .fetch_one(pool)
         .await
+}
+
+/// Whether a live user already owns this e-mail address.
+pub(crate) async fn email_in_use(pool: &SqlitePool, email: &str) -> sqlx::Result<bool> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE email = ? AND deleted_at IS NULL)")
+        .bind(email)
+        .fetch_one(pool)
+        .await
+}
+
+/// Whether a live user already owns this username.
+pub(crate) async fn username_in_use(pool: &SqlitePool, username: &str) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE username = ? AND deleted_at IS NULL)",
+    )
+    .bind(username)
+    .fetch_one(pool)
+    .await
+}
+
+/// Number of live super-admin accounts.
+pub(crate) async fn super_admin_count(pool: &SqlitePool) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "SELECT COUNT(*)
+           FROM user_roles ur
+           JOIN roles r ON r.id = ur.role_id
+           JOIN users u ON u.id = ur.user_id
+          WHERE r.name = ? AND u.deleted_at IS NULL",
+    )
+    .bind(crate::identity::roles::SUPER_ADMIN_ROLE)
+    .fetch_one(pool)
+    .await
 }
 
 pub(crate) async fn search(pool: &SqlitePool, filter: &UserFilter) -> sqlx::Result<Vec<UserView>> {

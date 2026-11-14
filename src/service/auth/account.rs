@@ -9,7 +9,10 @@ use crate::{
         auth::NewAuthToken,
     },
     error::{AppError, Result},
-    identity::{NewAccount, TERMS_VERSION, TokenPurpose, VerifyToken, roles::DEFAULT_ROLE},
+    identity::{
+        NewAccount, TERMS_VERSION, TokenPurpose, VerifyToken, roles::DEFAULT_ROLE, validate_email,
+        validate_username,
+    },
     infra::{hash_password, sha256_hex},
     util::time::{DAY, add_ms, now_ms},
 };
@@ -26,6 +29,13 @@ use crate::{
 ///
 /// A taken username is reported as [`AppError::Conflict`].
 pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Result<()> {
+    validate_email(&account.email)
+        .map_err(|message| AppError::invalid("invalid_email", message))?;
+    if let Some(username) = &account.username {
+        validate_username(username)
+            .map_err(|message| AppError::invalid("invalid_username", message))?;
+    }
+
     // Hash before opening the transaction: Argon2 is slow and must not hold
     // SQLite's write lock. It also runs for duplicates, which keeps the
     // expensive part of both paths equally slow.
@@ -50,7 +60,7 @@ pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Res
                 drop(tx); // roll back
                 super::mail::dispatch(
                     state,
-                    super::mail::already_registered(&state.server.public_url, &account.email),
+                    super::mail::already_registered(&state.config.public_url, &account.email),
                 );
                 return Ok(());
             }
@@ -76,10 +86,10 @@ pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Res
     // Send only after commit: never mail a link that failed to persist.
     super::mail::dispatch(
         state,
-        super::mail::verification(&state.server.public_url, &account.email, &verify_token),
+        super::mail::verification(&state.config.public_url, &account.email, &verify_token),
     );
     audit(
-        &state.db,
+        state.db.writer(),
         Some(user_id),
         Some(user_id),
         AuditAction::UserCreated,

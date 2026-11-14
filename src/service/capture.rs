@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
+        Database,
         capture::{self, CaptureAsset, CaptureBlob, CaptureDetail, CaptureId},
         content::{Content, ContentHead},
         page::PageId,
@@ -14,12 +15,12 @@ use crate::{
 };
 
 pub(crate) async fn detail(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: CaptureId,
 ) -> Result<CaptureDetail> {
     actor.require(Permission::ARCHIVE_READ)?;
-    CaptureDetail::load(pool, actor.id, id)
+    CaptureDetail::load(pool.reader(), actor.id, id)
         .await?
         .or_not_found(Resource::Capture)
 }
@@ -34,95 +35,95 @@ pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: CaptureId) -
 }
 
 pub(crate) async fn blob(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: CaptureId,
     blob: CaptureBlob,
 ) -> Result<Content> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Content::for_capture(pool, actor.id, id, blob)
+    Content::for_capture(pool.reader(), actor.id, id, blob)
         .await?
         .or_not_found(Resource::CaptureContent)
 }
 
 pub(crate) async fn page_thumbnail(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     page_id: PageId,
 ) -> Result<Content> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Content::for_page(pool, actor.id, page_id)
+    Content::for_page(pool.reader(), actor.id, page_id)
         .await?
         .or_not_found(Resource::Thumbnail)
 }
 
 /// Latest capture of the page that has `blob`, used for redirects.
 pub(crate) async fn latest_with_blob(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     page_id: PageId,
     blob: CaptureBlob,
 ) -> Result<CaptureId> {
     actor.require(Permission::ARCHIVE_READ)?;
-    blob.latest_capture_id(pool, actor.id, page_id)
+    blob.latest_capture_id(pool.reader(), actor.id, page_id)
         .await?
         .or_not_found(Resource::CaptureContent)
 }
 
 pub(crate) async fn assets(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     capture_id: CaptureId,
 ) -> Result<Vec<CaptureAsset>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Ok(CaptureAsset::list(pool, actor.id, capture_id).await?)
+    Ok(CaptureAsset::list(pool.reader(), actor.id, capture_id).await?)
 }
 
 pub(crate) async fn latest_assets(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     page_id: PageId,
 ) -> Result<Vec<CaptureAsset>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    CaptureAsset::for_latest_capture(pool, actor.id, page_id)
+    CaptureAsset::for_latest_capture(pool.reader(), actor.id, page_id)
         .await?
         .or_not_found(Resource::Page)
 }
 
 pub(crate) async fn asset_blob(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     capture_id: CaptureId,
     content_id: i64,
 ) -> Result<Content> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Content::for_capture_asset(pool, actor.id, capture_id, content_id.into())
+    Content::for_capture_asset(pool.reader(), actor.id, capture_id, content_id.into())
         .await?
         .or_not_found(Resource::Asset)
 }
 
 pub(crate) async fn content(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     hash: &Blake3Hash,
 ) -> Result<Content> {
     actor.require(Permission::ARCHIVE_READ)?;
-    let content = Content::by_hash(pool, hash)
+    let content = Content::by_hash(pool.reader(), hash)
         .await?
         .or_not_found(Resource::Content)?;
-    if !Content::visible_to(pool, actor.id, content.id).await? {
+    if !Content::visible_to(pool.reader(), actor.id, content.id).await? {
         return Err(AppError::NotFound(Resource::Content));
     }
     Ok(content)
 }
 
 pub(crate) async fn content_head(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     hash: &Blake3Hash,
 ) -> Result<ContentHead> {
     actor.require(Permission::ARCHIVE_READ)?;
-    ContentHead::by_hash_visible(pool, actor.id, hash)
+    ContentHead::by_hash_visible(pool.reader(), actor.id, hash)
         .await?
         .or_not_found(Resource::Content)
 }

@@ -12,13 +12,13 @@
     </div>
     {% if can_write %}
     <div class="flex items-center gap-2">
-      <form hx-put="/collections/{{ collection.id }}/sharing" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+      <form hx-put="/collections/{{ collection.id }}/sharing" hx-swap="none" @htmx:after:request="$reload($event)">
         <input type="hidden" name="public" value="{% if collection.public %}false{% else %}true{% endif %}" />
         <button class="btn btn-sm">{% if collection.public %}Make private{% else %}Share{% endif %}</button>
       </form>
       <a href="/collections/{{ collection.id }}/edit" class="btn btn-sm">Edit</a>
       {% if !collection.builtin %}
-      <button type="button" class="btn btn-sm btn-error btn-outline" hx-delete="/collections/{{ collection.id }}" hx-confirm="Delete this collection? Its links become unorganized." hx-swap="none" @htmx:after:request="$ok($event) && (location.href = '/collections')">Delete</button>
+      <button type="button" class="btn btn-sm btn-error btn-outline" hx-delete="/collections/{{ collection.id }}" hx-confirm="Delete this collection? Its links become unorganized." hx-swap="none" @htmx:after:request="$navigate($event, '/collections')">Delete</button>
       {% endif %}
     </div>
     {% endif %}

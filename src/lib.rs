@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 use crate::{
-    app::{AppState, ServerConfig},
+    app::{AppState, RuntimeConfig},
     config::Settings,
     infra::{BlobFiles, Mailer, downloader},
 };
@@ -51,7 +51,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let db = open_database(&settings).await?;
     let shutdown = CancellationToken::new();
-    let cleanup = db::spawn_cleanup(db.clone(), shutdown.clone());
+    let cleanup = db::spawn_cleanup(db.writer().clone(), shutdown.clone());
 
     let state = build_state(&settings, db.clone()).await?;
     service::auth::warm_decoy_hash().await?;
@@ -62,7 +62,7 @@ pub async fn run() -> anyhow::Result<()> {
     if let Err(e) = cleanup.await {
         tracing::warn!("cleanup task failed: {e}");
     }
-    checkpoint(&db).await;
+    checkpoint(db.writer()).await;
     result
 }
 
@@ -76,17 +76,17 @@ fn log_settings(settings: &Settings) {
     );
 }
 
-async fn open_database(settings: &Settings) -> anyhow::Result<SqlitePool> {
-    let db = db::create_pool(&settings.database)
+async fn open_database(settings: &Settings) -> anyhow::Result<db::Database> {
+    let db = db::Database::open(&settings.database)
         .await
         .context("unable to create database")?;
-    db::migrate(&db)
+    db::migrate(db.writer())
         .await
         .context("unable to migrate database")?;
     Ok(db)
 }
 
-async fn build_state(settings: &Settings, db: SqlitePool) -> anyhow::Result<AppState> {
+async fn build_state(settings: &Settings, db: db::Database) -> anyhow::Result<AppState> {
     let blobs = BlobFiles::open(settings.data_dir.join("blobs"), 16 * 1024)
         .await
         .context("cannot create blob store")?;
@@ -101,7 +101,7 @@ async fn build_state(settings: &Settings, db: SqlitePool) -> anyhow::Result<AppS
         .context("unable to create HTTP client")?;
     let mailer =
         Arc::new(Mailer::from_settings(&settings.mail).context("invalid mail configuration")?);
-    let server = Arc::new(ServerConfig {
+    let config = Arc::new(RuntimeConfig {
         public_url: settings.public_base().to_owned(),
         secure_cookie: settings.server.use_secure_cookie(&settings.public_url),
         trusted_proxies: settings.server.trusted_proxies.clone(),
@@ -112,7 +112,7 @@ async fn build_state(settings: &Settings, db: SqlitePool) -> anyhow::Result<AppS
         blobs,
         fetch_client,
         mailer,
-        server,
+        config,
     })
 }
 

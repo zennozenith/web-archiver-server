@@ -83,7 +83,7 @@ pub(super) async fn page(
     State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Render<DashboardTpl>> {
-    let totals = stats(&state.db, user.id).await?;
+    let totals = stats(state.db.reader(), user.id).await?;
     let recent = service::page::list(
         &state,
         &user,

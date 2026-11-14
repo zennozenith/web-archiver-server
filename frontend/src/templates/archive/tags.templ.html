@@ -6,7 +6,7 @@
     <p class="text-sm text-dim">Tags can be renamed or deleted without removing links.</p>
   </div>
   {% if can_write %}
-  <form class="join" hx-post="/tags" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+  <form class="join" hx-post="/tags" hx-swap="none" @htmx:after:request="$reload($event)">
     <input name="name" required class="input input-sm join-item" placeholder="New tag" aria-label="New tag name" />
     <button class="btn btn-primary btn-sm join-item">Add</button>
   </form>

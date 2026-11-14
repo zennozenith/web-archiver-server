@@ -3,7 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use axum::extract::ConnectInfo;
 use http::{HeaderMap, header::USER_AGENT, request::Parts};
 
-use crate::{app::ServerConfig, error::AppError, util::net::Cidr};
+use crate::{app::RuntimeConfig, error::AppError, util::net::Cidr};
 
 /// Who is calling, as far as the server can tell. Stored in the login audit
 /// trail and on sessions.
@@ -27,7 +27,7 @@ impl ClientInfo {
         Self { ip, user_agent }
     }
 
-    pub(crate) fn extract(parts: &Parts, server: &ServerConfig) -> Result<Self, AppError> {
+    pub(crate) fn extract(parts: &Parts, config: &RuntimeConfig) -> Result<Self, AppError> {
         let ConnectInfo(addr) = parts
             .extensions
             .get::<ConnectInfo<SocketAddr>>()
@@ -37,11 +37,16 @@ impl ClientInfo {
         // Only trust forwarding headers when the socket peer itself is a
         // configured proxy. A client connecting directly can forge the header,
         // but its peer address will never match `trusted_proxies`.
-        let ip = if is_trusted_proxy(addr.ip(), &server.trusted_proxies) {
-            forwarded_ip(&parts.headers, &server.trusted_proxies).unwrap_or_else(|| addr.ip())
+        let peer = addr.ip().to_canonical();
+        let ip = if is_trusted_proxy(peer, &config.trusted_proxies) {
+            forwarded_ip(&parts.headers, &config.trusted_proxies).unwrap_or(peer)
         } else {
-            addr.ip()
+            peer
         };
+
+        // Dual-stack sockets report IPv4 peers as `::ffff:a.b.c.d`; canonicalize
+        // once so callers and the audit trail always see plain IPv4.
+        let ip = ip.to_canonical();
 
         let ua = parts.headers.get(USER_AGENT).and_then(|v| v.to_str().ok());
         Ok(Self::new(ip, ua))

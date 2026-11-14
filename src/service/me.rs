@@ -7,7 +7,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        self,
+        self, Database,
         api_key::InsertApiKey,
         audit::{AuditAction, audit},
         permission::PermissionInfo,
@@ -29,10 +29,10 @@ pub(crate) struct Mine {
 
 /// Permissions the actor holds, i.e. the scopes they may put on a new key.
 pub(crate) async fn available_scopes(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
 ) -> Result<Vec<PermissionInfo>> {
-    Ok(db::permission::all(pool)
+    Ok(db::permission::all(pool.reader())
         .await?
         .into_iter()
         .filter(|p| actor.has_scope(&p.name))
@@ -44,15 +44,14 @@ pub(crate) struct Me {
     pub profile: ProfileView,
 }
 
-pub(crate) async fn get_me(pool: &SqlitePool, actor: &AuthUser) -> Result<Me> {
+pub(crate) async fn get_me(pool: &Database, actor: &AuthUser) -> Result<Me> {
     actor.require(Permission::PROFILE_READ)?;
 
-    let (user, profile, sessions, keys) = tokio::try_join!(
-        db::user::find(pool, actor.id),
-        db::profile::find(pool, actor.id),
-        db::session::list_for_user(pool, actor.id),
-        db::api_key::list_for_user(pool, actor.id),
-    )?;
+    let read = pool.reader();
+    let user = db::user::find(read, actor.id).await?;
+    let profile = db::profile::find(read, actor.id).await?;
+    let sessions = db::session::list_for_user(read, actor.id).await?;
+    let keys = db::api_key::list_for_user(read, actor.id).await?;
 
     let mine = Mine {
         user,
@@ -85,8 +84,8 @@ pub(crate) async fn update_profile(
 
 // -------------------------------------------------------------- sessions
 
-pub(crate) async fn list_sessions(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<SessionView>> {
-    let mut sessions = db::session::list_for_user(pool, actor.id).await?;
+pub(crate) async fn list_sessions(pool: &Database, actor: &AuthUser) -> Result<Vec<SessionView>> {
+    let mut sessions = db::session::list_for_user(pool.reader(), actor.id).await?;
     for s in &mut sessions {
         s.current = actor.session_public_id.as_deref() == Some(s.public_id.as_str());
     }
@@ -115,8 +114,8 @@ pub(crate) async fn revoke_session(
 
 // -------------------------------------------------------------- API keys
 
-pub(crate) async fn list_api_keys(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<ApiKeyView>> {
-    Ok(db::api_key::list_for_user(pool, actor.id).await?)
+pub(crate) async fn list_api_keys(pool: &Database, actor: &AuthUser) -> Result<Vec<ApiKeyView>> {
+    Ok(db::api_key::list_for_user(pool.reader(), actor.id).await?)
 }
 
 pub(crate) async fn create_api_key(
@@ -148,7 +147,8 @@ pub(crate) async fn create_api_key(
             expires_at: req.expires_at(now_ms()),
         },
     )
-    .await?;
+    .await
+    .map_err(|e| AppError::unique(e, "that API key already exists"))?;
 
     audit(
         pool,

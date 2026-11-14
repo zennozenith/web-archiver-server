@@ -56,12 +56,12 @@ pub(crate) async fn list(
     query: &PageListQuery,
 ) -> Result<CursorPage<PageItem, PageCursor>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    PageItem::list(&state.db, &query.filter(actor.id)).await
+    PageItem::list(state.db.reader(), &query.filter(actor.id)).await
 }
 
 pub(crate) async fn get(state: &AppState, actor: &AuthUser, id: PageId) -> Result<PageDetail> {
     actor.require(Permission::ARCHIVE_READ)?;
-    PageDetail::load(&state.db, actor.id, id)
+    PageDetail::load(state.db.reader(), actor.id, id)
         .await?
         .or_not_found(Resource::Page)
 }
@@ -69,7 +69,7 @@ pub(crate) async fn get(state: &AppState, actor: &AuthUser, id: PageId) -> Resul
 pub(crate) async fn lookup(state: &AppState, actor: &AuthUser, url: &str) -> Result<PageDetail> {
     actor.require(Permission::ARCHIVE_READ)?;
     let url = page::parse_url(url)?;
-    PageDetail::load_by_url(&state.db, actor.id, &url)
+    PageDetail::load_by_url(state.db.reader(), actor.id, &url)
         .await?
         .or_not_found(Resource::Page)
 }
@@ -115,7 +115,7 @@ pub(crate) async fn delete(state: &AppState, actor: &AuthUser, id: PageId) -> Re
 
 pub(crate) async fn toggle_pin(state: &AppState, actor: &AuthUser, id: PageId) -> Result<bool> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    page::toggle_pinned(&state.db, actor.id, id)
+    page::toggle_pinned(state.db.writer(), actor.id, id)
         .await?
         .or_not_found(Resource::Page)
 }
@@ -146,11 +146,11 @@ pub(crate) async fn captures(
     limit: Option<Limit>,
 ) -> Result<CursorPage<CaptureSummary>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    if !page::exists(&state.db, actor.id, id).await? {
+    if !page::exists(state.db.reader(), actor.id, id).await? {
         return Err(AppError::NotFound(Resource::Page));
     }
     Ok(CaptureSummary::list(
-        &state.db,
+        state.db.reader(),
         actor.id,
         id,
         after,
@@ -207,7 +207,7 @@ pub(crate) async fn highlights(
     id: PageId,
 ) -> Result<Vec<HighlightRecord>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Ok(HighlightRecord::list(&state.db, actor.id, id).await?)
+    Ok(HighlightRecord::list(state.db.reader(), actor.id, id).await?)
 }
 
 pub(crate) async fn add_highlight(
@@ -236,10 +236,10 @@ pub(crate) async fn add_highlight(
         ));
     }
 
-    if !page::exists(&state.db, actor.id, id).await? {
+    if !page::exists(state.db.writer(), actor.id, id).await? {
         return Err(AppError::NotFound(Resource::Page));
     }
-    Ok(HighlightRecord::add(&state.db, actor.id, id, text, color).await?)
+    Ok(HighlightRecord::add(state.db.writer(), actor.id, id, text, color).await?)
 }
 
 pub(crate) async fn update_highlight(
@@ -270,7 +270,7 @@ async fn ensure_collection(
     collection_id: Option<CollectionId>,
 ) -> Result<()> {
     if let Some(collection_id) = collection_id
-        && !CollectionRecord::exists(&state.db, actor.id, collection_id).await?
+        && !CollectionRecord::exists(state.db.writer(), actor.id, collection_id).await?
     {
         return Err(AppError::invalid(
             "invalid_collection",

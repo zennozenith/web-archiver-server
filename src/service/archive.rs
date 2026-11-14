@@ -75,7 +75,7 @@ pub(crate) async fn archive(
         ));
     }
 
-    let page = PageRecord::load(&state.db, actor.id, page_id)
+    let page = PageRecord::load(state.db.writer(), actor.id, page_id)
         .await?
         .or_not_found(Resource::Page)?;
     let page_url = url::Url::parse(&page.url).map_err(AppError::internal)?;

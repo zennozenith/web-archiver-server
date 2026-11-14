@@ -1,7 +1,7 @@
 <article class="link-card rounded-xl border border-line bg-surface" data-search="{{ link.search }}">
   <a href="/links/{{ link.id }}" class="block aspect-video overflow-hidden rounded-t-xl bg-sunken" tabindex="-1" aria-hidden="true">
     {% if link.has_thumbnail %}
-    <img src="{{ link.thumb_url }}" alt="" loading="lazy" class="size-full object-cover" @error="$el.remove()" x-init="if ($el.complete && !$el.naturalWidth) $el.remove()" />
+    <img src="{{ link.thumb_url }}" alt="" loading="lazy" class="size-full object-cover" x-data="imageFallback" x-init="init()" @error="remove()" />
     {% else %}
     <span class="grid size-full place-items-center text-faint">
       <svg viewBox="0 0 24 24" class="size-7" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07"/></svg>
@@ -16,7 +16,7 @@
       <div class="dropdown dropdown-end">
         <button type="button" tabindex="0" class="btn btn-ghost btn-xs btn-square" aria-label="Link actions">⋯</button>
         <ul tabindex="0" class="dropdown-content menu z-20 w-40 rounded-box border border-line bg-surface p-1 shadow-lg">
-          <li><button type="button" hx-post="/links/{{ link.id }}/pin" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">{% if link.pinned %}Unpin{% else %}Pin{% endif %}</button></li>
+          <li><button type="button" hx-post="/links/{{ link.id }}/pin" hx-swap="none" @htmx:after:request="$reload($event)">{% if link.pinned %}Unpin{% else %}Pin{% endif %}</button></li>
           <li><a href="/links/{{ link.id }}">Open</a></li>
           <li><button type="button" class="text-error" hx-delete="/links/{{ link.id }}" hx-confirm="Delete this link?" hx-target="closest .link-card" hx-swap="outerHTML">Delete</button></li>
         </ul>

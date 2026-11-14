@@ -17,5 +17,9 @@ export function registerTagEditor(alpine: Alpine): void {
     cancel() {
       this.editing = false;
     },
+    reload(event: Event) {
+      const status = (event as CustomEvent).detail?.ctx?.response?.status;
+      if (typeof status === "number" && status < 400) location.reload();
+    },
   }));
 }

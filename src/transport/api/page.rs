@@ -9,7 +9,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    app::{AppState, CAPTURE_REQUEST_BYTES, UPLOAD_REQUEST_BYTES},
+    app::{AppState, MAX_CAPTURE_BODY_BYTES, MAX_UPLOAD_BODY_BYTES},
     db::{
         capture::CaptureSummary,
         collection::CollectionId,
@@ -189,7 +189,7 @@ pub(super) fn routes() -> Router<AppState> {
             "/page",
             get(list_pages)
                 .post(create_page)
-                .layer(DefaultBodyLimit::max(UPLOAD_REQUEST_BYTES)),
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
         )
         .route("/page/lookup", get(lookup_page))
         .route(
@@ -197,12 +197,7 @@ pub(super) fn routes() -> Router<AppState> {
             get(get_page).patch(patch_page).delete(delete_page),
         )
         .route("/page/{id}/thumbnail", get(super::capture::get_thumbnail))
-        .route(
-            "/page/{id}/capture",
-            get(list_page_captures)
-                .post(super::archive::archive)
-                .layer(DefaultBodyLimit::max(CAPTURE_REQUEST_BYTES)),
-        )
+        .route("/page/{id}/capture", get(list_page_captures))
         .route("/page/{id}/tag", post(add_page_tag).put(put_page_tags))
         .route("/page/{id}/tag/{tag_id}", delete(remove_page_tag))
         .route(
@@ -217,4 +212,16 @@ pub(super) fn routes() -> Router<AppState> {
             "/page/{id}/latest/screenshot",
             get(super::capture::redirect_latest_screenshot),
         )
+}
+
+/// Long-running capture upload, mounted outside the global request deadline.
+///
+/// The capture pipeline can legitimately take minutes, so it carries its own
+/// timeout and a larger body limit instead of the 30 s default.
+pub(super) fn capture_route() -> Router<AppState> {
+    Router::new().route(
+        "/page/{id}/capture",
+        post(super::archive::archive)
+            .layer(DefaultBodyLimit::max(MAX_CAPTURE_BODY_BYTES)),
+    )
 }

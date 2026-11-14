@@ -2,13 +2,14 @@ use std::{sync::Arc, time::Duration};
 
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, FromRef, State},
-    http::{HeaderName, StatusCode},
-    middleware::from_fn,
+    extract::{DefaultBodyLimit, FromRef, Request, State},
+    http::{HeaderName, HeaderValue, StatusCode, header::RETRY_AFTER},
+    middleware::{Next, from_fn, from_fn_with_state},
+    response::{IntoResponse, Response},
     routing::get,
 };
 use sqlx::SqlitePool;
-use tower::limit::ConcurrencyLimitLayer;
+use tokio::sync::Semaphore;
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     timeout::TimeoutLayer,
@@ -16,6 +17,7 @@ use tower_http::{
 };
 
 use crate::{
+    db::Database,
     infra::{BlobFiles, Mailer},
     transport::{api, asset, security, web},
     util::net::Cidr,
@@ -24,11 +26,15 @@ use crate::{
 /// Small default; upload routes opt into a larger limit explicitly.
 const DEFAULT_REQUEST_BYTES: usize = 2 * 1024 * 1024;
 /// Multipart page forms, which may carry a thumbnail.
-pub(crate) const UPLOAD_REQUEST_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_UPLOAD_BODY_BYTES: usize = 16 * 1024 * 1024;
 /// A full capture plus its screenshot and rewritten document.
-pub(crate) const CAPTURE_REQUEST_BYTES: usize = 64 * 1024 * 1024;
-/// Generous enough for archiving a page and its sub-resources.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+pub(crate) const MAX_CAPTURE_BODY_BYTES: usize = 64 * 1024 * 1024;
+/// Default per-request deadline. Long-running captures opt in to `CAPTURE_TIMEOUT`.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Archiving a page and all of its sub-resources can legitimately take minutes.
+pub(crate) const CAPTURE_TIMEOUT: Duration = Duration::from_secs(300);
+/// `/readyz` must answer quickly even when the pool is saturated.
+const READINESS_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_CONCURRENT_REQUESTS: usize = 512;
 
 const fn request_id_header() -> HeaderName {
@@ -38,7 +44,7 @@ const fn request_id_header() -> HeaderName {
 /// Runtime configuration copied once at startup. Keeping it behind one `Arc`
 /// means a new setting only touches this struct, not every `AppState` field.
 #[derive(Debug)]
-pub(crate) struct ServerConfig {
+pub(crate) struct RuntimeConfig {
     /// Normalized public base URL, without a trailing slash.
     pub public_url: String,
     pub secure_cookie: bool,
@@ -47,7 +53,7 @@ pub(crate) struct ServerConfig {
 
 #[derive(Debug, Clone, FromRef)]
 pub struct AppState {
-    pub db: SqlitePool,
+    pub(crate) db: Database,
     pub blobs: BlobFiles,
     /// Shared client for fetching archived sub-resources.
     pub fetch_client: reqwest::Client,
@@ -55,7 +61,14 @@ pub struct AppState {
     #[from_ref(skip)]
     pub(crate) mailer: Arc<Mailer>,
     #[from_ref(skip)]
-    pub(crate) server: Arc<ServerConfig>,
+    pub(crate) config: Arc<RuntimeConfig>,
+}
+
+/// Extractors that ask for a bare `SqlitePool` get the single-writer pool.
+impl FromRef<AppState> for SqlitePool {
+    fn from_ref(state: &AppState) -> Self {
+        state.db.writer().clone()
+    }
 }
 
 async fn healthz() -> &'static str {
@@ -63,16 +76,38 @@ async fn healthz() -> &'static str {
 }
 
 async fn readyz(State(state): State<AppState>) -> (StatusCode, &'static str) {
-    match sqlx::query_scalar::<_, i64>("SELECT 1")
-        .fetch_one(&state.db)
-        .await
-    {
-        Ok(_) => (StatusCode::OK, "ok"),
-        Err(e) => {
+    let probe = sqlx::query_scalar::<_, i64>("SELECT 1").fetch_one(state.db.reader());
+    match tokio::time::timeout(READINESS_TIMEOUT, probe).await {
+        Ok(Ok(_)) => (StatusCode::OK, "ok"),
+        Ok(Err(e)) => {
             tracing::warn!("readiness check failed: {e}");
             (StatusCode::SERVICE_UNAVAILABLE, "unavailable")
         }
+        Err(_) => {
+            tracing::warn!("readiness check timed out");
+            (StatusCode::SERVICE_UNAVAILABLE, "unavailable")
+        }
     }
+}
+
+/// Shed excess requests instead of letting them queue indefinitely. Probes are
+/// mounted outside this layer so they keep answering under saturation.
+async fn shed_requests(
+    State(semaphore): State<Arc<Semaphore>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let Ok(permit) = semaphore.try_acquire_owned() else {
+        let mut response = (StatusCode::SERVICE_UNAVAILABLE, "server busy").into_response();
+        response
+            .headers_mut()
+            .insert(RETRY_AFTER, HeaderValue::from_static("1"));
+        return response;
+    };
+
+    let response = next.run(req).await;
+    drop(permit);
+    response
 }
 
 pub(super) fn app(state: AppState) -> Router {
@@ -82,19 +117,35 @@ pub(super) fn app(state: AppState) -> Router {
         .route("/readyz", get(readyz))
         .with_state(state.clone());
 
-    let request_id = request_id_header();
-    let app = Router::new()
+    // Normal routes share the short default deadline.
+    let normal = Router::new()
         .nest("/api", api::router())
         .merge(web::router())
         .merge(asset::router())
-        .layer(TraceLayer::new_for_http())
-        .layer(PropagateRequestIdLayer::new(request_id.clone()))
-        .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             REQUEST_TIMEOUT,
+        ));
+
+    // Capture uploads can legitimately run for minutes; keep them outside the
+    // default deadline and give the group its own longer one.
+    let long_running = Router::new()
+        .nest("/api", api::long_running())
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            CAPTURE_TIMEOUT,
+        ));
+
+    let request_id = request_id_header();
+    let app = normal
+        .merge(long_running)
+        .layer(TraceLayer::new_for_http())
+        .layer(PropagateRequestIdLayer::new(request_id.clone()))
+        .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
+        .layer(from_fn_with_state(
+            Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
+            shed_requests,
         ))
-        .layer(ConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS))
         .layer(DefaultBodyLimit::max(DEFAULT_REQUEST_BYTES))
         .with_state(state);
 
@@ -106,24 +157,25 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt as _;
-    use sqlx::sqlite::SqlitePoolOptions;
     use tower::ServiceExt as _;
 
     use super::*;
     use crate::{
-        config::MailSettings,
+        config::{DatabaseSettings, MailSettings},
         db,
         infra::{BlobFiles, Mailer, downloader},
         util::time::now_ms,
     };
 
     async fn test_state() -> AppState {
-        let db = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
+        let settings = DatabaseSettings {
+            url: "sqlite::memory:".into(),
+            ..DatabaseSettings::default()
+        };
+        let db = db::Database::open(&settings)
             .await
             .expect("in-memory sqlite");
-        db::migrate(&db).await.expect("migrations");
+        db::migrate(db.writer()).await.expect("migrations");
 
         let blob_dir = std::env::temp_dir().join(format!(
             "web-archiver-test-{}-{}",
@@ -133,7 +185,7 @@ mod tests {
         let blobs = BlobFiles::open(blob_dir, 1024).await.expect("blob store");
         let fetch_client = downloader::client_builder().build().expect("http client");
         let mailer = Arc::new(Mailer::from_settings(&MailSettings::default()).expect("mailer"));
-        let server = Arc::new(ServerConfig {
+        let config = Arc::new(RuntimeConfig {
             public_url: "http://localhost".to_owned(),
             secure_cookie: false,
             trusted_proxies: Vec::new(),
@@ -144,7 +196,7 @@ mod tests {
             blobs,
             fetch_client,
             mailer,
-            server,
+            config,
         }
     }
 

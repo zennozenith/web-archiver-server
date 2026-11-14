@@ -35,6 +35,13 @@ pub(crate) enum FetchError {
     Empty,
 }
 
+/// Rebuild an IPv4 address from two consecutive IPv6 segments.
+const fn embedded_v4(hi: u16, lo: u16) -> std::net::Ipv4Addr {
+    let [a, b] = hi.to_be_bytes();
+    let [c, d] = lo.to_be_bytes();
+    std::net::Ipv4Addr::new(a, b, c, d)
+}
+
 /// True only for globally routable unicast addresses. Everything special-use
 /// (loopback, private, link-local, CGNAT, documentation, ...) is rejected.
 pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
@@ -66,30 +73,29 @@ pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
             let segments = ip.segments();
 
             // 2002::/16 (6to4) embeds an IPv4 address in bits 16..48.
-            // 64:ff9b::/96 (NAT64) embeds one in the last 32 bits. Either can
-            // smuggle a private IPv4 address past a naive IPv6 check.
             if segments[0] == 0x2002 {
-                let embedded = std::net::Ipv4Addr::new(
-                    u8::try_from(segments[1] >> 8).unwrap_or_default(),
-                    u8::try_from(segments[1] & 0x00ff).unwrap_or_default(),
-                    u8::try_from(segments[2] >> 8).unwrap_or_default(),
-                    u8::try_from(segments[2] & 0x00ff).unwrap_or_default(),
-                );
-                return is_public_ip(IpAddr::V4(embedded));
+                return is_public_ip(IpAddr::V4(embedded_v4(segments[1], segments[2])));
             }
-            if segments[0] == 0x0064
-                && segments[1] == 0xff9b
-                && segments[2] == 0
-                && segments[3] == 0
-                && segments[4] == 0
-                && segments[5] == 0
-            {
-                let embedded = std::net::Ipv4Addr::new(
-                    u8::try_from(segments[6] >> 8).unwrap_or_default(),
-                    u8::try_from(segments[6] & 0x00ff).unwrap_or_default(),
-                    u8::try_from(segments[7] >> 8).unwrap_or_default(),
-                    u8::try_from(segments[7] & 0x00ff).unwrap_or_default(),
-                );
+
+            // 64:ff9b::/96 (well-known) and 64:ff9b:1::/48 (local-use) NAT64
+            // prefixes embed an IPv4 address that can smuggle a private target
+            // past a naive IPv6 check.
+            if segments[0] == 0x0064 && segments[1] == 0xff9b {
+                let embedded = match segments[2] {
+                    // 64:ff9b::/96: IPv4 is in the last 32 bits.
+                    0 if segments[3..6].iter().all(|s| *s == 0) => {
+                        embedded_v4(segments[6], segments[7])
+                    }
+                    // 64:ff9b:1::/48: RFC 6052 /48 layout splits the IPv4
+                    // octets around the reserved `u` octet.
+                    1 => {
+                        let [a, b] = segments[3].to_be_bytes();
+                        let [_, c] = segments[4].to_be_bytes();
+                        let [d, _] = segments[5].to_be_bytes();
+                        std::net::Ipv4Addr::new(a, b, c, d)
+                    }
+                    _ => return false,
+                };
                 return is_public_ip(IpAddr::V4(embedded));
             }
 
@@ -276,9 +282,12 @@ mod tests {
         // 6to4 wrapping 10.0.0.1 and NAT64 wrapping 192.168.1.1.
         assert!(!public("2002:0a00:0001::1"));
         assert!(!public("64:ff9b::c0a8:0101"));
+        // Local-use NAT64 (64:ff9b:1::/48) uses the RFC 6052 /48 layout.
+        assert!(!public("64:ff9b:1:c0a8:1:100::"));
         // Public embedded addresses remain public.
         assert!(public("2002:0808:0808::1"));
         assert!(public("64:ff9b::808:808"));
+        assert!(public("64:ff9b:1:808:8:800::"));
     }
 
     #[test]

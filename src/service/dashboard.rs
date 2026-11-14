@@ -2,11 +2,9 @@
 //! everyone gets "your account"; `users:read` adds user counts and newest
 //! sign-ups; `audit:read` adds security counters and recent events.
 
-use sqlx::SqlitePool;
-
 use crate::{
     db::{
-        self,
+        self, Database,
         stats::{DayCount, SecurityCounts, UserCounts},
     },
     error::{AppError, ForbiddenReason, Result},
@@ -29,31 +27,32 @@ pub(crate) struct Overview {
     pub recent_audit: Vec<AuditEntry>,
 }
 
-pub(crate) async fn overview(pool: &SqlitePool, actor: &AuthUser) -> Result<Overview> {
+pub(crate) async fn overview(pool: &Database, actor: &AuthUser) -> Result<Overview> {
     if !actor.is_super_admin() {
         return Err(AppError::Forbidden(ForbiddenReason::MissingPermission));
     }
 
+    let read = pool.reader();
     let now = now_ms();
-    let user = db::user::find(pool, actor.id).await?;
+    let user = db::user::find(read, actor.id).await?;
 
     let (users, recent_users) = if actor.can(Permission::USERS_READ) {
-        let counts = db::stats::user_counts(pool, now).await?;
+        let counts = db::stats::user_counts(read, now).await?;
         let filter = UserFilter {
             limit: RECENT,
             offset: 0,
             ..UserFilter::new(None, None, None, None)?
         };
-        let recent = db::user::search(pool, &filter).await?;
+        let recent = db::user::search(read, &filter).await?;
         (Some(counts), recent)
     } else {
         (None, Vec::new())
     };
 
     let (security, recent_audit) = if actor.can(Permission::AUDIT_READ) {
-        let counts = db::stats::security_counts(pool, now).await?;
-        let days = db::stats::login_days(pool).await?;
-        let recent = db::audit::list(pool, RECENT).await?;
+        let counts = db::stats::security_counts(read, now).await?;
+        let days = db::stats::login_days(read).await?;
+        let recent = db::audit::list(read, RECENT).await?;
         (Some(Security { counts, days }), recent)
     } else {
         (None, Vec::new())

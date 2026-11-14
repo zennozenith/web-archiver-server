@@ -9,7 +9,7 @@
     {% if can_write %}
     <details class="dropdown dropdown-end">
       <summary class="btn btn-primary btn-sm">Save a link</summary>
-      <form class="dropdown-content z-20 mt-2 w-80 rounded-box border border-line bg-surface p-4 shadow-xl" hx-post="/links" hx-encoding="multipart/form-data" hx-swap="none" @htmx:after:request="$ok($event) && location.reload()">
+      <form class="dropdown-content z-20 mt-2 w-80 rounded-box border border-line bg-surface p-4 shadow-xl" hx-post="/links" hx-encoding="multipart/form-data" hx-swap="none" @htmx:after:request="$reload($event)">
         <fieldset class="fieldset"><legend class="fieldset-legend">URL</legend><input name="url" type="url" required class="input w-full" placeholder="https://example.com" /></fieldset>
         <fieldset class="fieldset"><legend class="fieldset-legend">Title</legend><input name="displayTitle" required class="input w-full" /></fieldset>
         <fieldset class="fieldset"><legend class="fieldset-legend">Collection</legend>

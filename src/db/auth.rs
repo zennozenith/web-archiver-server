@@ -469,6 +469,27 @@ pub(crate) async fn insert_pending_user(
     .await
 }
 
+/// Inserts an already-verified, active account (operator CLI).
+pub(crate) async fn insert_active_user(
+    conn: &mut SqliteConnection,
+    email: &str,
+    username: Option<&str>,
+    now: i64,
+    status_reason: &str,
+) -> sqlx::Result<(i64, String)> {
+    sqlx::query_as(
+        "INSERT INTO users (email, email_verified_at, username, status, status_reason)
+         VALUES (?, ?, ?, 'active', ?)
+         RETURNING id, public_id",
+    )
+    .bind(email)
+    .bind(now)
+    .bind(username)
+    .bind(status_reason)
+    .fetch_one(conn)
+    .await
+}
+
 pub(crate) async fn set_display_name(
     conn: &mut SqliteConnection,
     user_id: i64,

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{ops::Deref, path::Path, time::Duration};
 
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use tokio::task::JoinHandle;
@@ -32,12 +32,75 @@ pub(crate) mod stats;
 pub(crate) mod tag;
 pub(crate) mod user;
 
+/// SQLite pools split by access pattern.
+///
+/// WAL lets readers run concurrently with the single writer, so mutations go
+/// through a one-connection write pool while reads use a larger pool. Both
+/// point at the same database file. In-memory URLs get one shared pool because
+/// separate connections would see separate databases.
+#[derive(Debug, Clone)]
+pub(crate) struct Database {
+    write: SqlitePool,
+    read: SqlitePool,
+}
+
+impl Database {
+    pub(crate) async fn open(settings: &DatabaseSettings) -> Result<Self, sqlx::Error> {
+        let options = settings.connect_options()?;
+        // `create_if_missing` creates the file, not its parent directory.
+        if let Some(parent) = parent_dir(&options) {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(sqlx::Error::Io)?;
+        }
+
+        let filename = options.get_filename();
+        let in_memory = filename == Path::new(":memory:") || settings.url.contains("mode=memory");
+
+        if in_memory {
+            // A second connection to `:memory:` would open a different database,
+            // so both handles share the same single-connection pool.
+            let mut shared = settings.clone();
+            shared.max_connections = 1;
+            let pool = create_pool(&shared).await?;
+            return Ok(Self {
+                write: pool.clone(),
+                read: pool,
+            });
+        }
+
+        let mut write_settings = settings.clone();
+        write_settings.max_connections = 1;
+        let write = create_pool(&write_settings).await?;
+        let read = create_pool(settings).await?;
+        Ok(Self { write, read })
+    }
+
+    /// The single-writer pool. Mutations and transactions must use this.
+    pub(crate) const fn writer(&self) -> &SqlitePool {
+        &self.write
+    }
+
+    /// Read-only queries may run here concurrently with a writer.
+    pub(crate) const fn reader(&self) -> &SqlitePool {
+        &self.read
+    }
+}
+
+/// Deref to the writer so existing write paths keep working unchanged.
+impl Deref for Database {
+    type Target = SqlitePool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.write
+    }
+}
+
 pub(crate) async fn create_pool(
     database_settings: &DatabaseSettings,
 ) -> Result<SqlitePool, sqlx::Error> {
-    // `create_if_missing` creates the file, not its parent directory.
     let options = database_settings.connect_options()?;
-    if let Some(parent) = DatabaseSettings::parent_dir(&options) {
+    if let Some(parent) = parent_dir(&options) {
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(sqlx::Error::Io)?;
@@ -53,6 +116,15 @@ pub(crate) async fn create_pool(
         .await?;
 
     Ok(pool)
+}
+
+/// Parent directory of the database file, unless this is an in-memory URL.
+fn parent_dir(options: &sqlx::sqlite::SqliteConnectOptions) -> Option<&Path> {
+    let filename = options.get_filename();
+    if filename == Path::new(":memory:") {
+        return None;
+    }
+    filename.parent().filter(|p| !p.as_os_str().is_empty())
 }
 
 /// Apply all migrations in ./migrations (embedded into the binary at compile time).

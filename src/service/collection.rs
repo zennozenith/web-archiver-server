@@ -3,7 +3,10 @@
 use sqlx::SqlitePool;
 
 use crate::{
-    db::collection::{CollectionId, CollectionInput, CollectionRecord},
+    db::{
+        Database,
+        collection::{CollectionId, CollectionInput, CollectionRecord},
+    },
     error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
 };
@@ -41,18 +44,18 @@ impl CollectionFields {
     }
 }
 
-pub(crate) async fn list(pool: &SqlitePool, actor: &AuthUser) -> Result<Vec<CollectionRecord>> {
+pub(crate) async fn list(pool: &Database, actor: &AuthUser) -> Result<Vec<CollectionRecord>> {
     actor.require(Permission::ARCHIVE_READ)?;
-    Ok(CollectionRecord::list(pool, actor.id).await?)
+    Ok(CollectionRecord::list(pool.reader(), actor.id).await?)
 }
 
 pub(crate) async fn get(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: CollectionId,
 ) -> Result<CollectionRecord> {
     actor.require(Permission::ARCHIVE_READ)?;
-    CollectionRecord::load(pool, actor.id, id)
+    CollectionRecord::load(pool.reader(), actor.id, id)
         .await?
         .or_not_found(Resource::Collection)
 }
@@ -107,15 +110,15 @@ pub(crate) async fn set_public(
 }
 
 /// Public collection metadata. No sign-in required; only public rows are visible.
-pub(crate) async fn public(pool: &SqlitePool, id: CollectionId) -> Result<CollectionRecord> {
-    CollectionRecord::load_public(pool, id)
+pub(crate) async fn public(pool: &Database, id: CollectionId) -> Result<CollectionRecord> {
+    CollectionRecord::load_public(pool.reader(), id)
         .await?
         .or_not_found(Resource::PublicCollection)
 }
 
 /// A public collection together with its links. No sign-in required.
 pub(crate) async fn public_links(
-    pool: &SqlitePool,
+    pool: &Database,
     id: CollectionId,
     limit: crate::util::limit::Limit,
 ) -> Result<(CollectionRecord, Vec<crate::db::page::PageItem>)> {
@@ -126,6 +129,6 @@ pub(crate) async fn public_links(
         limit,
         ..Default::default()
     };
-    let items = crate::db::page::PageItem::list(pool, &filter).await?;
+    let items = crate::db::page::PageItem::list(pool.reader(), &filter).await?;
     Ok((record, items.items))
 }

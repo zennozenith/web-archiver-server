@@ -104,3 +104,10 @@ pub(crate) fn router() -> Router<AppState> {
 
     Router::new().route("/health", get(misc::health)).merge(api)
 }
+
+/// Routes that intentionally exceed the default request deadline.
+///
+/// They are mounted outside the global timeout layer by [`crate::app::app`].
+pub(crate) fn long_running() -> Router<AppState> {
+    Router::new().merge(page::capture_route())
+}

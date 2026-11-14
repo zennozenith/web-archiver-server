@@ -1,4 +1,4 @@
-import Alpine from "alpinejs";
+import Alpine from "@alpinejs/csp";
 
 import { registerLinkView } from "./alpine/link-view";
 import { registerMagics } from "./alpine/magics";
@@ -7,6 +7,7 @@ import { registerReader } from "./alpine/reader";
 import { registerTagEditor } from "./alpine/tag-editor";
 import { registerTheme } from "./alpine/theme";
 import { registerToasts } from "./alpine/toasts";
+import { registerUi } from "./alpine/ui";
 
 registerMagics(Alpine);
 registerTheme(Alpine);
@@ -15,31 +16,30 @@ registerTagEditor(Alpine);
 registerPageFilter(Alpine);
 registerLinkView(Alpine);
 registerReader(Alpine);
+registerUi(Alpine);
 
 declare global {
   interface Window {
     Alpine: typeof Alpine;
     htmx: any;
-    setTheme: any;
   }
 }
+
+// Apply the persisted theme before Alpine starts to avoid a flash of the default.
+(() => {
+  try {
+    const theme = localStorage.getItem("userdemo-theme");
+    if (theme) document.documentElement.setAttribute("data-theme", theme);
+  } catch {
+    /* private mode */
+  }
+})();
+
 window.Alpine = Alpine;
 Alpine.start();
 
 // tiny client-side helpers (theme + local timestamps).
 (() => {
-  const THEME_KEY = "userdemo-theme";
-
-  // Used by the theme toggle in base.html (Alpine).
-  window.setTheme = (name: any) => {
-    document.documentElement.setAttribute("data-theme", name);
-    try {
-      localStorage.setItem(THEME_KEY, name);
-    } catch (_) {
-      /* private mode */
-    }
-  };
-
   // The server renders timestamps in UTC; show them in the viewer's time zone.
   const format = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -63,4 +63,12 @@ Alpine.start();
     window.htmx.onLoad(localize);
   }
   document.addEventListener("htmx:after:swap", () => localize(document));
+
+  // Keep "Go back" links working without an inline `javascript:` URL.
+  document.addEventListener("click", (event) => {
+    const target = (event.target as Element | null)?.closest("[data-back]");
+    if (!target) return;
+    event.preventDefault();
+    history.back();
+  });
 })();

@@ -10,7 +10,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    app::{AppState, UPLOAD_REQUEST_BYTES},
+    app::{AppState, MAX_UPLOAD_BODY_BYTES},
     db::{
         collection::CollectionId,
         page::{PageId, UpdatePage},
@@ -326,7 +326,7 @@ pub(super) fn router() -> Router<AppState> {
             "/links",
             get(index)
                 .post(create)
-                .layer(DefaultBodyLimit::max(UPLOAD_REQUEST_BYTES)),
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
         )
         .route("/links/search", get(search))
         .route("/links/pinned", get(pinned))
@@ -336,7 +336,7 @@ pub(super) fn router() -> Router<AppState> {
             get(detail)
                 .put(update)
                 .delete(remove)
-                .layer(DefaultBodyLimit::max(UPLOAD_REQUEST_BYTES)),
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD_BODY_BYTES)),
         )
         .route("/links/{id}/pin", post(pin))
         .route("/links/{id}/highlights", post(add_highlight))

@@ -4,13 +4,13 @@ pub(crate) use smtp::SmtpMailer;
 use crate::config::MailSettings;
 
 pub(crate) trait MailTransport: Send + Sync + 'static {
-    async fn send(&self, message: Message) -> Result<(), MailError>;
+    async fn send(&self, message: OutgoingMail) -> Result<(), MailError>;
 }
 
 /// A ready-to-send e-mail. Plain text only; add `html: Option<String>` when
 /// you have templates.
 #[derive(Debug, Clone)]
-pub(crate) struct Message {
+pub(crate) struct OutgoingMail {
     pub to: String,
     pub subject: String,
     pub text: String,
@@ -48,7 +48,7 @@ impl Mailer {
 }
 
 impl MailTransport for Mailer {
-    async fn send(&self, message: Message) -> Result<(), MailError> {
+    async fn send(&self, message: OutgoingMail) -> Result<(), MailError> {
         match self {
             Self::Log(log_mailer) => log_mailer.send(message).await,
             Self::Smtp(smtp_mailer) => smtp_mailer.send(message).await,
@@ -57,7 +57,7 @@ impl MailTransport for Mailer {
 }
 
 mod log {
-    use super::{MailError, MailTransport, Message};
+    use super::{MailError, MailTransport, OutgoingMail};
 
     /// Prints mail to the log instead of sending it. Development only: bodies
     /// contain live tokens.
@@ -66,7 +66,7 @@ mod log {
 
     impl MailTransport for LogMailer {
         #[expect(clippy::unused_async_trait_impl, reason = "keeps the trait uniform")]
-        async fn send(&self, m: Message) -> Result<(), MailError> {
+        async fn send(&self, m: OutgoingMail) -> Result<(), MailError> {
             tracing::info!(
                 "[dev e-mail] to={} subject={:?}\n{}",
                 m.to,
@@ -89,7 +89,7 @@ mod smtp {
 
     use crate::config::SmtpSettings;
 
-    use super::{MailError, MailTransport, Message};
+    use super::{MailError, MailTransport, OutgoingMail};
 
     #[derive(Debug)]
     pub(crate) struct SmtpMailer {
@@ -120,7 +120,7 @@ mod smtp {
     }
 
     impl MailTransport for SmtpMailer {
-        async fn send(&self, m: Message) -> Result<(), MailError> {
+        async fn send(&self, m: OutgoingMail) -> Result<(), MailError> {
             let to: Mailbox = m.to.parse().map_err(|_| MailError::Address(m.to.clone()))?;
             let email = LettreMessage::builder()
                 .from(self.from.clone())

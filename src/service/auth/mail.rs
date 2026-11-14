@@ -3,11 +3,11 @@ use secrecy::ExposeSecret as _;
 use crate::{
     AppState,
     identity::{ResetToken, VerifyToken},
-    infra::{MailTransport as _, mailer::Message},
+    infra::{MailTransport as _, mailer::OutgoingMail},
 };
 
-pub(super) fn verification(public_url: &str, to: &str, token: &VerifyToken) -> Message {
-    Message {
+pub(super) fn verification(public_url: &str, to: &str, token: &VerifyToken) -> OutgoingMail {
+    OutgoingMail {
         to: to.to_owned(),
         subject: "Verify your e-mail address".into(),
         text: format!(
@@ -22,8 +22,8 @@ pub(super) fn verification(public_url: &str, to: &str, token: &VerifyToken) -> M
 /// Sent when someone registers with an address that already has an account.
 /// This is the only signal the real owner gets, since the registration form
 /// answers identically in both cases.
-pub(super) fn already_registered(public_url: &str, to: &str) -> Message {
-    Message {
+pub(super) fn already_registered(public_url: &str, to: &str) -> OutgoingMail {
+    OutgoingMail {
         to: to.to_owned(),
         subject: "You already have an account".into(),
         text: format!(
@@ -35,8 +35,8 @@ pub(super) fn already_registered(public_url: &str, to: &str) -> Message {
     }
 }
 
-pub(super) fn password_reset(public_url: &str, to: &str, token: &ResetToken) -> Message {
-    Message {
+pub(super) fn password_reset(public_url: &str, to: &str, token: &ResetToken) -> OutgoingMail {
+    OutgoingMail {
         to: to.to_owned(),
         subject: "Reset your password".into(),
         text: format!(
@@ -52,7 +52,7 @@ pub(super) fn password_reset(public_url: &str, to: &str, token: &ResetToken) -> 
 /// Sends in the background. A mail failure is logged, never returned: the
 /// token is already saved, and a visible failure would also reveal whether
 /// an address has an account.
-pub(super) fn dispatch(state: &AppState, message: Message) {
+pub(super) fn dispatch(state: &AppState, message: OutgoingMail) {
     let mailer = std::sync::Arc::<crate::infra::mailer::Mailer>::clone(&state.mailer);
     tokio::spawn(async move {
         let to = message.to.clone();
