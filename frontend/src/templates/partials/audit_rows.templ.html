@@ -7,9 +7,7 @@
   <td class="text-sm">{{ a.actor }}</td>
   <td class="text-sm">{{ a.target }}</td>
   <td class="max-w-xs">
-    <code class="block truncate font-data text-xs text-dim" title="{{ a.details }}"
-      >{{ a.details }}</code
-    >
+    <code class="block truncate font-data text-xs text-dim" title="{{ a.details }}">{{ a.details }}</code>
   </td>
 </tr>
 {% endfor %} {% if audit.rows.is_empty() %}

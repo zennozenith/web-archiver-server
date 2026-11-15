@@ -19,8 +19,9 @@
     </div>
     <div class="mt-4 flex flex-wrap gap-1.5">
       <span class="badge badge-soft {{ me.status_class }}">{{ me.status }}</span>
-      {% for r in me.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{%
-      endfor %}
+      {% for r in me.roles %}
+      <span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>
+      {% endfor %}
     </div>
     <dl class="mt-5 space-y-3 text-sm">
       <div>
@@ -52,12 +53,7 @@
     <form class="mt-3 space-y-3" hx-put="/account/profile">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Display name</legend>
-        <input
-          class="input w-full"
-          name="display_name"
-          value="{{ profile.display_name }}"
-          maxlength="80"
-        />
+        <input class="input w-full" name="display_name" value="{{ profile.display_name }}" maxlength="80" />
       </fieldset>
       <div class="grid gap-3 sm:grid-cols-2">
         <fieldset class="fieldset">
@@ -72,12 +68,7 @@
       <div class="grid gap-3 sm:grid-cols-3">
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Birth date</legend>
-          <input
-            class="input w-full"
-            type="date"
-            name="birth_date"
-            value="{{ profile.birth_date }}"
-          />
+          <input class="input w-full" type="date" name="birth_date" value="{{ profile.birth_date }}" />
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Locale</legend>
@@ -85,18 +76,12 @@
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Time zone</legend>
-          <input
-            class="input w-full"
-            name="timezone"
-            value="{{ profile.timezone }}"
-            placeholder="UTC"
-          />
+          <input class="input w-full" name="timezone" value="{{ profile.timezone }}" placeholder="UTC" />
         </fieldset>
       </div>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Bio</legend>
-        <textarea class="textarea h-24 w-full" name="bio" maxlength="500">
-{{ profile.bio }}</textarea>
+        <textarea class="textarea h-24 w-full" name="bio" maxlength="500">{{ profile.bio }}</textarea>
       </fieldset>
       <div class="flex justify-end">
         <button class="btn btn-primary" type="submit">

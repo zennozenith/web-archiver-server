@@ -198,8 +198,7 @@ export const links = [
     collectionId: 4,
     tagNames: ["reading"],
     date: "Oct 28, 2026",
-    description:
-      "Roasted tomatoes, a little garlic, and a lot of patience. The trick is to blend only half the pot.",
+    description: "Roasted tomatoes, a little garlic, and a lot of patience. The trick is to blend only half the pot.",
   }),
   link({
     id: 107,
@@ -218,14 +217,12 @@ export const links = [
     collectionId: 2,
     tagNames: ["rust", "reading"],
     date: "Oct 22, 2026",
-    description:
-      "What EXPLAIN tells you, what it hides, and how to use it to find the missing index without guessing.",
+    description: "What EXPLAIN tells you, what it hides, and how to use it to find the missing index without guessing.",
   }),
 ];
 
 const linksForCollection = (id) => links.filter((entry) => entry.collection_id === id);
-const linksForTag = (name) =>
-  links.filter((entry) => entry.tags.some((entryTag) => entryTag.name === name));
+const linksForTag = (name) => links.filter((entry) => entry.tags.some((entryTag) => entryTag.name === name));
 
 export const stats = {
   pages: 128,
@@ -387,8 +384,7 @@ export const archivePages = [
     display_title: "A field guide to CSS container queries",
     url: "https://example.com/css-container-queries",
     host: "example.com",
-    search:
-      "a field guide to css container queries https://example.com/css-container-queries css frontend design",
+    search: "a field guide to css container queries https://example.com/css-container-queries css frontend design",
     pinned: false,
     last_captured: "1 day ago",
     capture_count: 1,
@@ -546,11 +542,7 @@ export function collectionFormPage(editing, id = 1) {
 export function pendingPage(status = null) {
   const filtered = status
     ? pendingItems.filter((entry) =>
-        status === "queued"
-          ? entry.is_queued
-          : status === "in_progress"
-            ? entry.in_progress
-            : entry.is_failed,
+        status === "queued" ? entry.is_queued : status === "in_progress" ? entry.in_progress : entry.is_failed,
       )
     : pendingItems;
 

@@ -1,9 +1,7 @@
 {% extends "base.templ.html" %} {% block content %}
 <div class="mb-6">
   <h1 class="font-display text-2xl font-semibold">Welcome back, {{ mine_name }}</h1>
-  <p class="text-sm text-dim">
-    A quick read on your account and, if you have access, the whole system.
-  </p>
+  <p class="text-sm text-dim">A quick read on your account and, if you have access, the whole system.</p>
 </div>
 
 <div class="grid gap-5 lg:grid-cols-3">
@@ -43,9 +41,7 @@
   </section>
   {% endif %}
 
-  <section
-    class="rounded-xl border border-line bg-surface p-5{% if users.is_none() %} lg:col-span-3{% endif %}"
-  >
+  <section class="rounded-xl border border-line bg-surface p-5{% if users.is_none() %} lg:col-span-3{% endif %}">
     <h2 class="text-sm font-semibold text-dim">TODO</h2>
   </section>
 
@@ -55,12 +51,8 @@
       <div>
         <h2 class="text-sm font-semibold text-dim">Sign-ins, last 7 days</h2>
         <p class="mt-1 flex items-center gap-4 text-xs text-dim">
-          <span class="flex items-center gap-1.5"
-            ><span class="seg-dot bar-ok"></span>successful</span
-          >
-          <span class="flex items-center gap-1.5"
-            ><span class="seg-dot bar-fail"></span>failed</span
-          >
+          <span class="flex items-center gap-1.5"><span class="seg-dot bar-ok"></span>successful</span>
+          <span class="flex items-center gap-1.5"><span class="seg-dot bar-fail"></span>failed</span>
         </p>
       </div>
       <dl class="flex gap-6 text-sm">
@@ -80,10 +72,7 @@
     </div>
     <div class="mt-5 grid grid-cols-7 gap-3">
       {% for d in sec.days %}
-      <div
-        class="flex flex-col items-center gap-2"
-        title="{{ d.label }}: {{ d.ok }} successful, {{ d.failed }} failed"
-      >
+      <div class="flex flex-col items-center gap-2" title="{{ d.label }}: {{ d.ok }} successful, {{ d.failed }} failed">
         <div class="flex h-32 w-full flex-col justify-end overflow-hidden rounded-md bg-sunken">
           <div class="bar-fail" style="height: {{ d.failed_height }}%"></div>
           <div class="bar-ok" style="height: {{ d.ok_height }}%"></div>
@@ -128,9 +117,7 @@
         <span class="badge badge-soft badge-sm {{ a.class }}">{{ a.action }}</span>
         <span>{{ a.actor }}</span>
         <span class="text-dim">→ {{ a.target }}</span>
-        <time class="ml-auto text-xs text-dim" datetime="{{ a.when.iso }}" data-local
-          >{{ a.when.text }}</time
-        >
+        <time class="ml-auto text-xs text-dim" datetime="{{ a.when.iso }}" data-local>{{ a.when.text }}</time>
       </li>
       {% endfor %}
     </ul>

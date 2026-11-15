@@ -141,10 +141,7 @@ function tokenize(source, file) {
 
 function unquote(value) {
   const text = value.trim();
-  if (
-    (text.startsWith('"') && text.endsWith('"')) ||
-    (text.startsWith("'") && text.endsWith("'"))
-  ) {
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
     return text.slice(1, -1);
   }
   return text;
@@ -435,8 +432,7 @@ function rewriteHtml(html, outputFile) {
   // Vite emits `/static/vite/...` because the server mounts the bundle there.
   html = html.replace(
     /\b(href|src)="\/static\/vite\/([^"]*)"/g,
-    (_match, attribute, rest) =>
-      `${attribute}="${relative(path.posix.join("static", "vite", rest))}"`,
+    (_match, attribute, rest) => `${attribute}="${relative(path.posix.join("static", "vite", rest))}"`,
   );
 
   // Root-relative navigation links become links to the generated route files.
@@ -701,9 +697,7 @@ function main() {
   fs.rmSync(path.join(viteOut, "src"), { recursive: true, force: true });
   fs.rmSync(path.join(viteOut, ".vite"), { recursive: true, force: true });
 
-  console.log(
-    `\nStatic preview written to ${path.relative(process.cwd(), outDir)} (${pages.length} pages).`,
-  );
+  console.log(`\nStatic preview written to ${path.relative(process.cwd(), outDir)} (${pages.length} pages).`);
   console.log(`Open ${path.join(outDir, "index.html")} in a browser.`);
 }
 

@@ -1,13 +1,6 @@
 <div id="toasts" hx-swap-oob="beforeend">
   <div class="alert {{ kind }} shadow-lg" role="status" x-data="toastMessage" x-init="init()">
     <span>{{ message }}</span>
-    <button
-      type="button"
-      class="btn btn-ghost btn-circle btn-xs"
-      @click="dismiss()"
-      aria-label="Dismiss"
-    >
-      ✕
-    </button>
+    <button type="button" class="btn btn-ghost btn-circle btn-xs" @click="dismiss()" aria-label="Dismiss">✕</button>
   </div>
 </div>

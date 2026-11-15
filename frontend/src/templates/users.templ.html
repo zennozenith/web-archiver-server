@@ -35,7 +35,7 @@
     />
   </label>
   <select name="status" class="select w-auto" aria-label="Filter by status">
-    <option {% if filters.status.is_empty() %}selected{% endif %}>All statuses</option>
+    <option value="" {% if filters.status.is_empty() %}selected{% endif %}>All statuses</option>
     {% for o in filters.statuses %}
     <option value="{{ o.value }}" {% if o.selected %} selected{% endif %}>{{ o.label }}</option>
     {% endfor %}

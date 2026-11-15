@@ -8,8 +8,9 @@
       </div>
       <div class="min-w-0">
         <div class="truncate font-medium">
-          {{ u.name }}{% if u.is_self %} <span class="badge badge-ghost badge-sm">you</span>{% endif
-          %}
+          {{ u.name }}{% if u.is_self %}
+          <span class="badge badge-ghost badge-sm">you</span>
+          {% endif %}
         </div>
         <div class="truncate text-xs text-dim">{{ u.secondary }}</div>
       </div>
@@ -18,8 +19,7 @@
   <td><span class="badge badge-soft {{ u.status_class }}">{{ u.status }}</span></td>
   <td>
     <div class="flex flex-wrap gap-1">
-      {% for r in u.roles %}<span class="badge badge-soft badge-sm {{ r.class }}">{{ r.name }}</span
-      >{% endfor %}
+      {% for r in u.roles %}<span class="badge badge-soft badge-sm {{ r.class }}">{{ r.name }}</span>{% endfor %}
     </div>
   </td>
   <td class="whitespace-nowrap text-sm">

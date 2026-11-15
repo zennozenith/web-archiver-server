@@ -1,8 +1,6 @@
 <div x-data="dialogModal" x-init="show()">
   <form method="dialog">
-    <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close">
-      ✕
-    </button>
+    <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close">✕</button>
   </form>
 
   <div class="flex items-center gap-4 pr-8">
@@ -19,9 +17,7 @@
         {% if u.verified %}<span class="badge badge-ghost">e-mail verified</span>{% else %}<span
           class="badge badge-ghost"
           >e-mail unverified</span
-        >{% endif %} {% for r in u.roles %}<span class="badge badge-soft {{ r.class }}"
-          >{{ r.name }}</span
-        >{% endfor %}
+        >{% endif %} {% for r in u.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{% endfor %}
       </div>
     </div>
   </div>
@@ -84,28 +80,19 @@
         <legend class="fieldset-legend">New status</legend>
         <select name="status" class="select w-full">
           {% for o in statuses %}
-          <option value="{{ o.value }}" {% if o.selected %} selected{% endif %}>
-            {{ o.label }}
-          </option>
+          <option value="{{ o.value }}" {% if o.selected %} selected{% endif %}>{{ o.label }}</option>
           {% endfor %}
         </select>
       </fieldset>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Reason <span class="text-faint">(optional)</span></legend>
-        <input
-          name="reason"
-          class="input w-full"
-          maxlength="200"
-          value="{{ detail.status_reason }}"
-        />
+        <input name="reason" class="input w-full" maxlength="200" value="{{ detail.status_reason }}" />
       </fieldset>
       <button class="btn btn-primary" type="submit">
         <span class="loading loading-spinner loading-xs htmx-indicator"></span>Update
       </button>
     </form>
-    <p class="mt-2 text-xs text-faint">
-      Suspending or deactivating an account signs the user out everywhere.
-    </p>
+    <p class="mt-2 text-xs text-faint">Suspending or deactivating an account signs the user out everywhere.</p>
     {% endif %}
   </section>
   {% endif %} {% if caps.has("roles") %}
@@ -153,9 +140,7 @@
       {% for a in activity %}
       <li class="flex items-center justify-between gap-3">
         <span class="badge badge-soft badge-sm {{ a.class }}">{{ a.action }}</span>
-        <time class="text-xs text-dim" datetime="{{ a.when.iso }}" data-local
-          >{{ a.when.text }}</time
-        >
+        <time class="text-xs text-dim" datetime="{{ a.when.iso }}" data-local>{{ a.when.text }}</time>
       </li>
       {% endfor %}
     </ul>
@@ -165,9 +150,7 @@
   <section class="mt-6 border-t border-line pt-5">
     <h3 class="font-display text-base font-semibold text-error">Danger zone</h3>
     <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
-      <p class="text-sm text-dim">
-        Deleting removes access immediately and revokes every session and API key.
-      </p>
+      <p class="text-sm text-dim">Deleting removes access immediately and revokes every session and API key.</p>
       <button
         type="button"
         class="btn btn-sm btn-error btn-outline"

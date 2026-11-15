@@ -17,13 +17,7 @@
       >
         <fieldset class="fieldset">
           <legend class="fieldset-legend">URL</legend>
-          <input
-            name="url"
-            type="url"
-            required
-            class="input w-full"
-            placeholder="https://example.com"
-          />
+          <input name="url" type="url" required class="input w-full" placeholder="https://example.com" />
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Title</legend>
@@ -34,9 +28,7 @@
           <select name="collectionId" class="select w-full">
             <option value="">Unorganized</option>
             {% for collection in collections %}
-            <option value="{{ collection.id }}">
-              {{ collection.emoji }} {{ collection.name }}
-            </option>
+            <option value="{{ collection.id }}">{{ collection.emoji }} {{ collection.name }}</option>
             {% endfor %}
           </select>
         </fieldset>
@@ -50,16 +42,10 @@
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Thumbnail</legend>
-          <input
-            name="thumbnail"
-            type="file"
-            accept="image/png,image/jpeg"
-            class="file-input w-full"
-          />
+          <input name="thumbnail" type="file" accept="image/png,image/jpeg" class="file-input w-full" />
         </fieldset>
         <label class="label cursor-pointer justify-start gap-2"
-          ><input type="checkbox" name="pinned" value="true" class="checkbox checkbox-sm" /> Pin
-          this link</label
+          ><input type="checkbox" name="pinned" value="true" class="checkbox checkbox-sm" /> Pin this link</label
         >
         <button class="btn btn-primary btn-sm">Save</button>
       </form>
@@ -76,13 +62,7 @@
   >
     <label class="input input-sm w-48 sm:w-56">
       <span class="text-faint">⌕</span>
-      <input
-        name="q"
-        type="search"
-        value="{{ filters.text }}"
-        placeholder="Filter links"
-        aria-label="Filter links"
-      />
+      <input name="q" type="search" value="{{ filters.text }}" placeholder="Filter links" aria-label="Filter links" />
     </label>
     <select name="sort" class="select select-sm w-auto" aria-label="Sort by">
       <option value="newest" {% if filters.sort_newest %}selected{% endif %}>Newest first</option>

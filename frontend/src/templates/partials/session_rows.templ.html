@@ -5,9 +5,7 @@
       {{ s.device }}{% if s.current %}
       <span class="badge badge-primary badge-soft badge-sm">this device</span>{% endif %}
     </div>
-    <div class="max-w-xs truncate text-xs text-faint" title="{{ s.user_agent }}">
-      {{ s.user_agent }}
-    </div>
+    <div class="max-w-xs truncate text-xs text-faint" title="{{ s.user_agent }}">{{ s.user_agent }}</div>
   </td>
   <td class="font-data text-sm">{{ s.ip }}</td>
   <td class="whitespace-nowrap text-sm">

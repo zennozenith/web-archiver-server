@@ -11,26 +11,13 @@
 <div class="mb-6 grid gap-4 lg:grid-cols-2">
   <section class="rounded-xl border border-line bg-surface p-4">
     <h2 class="text-base font-semibold">Add a link</h2>
-    <form
-      class="mt-3 flex flex-col gap-3"
-      hx-post="/pending"
-      hx-swap="none"
-      @htmx:after:request="$reload($event)"
-    >
+    <form class="mt-3 flex flex-col gap-3" hx-post="/pending" hx-swap="none" @htmx:after:request="$reload($event)">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">URL</legend>
-        <input
-          name="url"
-          type="url"
-          required
-          placeholder="https://example.com"
-          class="input w-full"
-        />
+        <input name="url" type="url" required placeholder="https://example.com" class="input w-full" />
       </fieldset>
       <fieldset class="fieldset">
-        <legend class="fieldset-legend">
-          Tags <span class="font-normal text-faint">(optional)</span>
-        </legend>
+        <legend class="fieldset-legend">Tags <span class="font-normal text-faint">(optional)</span></legend>
         <input name="tags" type="text" placeholder="design, reading" class="input w-full" />
       </fieldset>
       <button type="submit" class="btn btn-primary btn-sm self-start">Add to queue</button>
@@ -39,12 +26,7 @@
 
   <section class="rounded-xl border border-line bg-surface p-4">
     <h2 class="text-base font-semibold">Bulk add</h2>
-    <form
-      class="mt-3 flex flex-col gap-3"
-      hx-post="/pending/bulk"
-      hx-swap="none"
-      @htmx:after:request="$reload($event)"
-    >
+    <form class="mt-3 flex flex-col gap-3" hx-post="/pending/bulk" hx-swap="none" @htmx:after:request="$reload($event)">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">URLs</legend>
         <textarea
@@ -66,34 +48,20 @@
   <a role="tab" href="/pending" class="tab px-3 {% if all_active %}tab-active{% endif %}"
     >All <span class="ml-1 badge badge-ghost badge-sm tabular-nums">{{ counts.total }}</span></a
   >
-  <a
-    role="tab"
-    href="/pending?status=queued"
-    class="tab px-3 {% if queued_active %}tab-active{% endif %}"
+  <a role="tab" href="/pending?status=queued" class="tab px-3 {% if queued_active %}tab-active{% endif %}"
     >Queued <span class="ml-1 badge badge-info badge-sm tabular-nums">{{ counts.queued }}</span></a
   >
-  <a
-    role="tab"
-    href="/pending?status=in_progress"
-    class="tab px-3 {% if in_progress_active %}tab-active{% endif %}"
-    >In progress
-    <span class="ml-1 badge badge-warning badge-sm tabular-nums">{{ counts.in_progress }}</span></a
+  <a role="tab" href="/pending?status=in_progress" class="tab px-3 {% if in_progress_active %}tab-active{% endif %}"
+    >In progress <span class="ml-1 badge badge-warning badge-sm tabular-nums">{{ counts.in_progress }}</span></a
   >
-  <a
-    role="tab"
-    href="/pending?status=failed"
-    class="tab px-3 {% if failed_active %}tab-active{% endif %}"
+  <a role="tab" href="/pending?status=failed" class="tab px-3 {% if failed_active %}tab-active{% endif %}"
     >Failed <span class="ml-1 badge badge-error badge-sm tabular-nums">{{ counts.failed }}</span></a
   >
 </div>
 
 <div class="flex flex-col gap-2">
   {% for item in pending %}
-  <article
-    id="pending-{{ item.id }}"
-    class="rounded-xl border border-line bg-surface p-4"
-    x-data="pendingItem"
-  >
+  <article id="pending-{{ item.id }}" class="rounded-xl border border-line bg-surface p-4" x-data="pendingItem">
     <div class="flex flex-wrap items-start gap-2">
       <div class="min-w-0 flex-1">
         <a
@@ -109,9 +77,7 @@
           {% if item.attempts > 0 %}<span>{{ item.attempts }} attempts</span>{% endif %}
         </div>
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
-          {% for tag in item.tags %}<a
-            href="{{ tag.href }}"
-            class="badge badge-ghost badge-sm hover:border-primary"
+          {% for tag in item.tags %}<a href="{{ tag.href }}" class="badge badge-ghost badge-sm hover:border-primary"
             ># {{ tag.name }}</a
           >{% else %}<span class="text-xs text-faint">No tags</span>{% endfor %}
         </div>
@@ -155,13 +121,7 @@
     >
       <fieldset class="fieldset min-w-56 flex-1">
         <legend class="fieldset-legend">URL</legend>
-        <input
-          name="url"
-          type="url"
-          required
-          value="{{ item.url }}"
-          class="input input-sm w-full"
-        />
+        <input name="url" type="url" required value="{{ item.url }}" class="input input-sm w-full" />
       </fieldset>
       <fieldset class="fieldset min-w-48 flex-1">
         <legend class="fieldset-legend">Tags</legend>
@@ -169,9 +129,7 @@
       </fieldset>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Status</legend>
-        {% if item.in_progress %}<span class="badge badge-warning badge-sm h-8"
-          >Managed by worker</span
-        >
+        {% if item.in_progress %}<span class="badge badge-warning badge-sm h-8">Managed by worker</span>
         {% else %}
         <select name="status" class="select select-sm">
           <option value="queued" {% if item.is_queued %}selected{% endif %}>Queued</option>

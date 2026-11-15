@@ -36,13 +36,7 @@ export type MimeType = string;
 /** Palette key such as `"red"` or `"deep-blue"`; never a hex color. */
 export type TagColor = string;
 
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 /** Raw bytes response (HTML, screenshot, asset, content blob). */
 export type RawResponse = Blob;
@@ -348,16 +342,7 @@ export interface CaptureDetailResponse {
   assetCount: number;
 }
 
-export type AssetKind =
-  | "stylesheet"
-  | "script"
-  | "image"
-  | "font"
-  | "media"
-  | "frame"
-  | "manifest"
-  | "icon"
-  | "other";
+export type AssetKind = "stylesheet" | "script" | "image" | "font" | "media" | "frame" | "manifest" | "icon" | "other";
 
 export interface CaptureAsset {
   contentId: Id;

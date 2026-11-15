@@ -4,22 +4,8 @@
     <div class="mb-4 flex flex-wrap items-center gap-2">
       <a href="/links" class="btn btn-ghost btn-sm">← Links</a>
       <span class="flex-1"></span>
-      <button
-        type="button"
-        class="btn btn-sm btn-square"
-        @click="resize(-2)"
-        aria-label="Smaller text"
-      >
-        A−
-      </button>
-      <button
-        type="button"
-        class="btn btn-sm btn-square"
-        @click="resize(2)"
-        aria-label="Larger text"
-      >
-        A+
-      </button>
+      <button type="button" class="btn btn-sm btn-square" @click="resize(-2)" aria-label="Smaller text">A−</button>
+      <button type="button" class="btn btn-sm btn-square" @click="resize(2)" aria-label="Larger text">A+</button>
       {% if can_write %}
       <button
         type="button"
@@ -51,9 +37,7 @@
     >
       <h1>{{ link.title }}</h1>
       <p class="meta flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line pb-4">
-        <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer" class="link"
-          >{{ link.domain }}</a
-        >
+        <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer" class="link">{{ link.domain }}</a>
         <time datetime="{{ link.date.iso }}" data-local>{{ link.date.text }}</time>
         <span class="badge badge-ghost badge-sm">{{ link.capture_count }} versions</span>
       </p>
@@ -62,9 +46,8 @@
       {% endif %} {% if !link.tags.is_empty() %}
       <h2>Tags</h2>
       <p class="flex flex-wrap gap-2">
-        {% for tag in link.tags %}<a href="{{ tag.href }}" class="badge badge-lg badge-outline"
-          ># {{ tag.name }}</a
-        >{% endfor %}
+        {% for tag in link.tags %}<a href="{{ tag.href }}" class="badge badge-lg badge-outline"># {{ tag.name }}</a>{%
+        endfor %}
       </p>
       {% endif %} {% if !highlights.is_empty() %}
       <h2>Your highlights</h2>
@@ -111,14 +94,7 @@
       >
         Green
       </button>
-      <button
-        type="button"
-        class="btn btn-sm join-item"
-        @click="clearSelection()"
-        aria-label="Dismiss"
-      >
-        ×
-      </button>
+      <button type="button" class="btn btn-sm join-item" @click="clearSelection()" aria-label="Dismiss">×</button>
     </div>
   </article>
 
@@ -127,11 +103,7 @@
     <section class="rounded-xl border border-line bg-surface p-3">
       <div class="mb-2 flex items-center justify-between">
         <h2 class="text-sm font-semibold text-dim">Latest snapshot</h2>
-        <a
-          href="/api/capture/{{ capture.id }}/html"
-          target="_blank"
-          rel="noopener"
-          class="link text-xs"
+        <a href="/api/capture/{{ capture.id }}/html" target="_blank" rel="noopener" class="link text-xs"
           >Open full page</a
         >
       </div>
@@ -150,13 +122,8 @@
         {% for capture in captures %}
         <li class="flex items-center gap-2">
           <span class="badge badge-ghost badge-sm tabular-nums">v{{ capture.version }}</span>
-          <span class="badge badge-soft badge-sm" title="{{ capture.title }}"
-            >{{ capture.status }}</span
-          >
-          <time
-            class="min-w-0 flex-1 truncate text-xs text-dim"
-            datetime="{{ capture.captured.iso }}"
-            data-local
+          <span class="badge badge-soft badge-sm" title="{{ capture.title }}">{{ capture.status }}</span>
+          <time class="min-w-0 flex-1 truncate text-xs text-dim" datetime="{{ capture.captured.iso }}" data-local
             >{{ capture.captured.text }}</time
           >
           {% if capture.has_html %}<a
@@ -211,17 +178,11 @@
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Description</legend>
-          <textarea name="description" rows="4" class="textarea w-full">
-{{ link.description }}</textarea>
+          <textarea name="description" rows="4" class="textarea w-full">{{ link.description }}</textarea>
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Thumbnail</legend>
-          <input
-            name="thumbnail"
-            type="file"
-            accept="image/png,image/jpeg"
-            class="file-input w-full"
-          />
+          <input name="thumbnail" type="file" accept="image/png,image/jpeg" class="file-input w-full" />
           <p class="label">Leave empty to keep the current thumbnail.</p>
         </fieldset>
         <button class="btn btn-primary btn-sm self-start">Save changes</button>

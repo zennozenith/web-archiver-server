@@ -17,14 +17,7 @@
     />
     {% else %}
     <span class="grid size-full place-items-center text-faint">
-      <svg
-        viewBox="0 0 24 24"
-        class="size-7"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        aria-hidden="true"
-      >
+      <svg viewBox="0 0 24 24" class="size-7" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
         <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 4.93" />
         <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19.07" />
       </svg>
@@ -37,14 +30,7 @@
         <a href="/links/{{ link.id }}" class="hover:text-brand">{{ link.title }}</a>
       </h3>
       <div class="dropdown dropdown-end">
-        <button
-          type="button"
-          tabindex="0"
-          class="btn btn-ghost btn-xs btn-square"
-          aria-label="Link actions"
-        >
-          ⋯
-        </button>
+        <button type="button" tabindex="0" class="btn btn-ghost btn-xs btn-square" aria-label="Link actions">⋯</button>
         <ul
           tabindex="0"
           class="dropdown-content menu z-20 w-40 rounded-box border border-line bg-surface p-1 shadow-lg"
@@ -76,22 +62,20 @@
       </div>
     </div>
     <div class="flex items-center gap-1.5 truncate text-sm text-dim">
-      {% if link.pinned %}<span class="badge badge-soft badge-primary badge-sm">Pinned</span>{%
-      endif %}
+      {% if link.pinned %}
+      <span class="badge badge-soft badge-primary badge-sm">Pinned</span>
+      {% endif %}
       <span class="truncate">{{ link.domain }}</span>
     </div>
     {% if !link.tags.is_empty() %}
     <div class="flex flex-wrap gap-1">
-      {% for tag in link.tags %}<a href="{{ tag.href }}" class="badge badge-ghost badge-sm"
-        ># {{ tag.name }}</a
-      >{% endfor %}
+      {% for tag in link.tags %}<a href="{{ tag.href }}" class="badge badge-ghost badge-sm"># {{ tag.name }}</a>{%
+      endfor %}
     </div>
     {% endif %}
     <div class="mt-auto flex items-center justify-between gap-2 pt-1 text-xs text-faint">
       {% if let Some(collection) = link.collection %}
-      <a href="{{ collection.href }}" class="truncate hover:text-base"
-        >{{ collection.emoji }} {{ collection.name }}</a
-      >
+      <a href="{{ collection.href }}" class="truncate hover:text-base">{{ collection.emoji }} {{ collection.name }}</a>
       {% else %}
       <span class="truncate">Unorganized</span>
       {% endif %}

@@ -2,11 +2,10 @@
 <div class="page-header mb-6">
   <h1 class="font-display text-2xl font-semibold">{{ form_title }}</h1>
 </div>
+<!-- prettier-ignore -->
 <form
   class="flex max-w-lg flex-col gap-4"
-  hx-{{
-  method
-  }}="{{ form_action }}"
+  hx-{{ method }}="{{ form_action }}"
   hx-swap="none"
   @htmx:after:request="$navigate($event, '{{ redirect_to }}')"
 >

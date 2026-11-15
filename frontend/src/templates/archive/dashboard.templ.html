@@ -69,12 +69,8 @@
       <ul class="mt-3 space-y-2 text-sm">
         {% for item in pending %}
         <li class="truncate">
-          <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="link link-hover"
-            >{{ item.url }}</a
-          >
-          <span class="badge badge-soft badge-sm {{ item.status_class }} ml-1"
-            >{{ item.status_label }}</span
-          >
+          <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="link link-hover">{{ item.url }}</a>
+          <span class="badge badge-soft badge-sm {{ item.status_class }} ml-1">{{ item.status_label }}</span>
         </li>
         {% else %}
         <li class="text-dim">Nothing queued.</li>

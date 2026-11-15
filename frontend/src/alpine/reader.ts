@@ -29,8 +29,7 @@ export function registerReader(alpine: Alpine): void {
     init() {
       this.mode = (this.$root as HTMLElement).dataset.mode === "edit" ? "edit" : "view";
       // On narrow screens the panel starts closed so the article is visible.
-      if (window.matchMedia("(max-width: 1023px)").matches && this.mode === "view")
-        this.panel = false;
+      if (window.matchMedia("(max-width: 1023px)").matches && this.mode === "view") this.panel = false;
     },
     resize(delta: number) {
       this.size = Math.min(MAX, Math.max(MIN, this.size + delta));

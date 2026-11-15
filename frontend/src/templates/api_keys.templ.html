@@ -2,8 +2,8 @@
 <div class="mb-5">
   <h1 class="font-display text-2xl font-semibold">API keys</h1>
   <p class="text-sm text-dim">
-    Send a key as <code class="font-data">Authorization: Bearer &lt;key&gt;</code> to the JSON API.
-    A key can never do more than the scopes you give it.
+    Send a key as <code class="font-data">Authorization: Bearer &lt;key&gt;</code> to the JSON API. A key can never do
+    more than the scopes you give it.
   </p>
 </div>
 
@@ -34,42 +34,24 @@
     <form id="new-key-form" class="mt-3 space-y-3" hx-post="/account/keys" hx-target="#keys-body">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Name</legend>
-        <input
-          class="input w-full"
-          name="name"
-          placeholder="e.g. CI pipeline"
-          maxlength="80"
-          required
-        />
+        <input class="input w-full" name="name" placeholder="e.g. CI pipeline" maxlength="80" required />
       </fieldset>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Expires after (days)</legend>
-        <input
-          class="input w-full"
-          type="number"
-          name="days"
-          min="1"
-          max="365"
-          placeholder="Never"
-        />
+        <input class="input w-full" type="number" name="days" min="1" max="365" placeholder="Never" />
       </fieldset>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Scopes</legend>
         <div class="space-y-2">
           {% for s in scopes %}
           <label class="flex items-start gap-3 text-sm">
+            <!-- prettier-ignore -->
             <input
               type="checkbox"
               class="checkbox checkbox-sm mt-0.5"
               name="scopes"
               value="{{ s.name }}"
-              {%
-              if
-              s.checked
-              %}
-              checked{%
-              endif
-              %}
+              {% if s.checked %} checked {% endif %}
             />
             <span>
               <span class="font-data">{{ s.name }}</span>{% if s.broad %}

@@ -2,16 +2,10 @@
 <h1 class="font-display text-3xl font-semibold">Verify your e-mail</h1>
 <p class="mt-1 text-dim">Paste the token from the verification e-mail.</p>
 
+<!-- prettier-ignore -->
 <form
   class="mt-8 space-y-3"
-  {%
-  if
-  !token.trim().is_empty()
-  %}
-  hx-trigger="load"
-  {%
-  endif
-  %}
+  {% if !token.trim().is_empty() %} hx-trigger="load" {% endif %}
   hx-post="/verify"
   hx-target="#form-alert"
 >

@@ -14,11 +14,7 @@ const files = globSync("src/**/*.{js,ts,html}", {
   // ignore: ["**/*.d.ts", "**/_*"],
   ignore: ["**/*.d.ts"],
 }).map((file) => [
-  path
-    .relative(path.join(root, "src"), file)
-    .slice(0, -path.extname(file).length)
-    .split(path.sep)
-    .join("/"),
+  path.relative(path.join(root, "src"), file).slice(0, -path.extname(file).length).split(path.sep).join("/"),
   file,
 ]);
 

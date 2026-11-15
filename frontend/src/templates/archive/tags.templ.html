@@ -6,13 +6,7 @@
   </div>
   {% if can_write %}
   <form class="join" hx-post="/tags" hx-swap="none" @htmx:after:request="$reload($event)">
-    <input
-      name="name"
-      required
-      class="input input-sm join-item"
-      placeholder="New tag"
-      aria-label="New tag name"
-    />
+    <input name="name" required class="input input-sm join-item" placeholder="New tag" aria-label="New tag name" />
     <button class="btn btn-primary btn-sm join-item">Add</button>
   </form>
   {% endif %}
@@ -33,7 +27,5 @@
   </label>
 </div>
 
-<div id="tag-list" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-  {% include "archive/_tag_list.templ.html" %}
-</div>
+<div id="tag-list" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{% include "archive/_tag_list.templ.html" %}</div>
 {% endblock %}

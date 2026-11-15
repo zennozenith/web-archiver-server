@@ -1,15 +1,7 @@
 {% for tag in tags %}
-<div
-  class="rounded-xl border border-line bg-surface p-3"
-  x-data="tagEditor"
-  data-name="{{ tag.name }}"
->
+<div class="rounded-xl border border-line bg-surface p-3" x-data="tagEditor" data-name="{{ tag.name }}">
   <div class="flex items-center justify-between gap-2">
-    <a
-      href="{{ tag.href }}"
-      class="flex min-w-0 items-center gap-2 hover:text-brand"
-      x-show="!editing"
-    >
+    <a href="{{ tag.href }}" class="flex min-w-0 items-center gap-2 hover:text-brand" x-show="!editing">
       <span class="truncate font-medium"># {{ tag.name }}</span>
       <span class="badge badge-ghost badge-sm tabular-nums">{{ tag.page_count }}</span>
     </a>
