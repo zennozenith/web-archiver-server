@@ -1,5 +1,4 @@
-{% extends "base.templ.html" %}
-{% block content %}
+{% extends "base.templ.html" %} {% block content %}
 <div x-data="linkView">
   <div class="page-header mb-6 flex flex-wrap items-end justify-between gap-3">
     <div>
@@ -7,31 +6,83 @@
       <p class="text-sm text-dim">Every page saved in your archive.</p>
     </div>
     {% if can_write %}
-    <details class="dropdown dropdown-end">
+    <details class="dropdown dropdown-end" {% if new %}open{% endif %}>
       <summary class="btn btn-primary btn-sm">Save a link</summary>
-      <form class="dropdown-content z-20 mt-2 w-80 rounded-box border border-line bg-surface p-4 shadow-xl" hx-post="/links" hx-encoding="multipart/form-data" hx-swap="none" @htmx:after:request="$reload($event)">
-        <fieldset class="fieldset"><legend class="fieldset-legend">URL</legend><input name="url" type="url" required class="input w-full" placeholder="https://example.com" /></fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Title</legend><input name="displayTitle" required class="input w-full" /></fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Collection</legend>
+      <form
+        class="dropdown-content z-20 mt-2 w-80 rounded-box border border-line bg-surface p-4 shadow-xl"
+        hx-post="/links"
+        hx-encoding="multipart/form-data"
+        hx-swap="none"
+        @htmx:after:request="$reload($event)"
+      >
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">URL</legend>
+          <input
+            name="url"
+            type="url"
+            required
+            class="input w-full"
+            placeholder="https://example.com"
+          />
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Title</legend>
+          <input name="displayTitle" required class="input w-full" />
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Collection</legend>
           <select name="collectionId" class="select w-full">
             <option value="">Unorganized</option>
-            {% for collection in collections %}<option value="{{ collection.id }}">{{ collection.emoji }} {{ collection.name }}</option>{% endfor %}
+            {% for collection in collections %}
+            <option value="{{ collection.id }}">
+              {{ collection.emoji }} {{ collection.name }}
+            </option>
+            {% endfor %}
           </select>
         </fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Tags</legend><input name="tags" class="input w-full" placeholder="design, reading" /></fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Description</legend><textarea name="description" rows="2" class="textarea w-full"></textarea></fieldset>
-        <fieldset class="fieldset"><legend class="fieldset-legend">Thumbnail</legend><input name="thumbnail" type="file" accept="image/png,image/jpeg" class="file-input w-full" /></fieldset>
-        <label class="label cursor-pointer justify-start gap-2"><input type="checkbox" name="pinned" value="true" class="checkbox checkbox-sm" /> Pin this link</label>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Tags</legend>
+          <input name="tags" class="input w-full" placeholder="design, reading" />
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Description</legend>
+          <textarea name="description" rows="2" class="textarea w-full"></textarea>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Thumbnail</legend>
+          <input
+            name="thumbnail"
+            type="file"
+            accept="image/png,image/jpeg"
+            class="file-input w-full"
+          />
+        </fieldset>
+        <label class="label cursor-pointer justify-start gap-2"
+          ><input type="checkbox" name="pinned" value="true" class="checkbox checkbox-sm" /> Pin
+          this link</label
+        >
         <button class="btn btn-primary btn-sm">Save</button>
       </form>
     </details>
     {% endif %}
   </div>
 
-  <form class="mb-5 flex flex-wrap items-center gap-2" hx-get="/links/search" hx-target="#results" hx-sync="this:replace" hx-trigger="change, input delay:300ms from:input[name=q]">
+  <form
+    class="mb-5 flex flex-wrap items-center gap-2"
+    hx-get="/links/search"
+    hx-target="#results"
+    hx-sync="this:replace"
+    hx-trigger="change, input delay:300ms from:input[name=q]"
+  >
     <label class="input input-sm w-48 sm:w-56">
       <span class="text-faint">⌕</span>
-      <input name="q" type="search" value="{{ filters.text }}" placeholder="Filter links" aria-label="Filter links" />
+      <input
+        name="q"
+        type="search"
+        value="{{ filters.text }}"
+        placeholder="Filter links"
+        aria-label="Filter links"
+      />
     </label>
     <select name="sort" class="select select-sm w-auto" aria-label="Sort by">
       <option value="newest" {% if filters.sort_newest %}selected{% endif %}>Newest first</option>
@@ -45,8 +96,24 @@
       <option value="tags" {% if filters.field_tags %}selected{% endif %}>in Tags</option>
     </select>
     <div class="join" role="group" aria-label="Layout">
-      <button type="button" class="btn btn-sm join-item" :class="view === 'grid' && 'btn-active'" @click="set('grid')" aria-label="Grid view">Grid</button>
-      <button type="button" class="btn btn-sm join-item" :class="view === 'list' && 'btn-active'" @click="set('list')" aria-label="List view">List</button>
+      <button
+        type="button"
+        class="btn btn-sm join-item"
+        :class="view === 'grid' && 'btn-active'"
+        @click="set('grid')"
+        aria-label="Grid view"
+      >
+        Grid
+      </button>
+      <button
+        type="button"
+        class="btn btn-sm join-item"
+        :class="view === 'list' && 'btn-active'"
+        @click="set('list')"
+        aria-label="List view"
+      >
+        List
+      </button>
     </div>
   </form>
 
@@ -55,7 +122,13 @@
   </div>
 
   {% if let Some(cursor) = next_cursor %}
-  <div hx-get="/links/search?q={{ filters.text_qs }}&sort={{ filters.sort_value }}&in={{ filters.field_value }}&cursor={{ cursor }}" hx-trigger="intersect once" hx-target="#results" hx-swap="append" class="py-8 text-center">
+  <div
+    hx-get="/links/search?q={{ filters.text_qs }}&sort={{ filters.sort_value }}&in={{ filters.field_value }}&cursor={{ cursor }}"
+    hx-trigger="intersect once"
+    hx-target="#results"
+    hx-swap="append"
+    class="py-8 text-center"
+  >
     <span class="loading loading-dots"></span>
   </div>
   {% endif %}

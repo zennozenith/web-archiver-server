@@ -1,11 +1,14 @@
 <div x-data="dialogModal" x-init="show()">
   <form method="dialog">
-    <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close">✕</button>
+    <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" aria-label="Close">
+      ✕
+    </button>
   </form>
 
   <div class="flex items-center gap-4 pr-8">
     <div class="avatar avatar-placeholder">
-      <div class="w-14 rounded-full bg-brand-soft text-brand"><span class="text-lg font-medium">{{ u.initials }}</span>
+      <div class="w-14 rounded-full bg-brand-soft text-brand">
+        <span class="text-lg font-medium">{{ u.initials }}</span>
       </div>
     </div>
     <div class="min-w-0">
@@ -14,8 +17,11 @@
       <div class="mt-1 flex flex-wrap items-center gap-1.5">
         <span class="badge badge-soft {{ u.status_class }}">{{ u.status }}</span>
         {% if u.verified %}<span class="badge badge-ghost">e-mail verified</span>{% else %}<span
-          class="badge badge-ghost">e-mail unverified</span>{% endif %}
-        {% for r in u.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{% endfor %}
+          class="badge badge-ghost"
+          >e-mail unverified</span
+        >{% endif %} {% for r in u.roles %}<span class="badge badge-soft {{ r.class }}"
+          >{{ r.name }}</span
+        >{% endfor %}
       </div>
     </div>
   </div>
@@ -69,29 +75,40 @@
     {% if u.is_self %}
     <p class="mt-1 text-sm text-dim">You can't change your own status.</p>
     {% else %}
-    <form class="mt-2 grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end"
-      hx-patch="/admin/users/{{ u.public_id }}/status" hx-target="#modal-body">
+    <form
+      class="mt-2 grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end"
+      hx-patch="/admin/users/{{ u.public_id }}/status"
+      hx-target="#modal-body"
+    >
       <fieldset class="fieldset">
         <legend class="fieldset-legend">New status</legend>
         <select name="status" class="select w-full">
-          {% for o in statuses %}<option value="{{ o.value }}" {% if o.selected %} selected{% endif %}>{{ o.label }}
-          </option>{% endfor %}
+          {% for o in statuses %}
+          <option value="{{ o.value }}" {% if o.selected %} selected{% endif %}>
+            {{ o.label }}
+          </option>
+          {% endfor %}
         </select>
       </fieldset>
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Reason <span class="text-faint">(optional)</span></legend>
-        <input name="reason" class="input w-full" maxlength="200" value="{{ detail.status_reason }}">
+        <input
+          name="reason"
+          class="input w-full"
+          maxlength="200"
+          value="{{ detail.status_reason }}"
+        />
       </fieldset>
       <button class="btn btn-primary" type="submit">
         <span class="loading loading-spinner loading-xs htmx-indicator"></span>Update
       </button>
     </form>
-    <p class="mt-2 text-xs text-faint">Suspending or deactivating an account signs the user out everywhere.</p>
+    <p class="mt-2 text-xs text-faint">
+      Suspending or deactivating an account signs the user out everywhere.
+    </p>
     {% endif %}
   </section>
-  {% endif %}
-
-  {% if caps.has("roles") %}
+  {% endif %} {% if caps.has("roles") %}
   <section class="mt-6 border-t border-line pt-5">
     <h3 class="font-display text-base font-semibold">Roles</h3>
     <ul class="list mt-2 rounded-xl border border-line">
@@ -104,19 +121,29 @@
         {% if r.locked %}
         <span class="text-xs text-faint">{{ r.lock_note }}</span>
         {% else if r.assigned %}
-        <button type="button" class="btn btn-sm btn-outline btn-error"
-          hx-delete="/admin/users/{{ u.public_id }}/roles/{{ r.name }}" hx-target="#modal-body">Revoke</button>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline btn-error"
+          hx-delete="/admin/users/{{ u.public_id }}/roles/{{ r.name }}"
+          hx-target="#modal-body"
+        >
+          Revoke
+        </button>
         {% else %}
-        <button type="button" class="btn btn-sm btn-outline" hx-post="/admin/users/{{ u.public_id }}/roles/{{ r.name }}"
-          hx-target="#modal-body">Grant</button>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline"
+          hx-post="/admin/users/{{ u.public_id }}/roles/{{ r.name }}"
+          hx-target="#modal-body"
+        >
+          Grant
+        </button>
         {% endif %}
       </li>
       {% endfor %}
     </ul>
   </section>
-  {% endif %}
-
-  {% if caps.has("activity") %}
+  {% endif %} {% if caps.has("activity") %}
   <section class="mt-6 border-t border-line pt-5">
     <h3 class="font-display text-base font-semibold">Recent activity</h3>
     {% if activity.is_empty() %}
@@ -126,25 +153,31 @@
       {% for a in activity %}
       <li class="flex items-center justify-between gap-3">
         <span class="badge badge-soft badge-sm {{ a.class }}">{{ a.action }}</span>
-        <time class="text-xs text-dim" datetime="{{ a.when.iso }}" data-local>{{ a.when.text }}</time>
+        <time class="text-xs text-dim" datetime="{{ a.when.iso }}" data-local
+          >{{ a.when.text }}</time
+        >
       </li>
       {% endfor %}
     </ul>
     {% endif %}
   </section>
-  {% endif %}
-
-  {% if caps.has("delete") %}
-  {% if !u.is_self %}
+  {% endif %} {% if caps.has("delete") %} {% if !u.is_self %}
   <section class="mt-6 border-t border-line pt-5">
     <h3 class="font-display text-base font-semibold text-error">Danger zone</h3>
     <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
-      <p class="text-sm text-dim">Deleting removes access immediately and revokes every session and API key.</p>
-      <button type="button" class="btn btn-sm btn-error btn-outline" hx-delete="/admin/users/{{ u.public_id }}"
+      <p class="text-sm text-dim">
+        Deleting removes access immediately and revokes every session and API key.
+      </p>
+      <button
+        type="button"
+        class="btn btn-sm btn-error btn-outline"
+        hx-delete="/admin/users/{{ u.public_id }}"
         hx-target="#modal-body"
-        hx-confirm="Delete {{ u.name }}? This signs them out and cannot be undone from the UI.">Delete user</button>
+        hx-confirm="Delete {{ u.name }}? This signs them out and cannot be undone from the UI."
+      >
+        Delete user
+      </button>
     </div>
   </section>
-  {% endif %}
-  {% endif %}
+  {% endif %} {% endif %}
 </div>

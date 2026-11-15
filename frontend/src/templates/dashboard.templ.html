@@ -1,12 +1,12 @@
-{% extends "base.templ.html" %}
-{% block content %}
+{% extends "base.templ.html" %} {% block content %}
 <div class="mb-6">
   <h1 class="font-display text-2xl font-semibold">Welcome back, {{ mine.name }}</h1>
-  <p class="text-sm text-dim">A quick read on your account and, if you have access, the whole system.</p>
+  <p class="text-sm text-dim">
+    A quick read on your account and, if you have access, the whole system.
+  </p>
 </div>
 
 <div class="grid gap-5 lg:grid-cols-3">
-
   {% if let Some(s) = users %}
   <section class="rounded-xl border border-line bg-surface p-5 lg:col-span-2">
     <div class="flex flex-wrap items-end justify-between gap-4">
@@ -27,8 +27,9 @@
     </div>
 
     <div class="seg-bar mt-5" role="img" aria-label="Accounts by status">
-      {% for seg in s.segments %}{% if seg.count > 0 %}<div class="{{ seg.class }}" style="flex: {{ seg.count }} 1 0">
-      </div>{% endif %}{% endfor %}
+      {% for seg in s.segments %}{% if seg.count > 0 %}
+      <div class="{{ seg.class }}" style="flex: {{ seg.count }} 1 0"></div>
+      {% endif %}{% endfor %}
     </div>
     <ul class="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
       {% for seg in s.segments %}
@@ -42,16 +43,21 @@
   </section>
   {% endif %}
 
-  <section class="rounded-xl border border-line bg-surface p-5{% if users.is_none() %} lg:col-span-3{% endif %}">
+  <section
+    class="rounded-xl border border-line bg-surface p-5{% if users.is_none() %} lg:col-span-3{% endif %}"
+  >
     <h2 class="text-sm font-semibold text-dim">Your account</h2>
     <div class="mt-2 flex flex-wrap items-center gap-1.5">
       <span class="badge badge-soft {{ mine.status_class }}">{{ mine.status }}</span>
-      {% for r in mine.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{% endfor %}
+      {% for r in mine.roles %}<span class="badge badge-soft {{ r.class }}">{{ r.name }}</span>{%
+      endfor %}
     </div>
     <dl class="mt-4 grid grid-cols-3 gap-3 text-sm">
       <div class="col-span-3">
         <dt class="text-xs text-faint">Last sign-in</dt>
-        <dd><time datetime="{{ mine.last_login.iso }}" data-local>{{ mine.last_login.text }}</time></dd>
+        <dd>
+          <time datetime="{{ mine.last_login.iso }}" data-local>{{ mine.last_login.text }}</time>
+        </dd>
       </div>
       <div class="col-span-1">
         <dt class="text-xs text-faint">Sessions</dt>
@@ -75,8 +81,12 @@
       <div>
         <h2 class="text-sm font-semibold text-dim">Sign-ins, last 7 days</h2>
         <p class="mt-1 flex items-center gap-4 text-xs text-dim">
-          <span class="flex items-center gap-1.5"><span class="seg-dot bar-ok"></span>successful</span>
-          <span class="flex items-center gap-1.5"><span class="seg-dot bar-fail"></span>failed</span>
+          <span class="flex items-center gap-1.5"
+            ><span class="seg-dot bar-ok"></span>successful</span
+          >
+          <span class="flex items-center gap-1.5"
+            ><span class="seg-dot bar-fail"></span>failed</span
+          >
         </p>
       </div>
       <dl class="flex gap-6 text-sm">
@@ -96,7 +106,10 @@
     </div>
     <div class="mt-5 grid grid-cols-7 gap-3">
       {% for d in sec.days %}
-      <div class="flex flex-col items-center gap-2" title="{{ d.label }}: {{ d.ok }} successful, {{ d.failed }} failed">
+      <div
+        class="flex flex-col items-center gap-2"
+        title="{{ d.label }}: {{ d.ok }} successful, {{ d.failed }} failed"
+      >
         <div class="flex h-32 w-full flex-col justify-end overflow-hidden rounded-md bg-sunken">
           <div class="bar-fail" style="height: {{ d.failed_height }}%"></div>
           <div class="bar-ok" style="height: {{ d.ok_height }}%"></div>
@@ -106,9 +119,7 @@
       {% endfor %}
     </div>
   </section>
-  {% endif %}
-
-  {% if !recent_users.is_empty() %}
+  {% endif %} {% if !recent_users.is_empty() %}
   <section class="rounded-xl border border-line bg-surface p-5">
     <div class="flex items-center justify-between">
       <h2 class="text-sm font-semibold text-dim">Newest accounts</h2>
@@ -118,8 +129,9 @@
       {% for u in recent_users %}
       <li class="flex items-center gap-3">
         <div class="avatar avatar-placeholder">
-          <div class="w-8 rounded-full bg-brand-soft text-brand"><span class="text-xs font-medium">{{ u.initials
-              }}</span></div>
+          <div class="w-8 rounded-full bg-brand-soft text-brand">
+            <span class="text-xs font-medium">{{ u.initials }}</span>
+          </div>
         </div>
         <div class="min-w-0 flex-1">
           <div class="truncate text-sm font-medium">{{ u.name }}</div>
@@ -130,9 +142,7 @@
       {% endfor %}
     </ul>
   </section>
-  {% endif %}
-
-  {% if !recent_audit.is_empty() %}
+  {% endif %} {% if !recent_audit.is_empty() %}
   <section class="rounded-xl border border-line bg-surface p-5 lg:col-span-3">
     <div class="flex items-center justify-between">
       <h2 class="text-sm font-semibold text-dim">Recent activity</h2>
@@ -144,7 +154,9 @@
         <span class="badge badge-soft badge-sm {{ a.class }}">{{ a.action }}</span>
         <span>{{ a.actor }}</span>
         <span class="text-dim">→ {{ a.target }}</span>
-        <time class="ml-auto text-xs text-dim" datetime="{{ a.when.iso }}" data-local>{{ a.when.text }}</time>
+        <time class="ml-auto text-xs text-dim" datetime="{{ a.when.iso }}" data-local
+          >{{ a.when.text }}</time
+        >
       </li>
       {% endfor %}
     </ul>

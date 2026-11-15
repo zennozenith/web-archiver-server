@@ -1,6 +1,11 @@
-{% include "archive/_link_grid.templ.html" %}
-{% if let Some(cursor) = next_cursor %}
-<div hx-get="/links/search?q={{ filters.text_qs }}&sort={{ filters.sort_value }}&in={{ filters.field_value }}&cursor={{ cursor }}" hx-trigger="intersect once" hx-target="#results" hx-swap="append" class="py-8 text-center">
+{% include "archive/_link_grid.templ.html" %} {% if let Some(cursor) = next_cursor %}
+<div
+  hx-get="/links/search?q={{ filters.text_qs }}&sort={{ filters.sort_value }}&in={{ filters.field_value }}&cursor={{ cursor }}"
+  hx-trigger="intersect once"
+  hx-target="#results"
+  hx-swap="append"
+  class="py-8 text-center"
+>
   <span class="loading loading-dots"></span>
 </div>
 {% endif %}

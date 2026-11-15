@@ -20,6 +20,8 @@ pub(crate) struct LinkQuery {
     #[serde(default)]
     pub(crate) q: String,
     #[serde(default)]
+    pub(crate) new: u8,
+    #[serde(default)]
     pub(crate) sort: String,
     #[serde(default, rename = "in")]
     pub(crate) field: String,

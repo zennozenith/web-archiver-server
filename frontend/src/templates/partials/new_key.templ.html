@@ -1,10 +1,18 @@
 <div id="new-key" hx-swap-oob="innerHTML">
-  <div class="alert alert-warning alert-soft mb-5 items-start" role="alert" x-data="newKey" x-init="reset()">
+  <div
+    class="alert alert-warning alert-soft mb-5 items-start"
+    role="alert"
+    x-data="newKey"
+    x-init="reset()"
+  >
     <div class="min-w-0 flex-1">
       <p class="font-semibold">Copy your new key now. It won't be shown again.</p>
-      <code x-ref="key" class="mt-2 block break-all rounded-md bg-surface p-2 font-data text-sm">{{ key }}</code>
+      <code x-ref="key" class="mt-2 block break-all rounded-md bg-surface p-2 font-data text-sm"
+        >{{ key }}</code
+      >
     </div>
-    <button type="button" class="btn btn-sm" @click="copy()"
-            x-text="copied ? 'Copied' : 'Copy'">Copy</button>
+    <button type="button" class="btn btn-sm" @click="copy()" x-text="copied ? 'Copied' : 'Copy'">
+      Copy
+    </button>
   </div>
 </div>

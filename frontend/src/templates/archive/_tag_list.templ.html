@@ -1,22 +1,56 @@
 {% for tag in tags %}
-<div class="rounded-xl border border-line bg-surface p-3" x-data="tagEditor" data-name="{{ tag.name }}">
+<div
+  class="rounded-xl border border-line bg-surface p-3"
+  x-data="tagEditor"
+  data-name="{{ tag.name }}"
+>
   <div class="flex items-center justify-between gap-2">
-    <a href="{{ tag.href }}" class="flex min-w-0 items-center gap-2 hover:text-brand" x-show="!editing">
+    <a
+      href="{{ tag.href }}"
+      class="flex min-w-0 items-center gap-2 hover:text-brand"
+      x-show="!editing"
+    >
       <span class="truncate font-medium"># {{ tag.name }}</span>
       <span class="badge badge-ghost badge-sm tabular-nums">{{ tag.page_count }}</span>
     </a>
-    <form x-show="editing" x-cloak class="join min-w-0 flex-1" hx-patch="/tags/{{ tag.name }}" hx-swap="none" @htmx:after:request="reload($event)">
-      <input x-ref="input" x-model="name" name="name" required class="input input-sm join-item min-w-0 flex-1" aria-label="Tag name" />
+    <form
+      x-show="editing"
+      x-cloak
+      class="join min-w-0 flex-1"
+      hx-patch="/tags/{{ tag.name }}"
+      hx-swap="none"
+      @htmx:after:request="reload($event)"
+    >
+      <input
+        x-ref="input"
+        x-model="name"
+        name="name"
+        required
+        class="input input-sm join-item min-w-0 flex-1"
+        aria-label="Tag name"
+      />
       <button class="btn btn-sm btn-primary join-item">Save</button>
       <button type="button" class="btn btn-sm join-item" @click="cancel()">Cancel</button>
     </form>
     <div class="flex shrink-0 gap-1" x-show="!editing">
       <button type="button" class="btn btn-ghost btn-xs" @click="start()">Rename</button>
-      <button type="button" class="btn btn-ghost btn-xs text-error" hx-delete="/tags/{{ tag.name }}" hx-confirm="Delete tag? Links are kept." hx-target="closest .rounded-xl" hx-swap="outerHTML">Delete</button>
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs text-error"
+        hx-delete="/tags/{{ tag.name }}"
+        hx-confirm="Delete tag? Links are kept."
+        hx-target="closest .rounded-xl"
+        hx-swap="outerHTML"
+      >
+        Delete
+      </button>
     </div>
   </div>
   <p class="mt-2 text-xs text-faint">{{ tag.pending_count }} queued references</p>
 </div>
 {% else %}
-<div class="empty-state"><p class="title">No tags yet</p><p>Tags appear when you add them to links or the queue.</p></div>
+<div class="empty-state">
+  <p class="title">No tags yet</p>
+  <p>Tags appear when you add them to links or the queue.</p>
+</div>
 {% endfor %}

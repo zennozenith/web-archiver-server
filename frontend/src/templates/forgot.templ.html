@@ -1,12 +1,11 @@
-{% extends "auth_base.templ.html" %}
-{% block content %}
+{% extends "auth_base.templ.html" %} {% block content %}
 <h1 class="font-display text-3xl font-semibold">Forgot your password?</h1>
 <p class="mt-1 text-dim">Enter your e-mail and we will send a reset token.</p>
 
 <form class="mt-8 space-y-3" hx-post="/forgot" hx-target="#form-alert">
   <fieldset class="fieldset">
     <legend class="fieldset-legend">E-mail</legend>
-    <input class="input w-full" type="email" name="email" autocomplete="email" required autofocus>
+    <input class="input w-full" type="email" name="email" autocomplete="email" required autofocus />
   </fieldset>
   <div id="form-alert" aria-live="polite"></div>
   <button class="btn btn-primary w-full" type="submit">

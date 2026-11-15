@@ -1,5 +1,4 @@
-{% extends "base.templ.html" %}
-{% block content %}
+{% extends "base.templ.html" %} {% block content %}
 <div class="page-header mb-6 flex flex-wrap items-end justify-between gap-3">
   <div>
     <h1 class="font-display text-2xl font-semibold">Tags</h1>
@@ -7,7 +6,13 @@
   </div>
   {% if can_write %}
   <form class="join" hx-post="/tags" hx-swap="none" @htmx:after:request="$reload($event)">
-    <input name="name" required class="input input-sm join-item" placeholder="New tag" aria-label="New tag name" />
+    <input
+      name="name"
+      required
+      class="input input-sm join-item"
+      placeholder="New tag"
+      aria-label="New tag name"
+    />
     <button class="btn btn-primary btn-sm join-item">Add</button>
   </form>
   {% endif %}
@@ -16,7 +21,15 @@
 <div class="mb-4 max-w-sm">
   <label class="input input-sm w-full">
     <span class="text-faint">⌕</span>
-    <input type="search" name="q" placeholder="Filter tags" aria-label="Filter tags" hx-get="/tags/search" hx-trigger="input delay:200ms" hx-target="#tag-list" />
+    <input
+      type="search"
+      name="q"
+      placeholder="Filter tags"
+      aria-label="Filter tags"
+      hx-get="/tags/search"
+      hx-trigger="input delay:200ms"
+      hx-target="#tag-list"
+    />
   </label>
 </div>
 

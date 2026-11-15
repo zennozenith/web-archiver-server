@@ -1,7 +1,8 @@
-{% extends "base.templ.html" %}
-{% block content %}
+{% extends "base.templ.html" %} {% block content %}
 <div class="page-header mb-6">
-  <h1 class="font-display text-2xl font-semibold"><span aria-hidden="true">{{ collection.emoji }}</span> {{ collection.name }}</h1>
+  <h1 class="font-display text-2xl font-semibold">
+    <span aria-hidden="true">{{ collection.emoji }}</span> {{ collection.name }}
+  </h1>
   <p class="text-sm text-dim">Public collection · {{ collection.link_count }} links</p>
 </div>
 <div class="link-grid" data-view="grid">

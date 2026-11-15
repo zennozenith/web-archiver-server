@@ -29,9 +29,10 @@ if (files.length === 0) {
 const outDir = process.env.OUT_DIR || `dist`;
 
 export default defineConfig({
-  fmt: {
-    ignorePatterns: ["public/vendored", "src/templates/**/*.html"],
-  },
+  // * done with oxfmt
+  // fmt: {
+  //   ignorePatterns: ["public/vendored", "src/templates/**/*.templ.html"],
+  // },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },

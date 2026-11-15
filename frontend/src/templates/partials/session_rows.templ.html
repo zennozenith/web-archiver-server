@@ -1,22 +1,40 @@
 {% for s in sessions %}
 <tr>
   <td>
-    <div class="font-medium">{{ s.device }}{% if s.current %} <span class="badge badge-primary badge-soft badge-sm">this device</span>{% endif %}</div>
-    <div class="max-w-xs truncate text-xs text-faint" title="{{ s.user_agent }}">{{ s.user_agent }}</div>
+    <div class="font-medium">
+      {{ s.device }}{% if s.current %}
+      <span class="badge badge-primary badge-soft badge-sm">this device</span>{% endif %}
+    </div>
+    <div class="max-w-xs truncate text-xs text-faint" title="{{ s.user_agent }}">
+      {{ s.user_agent }}
+    </div>
   </td>
   <td class="font-data text-sm">{{ s.ip }}</td>
-  <td class="whitespace-nowrap text-sm"><time datetime="{{ s.created.iso }}" data-local>{{ s.created.text }}</time></td>
-  <td class="whitespace-nowrap text-sm"><time datetime="{{ s.last_used.iso }}" data-local>{{ s.last_used.text }}</time></td>
-  <td class="whitespace-nowrap text-sm"><time datetime="{{ s.expires.iso }}" data-local>{{ s.expires.text }}</time></td>
+  <td class="whitespace-nowrap text-sm">
+    <time datetime="{{ s.created.iso }}" data-local>{{ s.created.text }}</time>
+  </td>
+  <td class="whitespace-nowrap text-sm">
+    <time datetime="{{ s.last_used.iso }}" data-local>{{ s.last_used.text }}</time>
+  </td>
+  <td class="whitespace-nowrap text-sm">
+    <time datetime="{{ s.expires.iso }}" data-local>{{ s.expires.text }}</time>
+  </td>
   <td class="text-right">
     {% if !s.current %}
-    <button type="button" class="btn btn-sm btn-outline btn-error"
-            hx-delete="/account/sessions/{{ s.public_id }}" hx-target="#sessions-body"
-            hx-confirm="Revoke this session? That device will be signed out.">Revoke</button>
+    <button
+      type="button"
+      class="btn btn-sm btn-outline btn-error"
+      hx-delete="/account/sessions/{{ s.public_id }}"
+      hx-target="#sessions-body"
+      hx-confirm="Revoke this session? That device will be signed out."
+    >
+      Revoke
+    </button>
     {% endif %}
   </td>
 </tr>
-{% endfor %}
-{% if sessions.is_empty() %}
-<tr><td colspan="6" class="py-14 text-center text-dim">No active sessions.</td></tr>
+{% endfor %} {% if sessions.is_empty() %}
+<tr>
+  <td colspan="6" class="py-14 text-center text-dim">No active sessions.</td>
+</tr>
 {% endif %}

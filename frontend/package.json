@@ -10,8 +10,8 @@
     "build:preview": "node scripts/build-preview.mjs",
     "watch": "vp build --watch",
     "preview": "vp preview",
-    "fmt": "vp fmt",
-    "fmt:check": "vp fmt --check",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix"
   },

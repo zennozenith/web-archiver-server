@@ -1,33 +1,38 @@
 <!doctype html>
 <html lang="en" data-theme="ledger">
+  <head>
+    <title>{{ title }} · Userdemo</title>
+    {% include "partials/head.templ.html" %}
+  </head>
 
-<head>
-  <title>{{ title }} · Userdemo</title>
-  {% include "partials/head.templ.html" %}
-</head>
+  <body class="min-h-screen bg-page">
+    <div class="grid min-h-screen lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+      <section class="auth-panel hidden flex-col justify-between p-12 lg:flex">
+        <a href="/account" class="font-display text-2xl font-semibold tracking-tight">Userdemo</a>
+        <div class="max-w-md">
+          <h2 class="font-display text-4xl font-semibold leading-tight">
+            Accounts, roles and sessions, in one calm place.
+          </h2>
+          <ul class="mt-8 space-y-4 text-sm">
+            <li>
+              <span class="font-semibold">Argon2id</span> password hashing, with lockout after
+              repeated failures.
+            </li>
+            <li>
+              <span class="font-semibold">Server-side sessions</span> you can revoke from any
+              device.
+            </li>
+            <li>
+              <span class="font-semibold">Append-only audit log</span> of every sensitive change.
+            </li>
+          </ul>
+        </div>
+        <p class="text-xs opacity-70">Role-based access control · API keys · E-mail verification</p>
+      </section>
 
-<body class="min-h-screen bg-page">
-  <div class="grid min-h-screen lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-    <section class="auth-panel hidden flex-col justify-between p-12 lg:flex">
-      <a href="/account" class="font-display text-2xl font-semibold tracking-tight">Userdemo</a>
-      <div class="max-w-md">
-        <h2 class="font-display text-4xl font-semibold leading-tight">Accounts, roles and sessions, in one calm place.
-        </h2>
-        <ul class="mt-8 space-y-4 text-sm">
-          <li><span class="font-semibold">Argon2id</span> password hashing, with lockout after repeated failures.</li>
-          <li><span class="font-semibold">Server-side sessions</span> you can revoke from any device.</li>
-          <li><span class="font-semibold">Append-only audit log</span> of every sensitive change.</li>
-        </ul>
-      </div>
-      <p class="text-xs opacity-70">Role-based access control · API keys · E-mail verification</p>
-    </section>
-
-    <main class="flex items-center justify-center p-6 sm:p-10">
-      <div class="w-full max-w-md">
-        {% block content %}{% endblock %}
-      </div>
-    </main>
-  </div>
-</body>
-
+      <main class="flex items-center justify-center p-6 sm:p-10">
+        <div class="w-full max-w-md">{% block content %}{% endblock %}</div>
+      </main>
+    </div>
+  </body>
 </html>

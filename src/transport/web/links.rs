@@ -43,6 +43,7 @@ pub(super) struct LinksTpl {
     filters: library::LinkFilters,
     collections: Vec<CollectionChoice>,
     can_write: bool,
+    new: bool,
 }
 
 async fn page(
@@ -56,6 +57,7 @@ async fn page(
         shell: Shell::new::<LibraryDashboard>(user, section),
         links,
         next_cursor,
+        new: query.new == 1,
         filters: query.filters(),
         collections: library::collection_choices(state, user, None).await?,
         can_write: user.can(Permission::ARCHIVE_WRITE),

@@ -1,16 +1,22 @@
-{% extends "auth_base.templ.html" %}
-{% block content %}
+{% extends "auth_base.templ.html" %} {% block content %}
 <h1 class="font-display text-3xl font-semibold">Choose a new password</h1>
 <p class="mt-1 text-dim">All existing sessions are signed out after a reset.</p>
 
 <form class="mt-8 space-y-3" hx-post="/reset" hx-target="#form-alert">
   <fieldset class="fieldset">
     <legend class="fieldset-legend">Reset token</legend>
-    <input class="input w-full font-data" name="token" value="{{ token }}" required>
+    <input class="input w-full font-data" name="token" value="{{ token }}" required />
   </fieldset>
   <fieldset class="fieldset">
     <legend class="fieldset-legend">New password</legend>
-    <input class="input w-full" type="password" name="new_password" autocomplete="new-password" minlength="8" required>
+    <input
+      class="input w-full"
+      type="password"
+      name="new_password"
+      autocomplete="new-password"
+      minlength="8"
+      required
+    />
   </fieldset>
   <div id="form-alert" aria-live="polite"></div>
   <button class="btn btn-primary w-full" type="submit">

@@ -1,11 +1,13 @@
-{% extends "base.templ.html" %}
-{% block content %}
+{% extends "base.templ.html" %} {% block content %}
 <div class="page-header mb-6">
   <h1 class="font-display text-2xl font-semibold">Pinned links</h1>
 </div>
 <div class="link-grid" data-view="grid">
   {% for link in links %}{% include "archive/_link_card.templ.html" %}{% else %}
-  <div class="empty-state"><p class="title">Nothing pinned yet</p><p>Pin a link to keep it here.</p></div>
+  <div class="empty-state">
+    <p class="title">Nothing pinned yet</p>
+    <p>Pin a link to keep it here.</p>
+  </div>
   {% endfor %}
 </div>
 {% endblock %}

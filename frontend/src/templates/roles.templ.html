@@ -1,8 +1,9 @@
-{% extends "base.templ.html" %}
-{% block content %}
+{% extends "base.templ.html" %} {% block content %}
 <div class="mb-5">
   <h1 class="font-display text-2xl font-semibold">Roles &amp; permissions</h1>
-  <p class="text-sm text-dim">Roles are fixed by the database seed. Permissions are checked on every request.</p>
+  <p class="text-sm text-dim">
+    Roles are fixed by the database seed. Permissions are checked on every request.
+  </p>
 </div>
 
 <div class="grid gap-4 md:grid-cols-2">
@@ -22,9 +23,12 @@
       </div>
     </div>
     <div class="mt-4 flex flex-wrap gap-1">
-      {% for p in c.permissions %}<span class="badge badge-sm badge-outline font-data">{{ p }}</span>{% endfor %}
+      {% for p in c.permissions %}<span class="badge badge-sm badge-outline font-data">{{ p }}</span
+      >{% endfor %}
     </div>
-    {% if can_users %}<a class="link mt-4 inline-block text-sm" href="{{ c.users_href }}">View users with this role</a>{% endif %}
+    {% if can_users %}<a class="link mt-4 inline-block text-sm" href="{{ c.users_href }}"
+      >View users with this role</a
+    >{% endif %}
   </article>
   {% endfor %}
 </div>
@@ -35,7 +39,9 @@
     <thead>
       <tr>
         <th>Permission</th>
-        {% for c in cards %}<th class="text-center">{{ c.name }}</th>{% endfor %}
+        {% for c in cards %}
+        <th class="text-center">{{ c.name }}</th>
+        {% endfor %}
       </tr>
     </thead>
     <tbody>
@@ -46,12 +52,17 @@
           <div class="text-xs text-dim">{{ row.description }}</div>
         </td>
         {% for cell in row.cells %}
-        <td class="text-center {{ cell.class }}" title="{{ cell.label }}"><span aria-hidden="true">{{ cell.symbol }}</span><span class="sr-only">{{ cell.label }}</span></td>
+        <td class="text-center {{ cell.class }}" title="{{ cell.label }}">
+          <span aria-hidden="true">{{ cell.symbol }}</span
+          ><span class="sr-only">{{ cell.label }}</span>
+        </td>
         {% endfor %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-<p class="mt-2 text-xs text-faint">A lighter dot means the permission comes from the <span class="font-data">*</span> wildcard.</p>
+<p class="mt-2 text-xs text-faint">
+  A lighter dot means the permission comes from the <span class="font-data">*</span> wildcard.
+</p>
 {% endblock %}

@@ -1,13 +1,23 @@
-{% extends "base.templ.html" %}
-{% block content %}
+{% extends "base.templ.html" %} {% block content %}
 <div class="mb-5">
   <h1 class="font-display text-2xl font-semibold">Sessions</h1>
-  <p class="text-sm text-dim">Browsers and devices currently signed in to your account. Revoke anything you don't recognise.</p>
+  <p class="text-sm text-dim">
+    Browsers and devices currently signed in to your account. Revoke anything you don't recognise.
+  </p>
 </div>
 
 <div class="overflow-x-auto rounded-xl border border-line bg-surface">
   <table class="table">
-    <thead><tr><th>Device</th><th>IP address</th><th>Signed in</th><th>Last used</th><th>Expires</th><th class="w-0"><span class="sr-only">Actions</span></th></tr></thead>
+    <thead>
+      <tr>
+        <th>Device</th>
+        <th>IP address</th>
+        <th>Signed in</th>
+        <th>Last used</th>
+        <th>Expires</th>
+        <th class="w-0"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
     <tbody id="sessions-body">
       {% include "partials/session_rows.templ.html" %}
     </tbody>
