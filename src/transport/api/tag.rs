@@ -9,9 +9,9 @@ use serde::Deserialize;
 use crate::{
     app::AppState,
     db::patch::FieldPatch,
+    domain::TagId,
     error::Result,
     identity::AuthUser,
-    infra::TagId,
     service,
     transport::extract::body::{AppJson, AppPath},
 };
@@ -35,7 +35,7 @@ async fn create(
     user: AuthUser,
     AppJson(req): AppJson<CreateTagRequest>,
 ) -> Result<(StatusCode, AppJson<crate::db::tag::Tag>)> {
-    let tag = service::tag::create(state.db.writer(), &user, &req.name, req.color.as_deref()).await?;
+    let tag = service::tag::create(&state.db, &user, &req.name, req.color.as_deref()).await?;
     Ok((StatusCode::CREATED, AppJson(tag)))
 }
 
@@ -54,7 +54,7 @@ async fn patch(
     AppPath(id): AppPath<TagId>,
     AppJson(req): AppJson<PatchTagRequest>,
 ) -> Result<AppJson<crate::db::tag::Tag>> {
-    let tag = service::tag::patch(state.db.writer(), &user, id, req.name.as_deref(), req.color).await?;
+    let tag = service::tag::patch(&state.db, &user, id, req.name.as_deref(), req.color).await?;
     Ok(AppJson(tag))
 }
 
@@ -64,7 +64,7 @@ async fn delete(
     user: AuthUser,
     AppPath(id): AppPath<TagId>,
 ) -> Result<StatusCode> {
-    service::tag::delete(state.db.writer(), &user, id).await?;
+    service::tag::delete(&state.db, &user, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -82,7 +82,7 @@ async fn merge(
     AppPath(source): AppPath<TagId>,
     AppJson(req): AppJson<MergeTagRequest>,
 ) -> Result<AppJson<crate::db::tag::Tag>> {
-    let tag = service::tag::merge(state.db.writer(), &user, source, req.target).await?;
+    let tag = service::tag::merge(&state.db, &user, source, req.target).await?;
     Ok(AppJson(tag))
 }
 

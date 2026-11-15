@@ -7,9 +7,9 @@ use crate::{
     db::{
         content::ContentId,
         cursor::{Cursor, CursorPage},
-        ids::id_type,
         page::{self, PageId},
     },
+    domain::ids::id_type,
     infra::Blake3Hash,
     util::{limit::Limit, mime::MimeType},
 };

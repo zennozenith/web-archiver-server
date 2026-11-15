@@ -43,23 +43,23 @@ pub(crate) async fn list_users(
 }
 
 pub(crate) async fn set_status(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     public_id: &str,
     status: AccountStatus,
     reason: Option<&str>,
 ) -> Result<()> {
     actor.require(Permission::USERS_WRITE)?;
-    let target = target_id(pool, public_id).await?;
+    let target = target_id(pool.reader(), public_id).await?;
     roles::ensure_not_self(actor.id, target, "you cannot change your own status")?;
 
     let reason = reason.map(str::trim).filter(|r| !r.is_empty());
-    if !db::user::set_status(pool, target, status, reason).await? {
+    if !db::user::set_status(pool.writer(), target, status, reason).await? {
         return Err(AppError::NotFound(Resource::User));
     }
 
     audit(
-        pool,
+        pool.writer(),
         Some(actor.id),
         Some(target),
         AuditAction::UserStatusChanged,
@@ -69,20 +69,16 @@ pub(crate) async fn set_status(
     Ok(())
 }
 
-pub(crate) async fn delete_user(
-    pool: &SqlitePool,
-    actor: &AuthUser,
-    public_id: &str,
-) -> Result<()> {
+pub(crate) async fn delete_user(pool: &Database, actor: &AuthUser, public_id: &str) -> Result<()> {
     actor.require(Permission::USERS_DELETE)?;
-    let target = target_id(pool, public_id).await?;
+    let target = target_id(pool.reader(), public_id).await?;
     roles::ensure_not_self(actor.id, target, "you cannot delete yourself")?;
 
-    if !db::user::soft_delete(pool, target, now_ms()).await? {
+    if !db::user::soft_delete(pool.writer(), target, now_ms()).await? {
         return Err(AppError::NotFound(Resource::User));
     }
     audit(
-        pool,
+        pool.writer(),
         Some(actor.id),
         Some(target),
         AuditAction::UserDeleted,
@@ -188,7 +184,7 @@ pub(crate) async fn list_roles(pool: &Database, actor: &AuthUser) -> Result<Vec<
 }
 
 pub(crate) async fn grant_role(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     public_id: &str,
     role: &str,
@@ -196,15 +192,15 @@ pub(crate) async fn grant_role(
     actor.require(Permission::ROLES_WRITE)?;
     roles::ensure_role_assignable(actor, role)?;
 
-    let target = target_id(pool, public_id).await?;
-    let role_id = db::role::find_id(pool, role)
+    let target = target_id(pool.reader(), public_id).await?;
+    let role_id = db::role::find_id(pool.reader(), role)
         .await?
         .or_not_found(Resource::Role)?;
 
     // Granting twice is a no-op, and not worth an audit row.
-    if db::role::grant(pool, target, role_id, actor.id).await? {
+    if db::role::grant(pool.writer(), target, role_id, actor.id).await? {
         audit(
-            pool,
+            pool.writer(),
             Some(actor.id),
             Some(target),
             AuditAction::RoleGranted,
@@ -216,7 +212,7 @@ pub(crate) async fn grant_role(
 }
 
 pub(crate) async fn revoke_role(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     public_id: &str,
     role: &str,
@@ -224,12 +220,12 @@ pub(crate) async fn revoke_role(
     actor.require(Permission::ROLES_WRITE)?;
     roles::ensure_role_assignable(actor, role)?;
 
-    let target = target_id(pool, public_id).await?;
-    if !db::role::revoke(pool, target, role).await? {
+    let target = target_id(pool.reader(), public_id).await?;
+    if !db::role::revoke(pool.writer(), target, role).await? {
         return Err(AppError::NotFound(Resource::Role));
     }
     audit(
-        pool,
+        pool.writer(),
         Some(actor.id),
         Some(target),
         AuditAction::RoleRevoked,

@@ -1,7 +1,5 @@
 //! Collection use-cases. Collections are flat and belong to one user.
 
-use sqlx::SqlitePool;
-
 use crate::{
     db::{
         Database,
@@ -61,34 +59,34 @@ pub(crate) async fn get(
 }
 
 pub(crate) async fn create(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     fields: &CollectionFields,
 ) -> Result<CollectionRecord> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     let input = fields.input()?;
-    CollectionRecord::create(pool, actor.id, &input)
+    CollectionRecord::create(pool.writer(), actor.id, &input)
         .await
         .map_err(|e| AppError::unique(e, "a collection with that name already exists"))
 }
 
 pub(crate) async fn update(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: CollectionId,
     fields: &CollectionFields,
 ) -> Result<CollectionRecord> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     let input = fields.input()?;
-    CollectionRecord::update(pool, actor.id, id, &input)
+    CollectionRecord::update(pool.writer(), actor.id, id, &input)
         .await
         .map_err(|e| AppError::unique(e, "a collection with that name already exists"))?
         .or_not_found(Resource::Collection)
 }
 
-pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: CollectionId) -> Result<()> {
+pub(crate) async fn delete(pool: &Database, actor: &AuthUser, id: CollectionId) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if CollectionRecord::delete(pool, actor.id, id).await? {
+    if CollectionRecord::delete(pool.writer(), actor.id, id).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::Collection))
@@ -96,13 +94,13 @@ pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: CollectionId
 }
 
 pub(crate) async fn set_public(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: CollectionId,
     public: bool,
 ) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if CollectionRecord::set_public(pool, actor.id, id, public).await? {
+    if CollectionRecord::set_public(pool.writer(), actor.id, id, public).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::Collection))

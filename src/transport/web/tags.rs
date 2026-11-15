@@ -10,9 +10,9 @@ use serde::Deserialize;
 
 use crate::{
     app::AppState,
+    domain::{TagId, TagName},
     error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
-    infra::{TagId, TagName},
     service,
     transport::{
         extract::body::{AppForm, AppPath, AppQuery},
@@ -121,7 +121,7 @@ pub(super) async fn create(
     user: AuthUser,
     AppForm(form): AppForm<CreateTagForm>,
 ) -> Result<Fragments> {
-    service::tag::create(state.db.writer(), &user, &form.name, form.color.as_deref()).await?;
+    service::tag::create(&state.db, &user, &form.name, form.color.as_deref()).await?;
     Fragments::new().toast(ToastKind::Success, "Tag added")
 }
 
@@ -138,7 +138,7 @@ pub(super) async fn rename(
 ) -> Result<Fragments> {
     let id = resolve_id(&state, &user, &name).await?;
     service::tag::patch(
-        state.db.writer(),
+        &state.db,
         &user,
         id,
         Some(&form.name),
@@ -154,7 +154,7 @@ pub(super) async fn remove(
     AppPath(name): AppPath<String>,
 ) -> Result<Fragments> {
     let id = resolve_id(&state, &user, &name).await?;
-    service::tag::delete(state.db.writer(), &user, id).await?;
+    service::tag::delete(&state.db, &user, id).await?;
     Fragments::new().toast(ToastKind::Success, "Tag deleted")
 }
 

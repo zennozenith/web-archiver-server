@@ -14,20 +14,25 @@ use std::{
 
 fn main() {
     let manifest_dir =
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("shuld have cargo manifest"));
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("should have cargo manifest"));
     let root = manifest_dir.join("static/vite/src/templates");
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", root.display());
+    println!("cargo:rerun-if-env-changed=WEB_ARCHIVER_BUILD_FRONTEND");
 
-    let status = Command::new("devenv")
-        .args(["tasks", "run", "frontend"])
-        // .current_dir("frontend")
-        .status()
-        .expect("failed to run vite build — is bun installed?");
-
-    if !status.success() {
-        panic!("vite build failed");
+    // `devenv` is a development convenience, not a build prerequisite. Plain
+    // `cargo build` works in environments without it (or when the frontend has
+    // already been built); set `WEB_ARCHIVER_BUILD_FRONTEND=0` to skip the
+    // build explicitly.
+    if frontend_build_disabled() {
+        println!("cargo:warning=frontend build disabled; using existing templates");
+    } else if !devenv_available() {
+        println!(
+            "cargo:warning=devenv not found; skipping frontend build, using existing templates"
+        );
+    } else {
+        run_frontend_build();
     }
 
     if !root.exists() {
@@ -37,6 +42,38 @@ fn main() {
 
     if let Err(e) = visit(&root) {
         panic!("failed to fix templates: {e}");
+    }
+}
+
+fn frontend_build_disabled() -> bool {
+    matches!(
+        env::var("WEB_ARCHIVER_BUILD_FRONTEND").as_deref(),
+        Ok("0" | "false" | "no")
+    )
+}
+
+fn devenv_available() -> bool {
+    Command::new("devenv")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn run_frontend_build() {
+    let status = Command::new("devenv")
+        .args(["tasks", "run", "frontend"])
+        .status();
+
+    match status {
+        Ok(status) if status.success() => {}
+        Ok(status) => {
+            println!("cargo:warning=frontend build exited with {status}; using existing templates")
+        }
+        Err(error) => println!(
+            "cargo:warning=could not run frontend build: {error}; using existing templates"
+        ),
     }
 }
 

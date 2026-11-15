@@ -170,7 +170,7 @@ pub(super) async fn create(
     user: AuthUser,
     AppForm(form): AppForm<CollectionForm>,
 ) -> Result<Fragments> {
-    service::collection::create(state.db.writer(), &user, &form.fields()).await?;
+    service::collection::create(&state.db, &user, &form.fields()).await?;
     Fragments::new().toast(ToastKind::Success, "Collection created")
 }
 
@@ -180,7 +180,7 @@ pub(super) async fn update(
     AppPath(id): AppPath<CollectionId>,
     AppForm(form): AppForm<CollectionForm>,
 ) -> Result<Fragments> {
-    service::collection::update(state.db.writer(), &user, id, &form.fields()).await?;
+    service::collection::update(&state.db, &user, id, &form.fields()).await?;
     Fragments::new().toast(ToastKind::Success, "Collection updated")
 }
 
@@ -189,7 +189,7 @@ pub(super) async fn remove(
     user: AuthUser,
     AppPath(id): AppPath<CollectionId>,
 ) -> Result<Fragments> {
-    service::collection::delete(state.db.writer(), &user, id).await?;
+    service::collection::delete(&state.db, &user, id).await?;
     Fragments::new().toast(ToastKind::Success, "Collection deleted")
 }
 
@@ -209,7 +209,7 @@ pub(super) async fn sharing(
         .public
         .as_deref()
         .is_some_and(|value| value == "true" || value == "on");
-    service::collection::set_public(state.db.writer(), &user, id, public).await?;
+    service::collection::set_public(&state.db, &user, id, public).await?;
     let message = if public {
         "Collection shared"
     } else {

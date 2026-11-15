@@ -4,7 +4,7 @@ use std::{borrow::Borrow, collections::HashSet, fmt, str::FromStr};
 
 use serde::Serialize;
 
-use crate::{db::ids::id_type, error::AppError};
+use crate::{domain::ids::id_type, error::AppError};
 
 pub(crate) const MAX_NAME_LEN: usize = 64;
 pub(crate) const MAX_TAGS_PER_REQUEST: usize = 50;

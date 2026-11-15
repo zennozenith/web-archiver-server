@@ -5,7 +5,8 @@
 }: {
   languages.rust = {
     enable = true;
-    channel = "nightly";
+    # Keep the toolchain aligned with `rust-version` in Cargo.toml (1.90).
+    channel = "stable";
     components = [
       "rustc"
       "cargo"
@@ -135,6 +136,9 @@
   ];
 
   env = {
+    # `build.rs` only shells out to devenv when this is enabled; plain
+    # `cargo build` outside the dev shell skips the frontend build.
+    WEB_ARCHIVER_BUILD_FRONTEND = "1";
     RUST_LOG = "info,myopic=debug";
     OUT_DIR = "../static/vite";
     APP_SERVER__HOST = "0.0.0.0";

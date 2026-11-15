@@ -95,7 +95,7 @@ pub(super) async fn create(
     user: AuthUser,
     AppForm(form): AppForm<CreatePendingForm>,
 ) -> Result<Fragments> {
-    service::pending::create(state.db.writer(), &user, &form.url, &split_tags(&form.tags)).await?;
+    service::pending::create(&state.db, &user, &form.url, &split_tags(&form.tags)).await?;
     Fragments::new().toast(ToastKind::Success, "Added to the queue")
 }
 
@@ -132,7 +132,7 @@ pub(super) async fn bulk(
     AppForm(form): AppForm<BulkForm>,
 ) -> Result<Fragments> {
     let items = parse_bulk(&form.items);
-    let report = service::pending::bulk_create(state.db.writer(), &user, &items).await?;
+    let report = service::pending::bulk_create(&state.db, &user, &items).await?;
     Fragments::new().toast(
         ToastKind::Success,
         &format!(
@@ -158,7 +158,7 @@ pub(super) async fn update(
     AppForm(form): AppForm<PatchPendingForm>,
 ) -> Result<Fragments> {
     service::pending::patch(
-        state.db.writer(),
+        &state.db,
         &user,
         id,
         form.status,
@@ -174,7 +174,7 @@ pub(super) async fn remove(
     user: AuthUser,
     AppPath(id): AppPath<PendingId>,
 ) -> Result<Fragments> {
-    service::pending::delete(state.db.writer(), &user, id).await?;
+    service::pending::delete(&state.db, &user, id).await?;
     Fragments::new().toast(ToastKind::Success, "Removed from the queue")
 }
 
@@ -183,7 +183,7 @@ pub(super) async fn retry(
     user: AuthUser,
     AppPath(id): AppPath<PendingId>,
 ) -> Result<Fragments> {
-    service::pending::retry(state.db.writer(), &user, id).await?;
+    service::pending::retry(&state.db, &user, id).await?;
     Fragments::new().toast(ToastKind::Success, "Queued for retry")
 }
 
@@ -197,7 +197,7 @@ pub(super) async fn clear(
     user: AuthUser,
     AppQuery(query): AppQuery<ClearQuery>,
 ) -> Result<Fragments> {
-    let deleted = service::pending::clear(state.db.writer(), &user, query.status).await?;
+    let deleted = service::pending::clear(&state.db, &user, query.status).await?;
     Fragments::new().toast(
         ToastKind::Success,
         &format!("Deleted {deleted} queued items"),

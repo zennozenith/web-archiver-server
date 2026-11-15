@@ -1,10 +1,10 @@
 use secrecy::ExposeSecret as _;
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::SqliteConnection;
 
 use crate::{
     app::AppState,
     db::{
-        self,
+        self, Database,
         audit::{AuditAction, audit},
         auth::NewAuthToken,
     },
@@ -100,9 +100,9 @@ pub(crate) async fn create_account(state: &AppState, account: NewAccount) -> Res
     Ok(())
 }
 
-pub(crate) async fn verify_email(pool: &SqlitePool, token: VerifyToken) -> Result<()> {
+pub(crate) async fn verify_email(pool: &Database, token: VerifyToken) -> Result<()> {
     let now = now_ms();
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_write().await?;
 
     // Consuming the token is the first statement, so two concurrent clicks
     // can't both succeed. If a later step fails, the rollback un-consumes it.
@@ -124,7 +124,7 @@ pub(crate) async fn verify_email(pool: &SqlitePool, token: VerifyToken) -> Resul
 
     tx.commit().await?;
     audit(
-        pool,
+        pool.writer(),
         Some(user_id),
         Some(user_id),
         AuditAction::EmailVerified,

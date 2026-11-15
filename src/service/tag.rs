@@ -1,7 +1,5 @@
 //! Tag use-cases. Tags belong to one user; every operation is owner-scoped.
 
-use sqlx::SqlitePool;
-
 use crate::{
     db::{
         Database,
@@ -9,9 +7,9 @@ use crate::{
         patch::FieldPatch,
         tag::{PatchOutcome, Tag, TagPatch, TagSummary},
     },
+    domain::{TagColor, TagId, TagMerge, TagName, parse_optional_color},
     error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
-    infra::{TagColor, TagId, TagMerge, TagName, parse_optional_color},
 };
 
 fn color_patch(raw: FieldPatch<String>) -> Result<FieldPatch<TagColor>> {
@@ -40,7 +38,7 @@ pub(crate) async fn find(
 }
 
 pub(crate) async fn create(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     name: &str,
     color: Option<&str>,
@@ -49,7 +47,7 @@ pub(crate) async fn create(
     let name: TagName = name.parse()?;
     let color = parse_optional_color(color)?;
 
-    match Tag::create(pool, actor.id, &name, color.as_ref()).await? {
+    match Tag::create(pool.writer(), actor.id, &name, color.as_ref()).await? {
         CreateOutcome::Created(tag) => Ok(tag),
         CreateOutcome::Existing(tag) => Err(AppError::Duplicate {
             existing_id: tag.id.get(),
@@ -59,7 +57,7 @@ pub(crate) async fn create(
 }
 
 pub(crate) async fn patch(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: TagId,
     name: Option<&str>,
@@ -72,7 +70,7 @@ pub(crate) async fn patch(
         color: color_patch(color)?,
     };
 
-    match patch.apply(pool, actor.id, id).await? {
+    match patch.apply(pool.writer(), actor.id, id).await? {
         PatchOutcome::Updated(tag) => Ok(tag),
         PatchOutcome::NotFound => Err(AppError::NotFound(Resource::Tag)),
         PatchOutcome::NameTaken { existing_id } => Err(AppError::Duplicate {
@@ -82,9 +80,9 @@ pub(crate) async fn patch(
     }
 }
 
-pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: TagId) -> Result<()> {
+pub(crate) async fn delete(pool: &Database, actor: &AuthUser, id: TagId) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if Tag::delete(pool, actor.id, id).await? {
+    if Tag::delete(pool.writer(), actor.id, id).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::Tag))
@@ -92,14 +90,14 @@ pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: TagId) -> Re
 }
 
 pub(crate) async fn merge(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     source: TagId,
     target: TagId,
 ) -> Result<Tag> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     let merge = TagMerge::new(source, target).map_err(|e| AppError::BadRequest(e.to_string()))?;
-    Tag::merge(pool, actor.id, merge)
+    Tag::merge(pool.writer(), actor.id, merge)
         .await?
         .or_not_found(Resource::Tag)
 }

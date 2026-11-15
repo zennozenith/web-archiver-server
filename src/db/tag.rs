@@ -3,7 +3,7 @@ use sqlx::{FromRow, Result, SqliteExecutor, SqlitePool};
 
 use crate::{
     db::{create::CreateOutcome, patch::FieldPatch},
-    infra::{TagColor, TagId, TagMerge, TagName},
+    domain::{TagColor, TagId, TagMerge, TagName},
 };
 
 /// Column list shared by every query that materializes a [`Tag`].

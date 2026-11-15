@@ -321,7 +321,7 @@ pub(super) async fn set_status(
     AppForm(form): AppForm<StatusRequest>,
 ) -> Result<Fragments> {
     admin::set_status(
-        state.db.writer(),
+        &state.db,
         &actor,
         &public_id,
         form.status,
@@ -336,7 +336,7 @@ pub(super) async fn grant(
     actor: AuthUser,
     AppPath((public_id, role)): AppPath<(String, String)>,
 ) -> Result<Fragments> {
-    admin::grant_role(state.db.writer(), &actor, &public_id, &role).await?;
+    admin::grant_role(&state.db, &actor, &public_id, &role).await?;
     refreshed(&state, &actor, &public_id, &format!("Granted {role}")).await
 }
 
@@ -345,7 +345,7 @@ pub(super) async fn revoke(
     actor: AuthUser,
     AppPath((public_id, role)): AppPath<(String, String)>,
 ) -> Result<Fragments> {
-    admin::revoke_role(state.db.writer(), &actor, &public_id, &role).await?;
+    admin::revoke_role(&state.db, &actor, &public_id, &role).await?;
     refreshed(&state, &actor, &public_id, &format!("Revoked {role}")).await
 }
 
@@ -354,7 +354,7 @@ pub(super) async fn delete(
     actor: AuthUser,
     AppPath(public_id): AppPath<String>,
 ) -> Result<Fragments> {
-    admin::delete_user(state.db.writer(), &actor, &public_id).await?;
+    admin::delete_user(&state.db, &actor, &public_id).await?;
     Fragments::new()
         .push(&UserRowGone { public_id })?
         .hx(HxHeaders::new().trigger(CLOSE_MODAL))

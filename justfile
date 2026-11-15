@@ -46,6 +46,10 @@ deny:
 # Both dependency checks
 security: audit deny
 
+# Check the layer direction encoded in the design document
+layers:
+    ./scripts/check-layers.sh
+
 # Initialize the server data directory
 init-server:
     mkdir -p data/db && \

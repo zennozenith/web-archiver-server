@@ -1,7 +1,5 @@
 //! Capture use-cases: metadata, blobs and sub-resources.
 
-use sqlx::SqlitePool;
-
 use crate::{
     db::{
         Database,
@@ -25,9 +23,9 @@ pub(crate) async fn detail(
         .or_not_found(Resource::Capture)
 }
 
-pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: CaptureId) -> Result<()> {
+pub(crate) async fn delete(pool: &Database, actor: &AuthUser, id: CaptureId) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if capture::delete(pool, actor.id, id).await? {
+    if capture::delete(pool.writer(), actor.id, id).await? {
         Ok(())
     } else {
         Err(AppError::NotFound(Resource::Capture))

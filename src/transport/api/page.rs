@@ -17,9 +17,9 @@ use crate::{
         page::{PageCursor, PageDetail, PageField, PageId, PageItem, PageSort, UpdatePage},
         tag::Tag,
     },
+    domain::{TagId, TagName},
     error::Result,
     identity::AuthUser,
-    infra::{TagId, TagName},
     service,
     transport::{
         extract::body::{AppJson, AppPath, AppQuery},
@@ -150,7 +150,7 @@ async fn put_page_tags(
     AppJson(req): AppJson<ReplaceTagsRequest>,
 ) -> Result<AppJson<Vec<Tag>>> {
     let raw: Vec<String> = req.tags.into_iter().map(|tag| tag.name).collect();
-    let names = crate::infra::parse_tag_names(&raw)?;
+    let names = crate::domain::parse_tag_names(&raw)?;
     Ok(AppJson(
         service::page::put_tags(&state, &user, id, &names).await?,
     ))
@@ -225,7 +225,6 @@ pub(super) fn upload_route() -> Router<AppState> {
 pub(super) fn capture_route() -> Router<AppState> {
     Router::new().route(
         "/page/{id}/capture",
-        post(super::archive::archive)
-            .layer(DefaultBodyLimit::max(MAX_CAPTURE_BODY_BYTES)),
+        post(super::archive::archive).layer(DefaultBodyLimit::max(MAX_CAPTURE_BODY_BYTES)),
     )
 }

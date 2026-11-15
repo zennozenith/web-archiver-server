@@ -1,10 +1,9 @@
 use secrecy::{ExposeSecret as _, SecretString};
 use serde_json::json;
-use sqlx::SqlitePool;
 
 use crate::{
     db::{
-        self,
+        self, Database,
         audit::{AuditAction, audit},
         auth::{NewAuthToken, ValidToken},
     },
@@ -15,13 +14,13 @@ use crate::{
 };
 
 pub(crate) async fn reset_password(
-    pool: &SqlitePool,
+    pool: &Database,
     token: ResetToken,
     new_password: SecretString,
 ) -> Result<()> {
     password_policy::ensure_password(&new_password)?;
     let now = now_ms();
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_write().await?;
 
     let token = db::auth::find_valid_token(
         &mut tx,
@@ -54,7 +53,7 @@ pub(crate) async fn reset_password(
     tx.commit().await?;
 
     audit(
-        pool,
+        pool.writer(),
         Some(user_id),
         Some(user_id),
         AuditAction::PasswordChanged,

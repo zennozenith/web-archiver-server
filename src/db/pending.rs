@@ -7,11 +7,10 @@ use crate::{
     db::{
         create::CreateOutcome,
         cursor::{Cursor, CursorPage},
-        ids::id_type,
         page::PageId,
         tag::Tag,
     },
-    infra::TagName,
+    domain::{TagName, ids::id_type},
     util::{limit::Limit, url_canon::CanonicalUrl},
 };
 

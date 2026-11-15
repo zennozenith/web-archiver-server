@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # CI has no devenv; use the checked-in templates and skip the frontend shell-out.
+  WEB_ARCHIVER_BUILD_FRONTEND: "0"
+
+jobs:
+  check:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The build script normally runs the frontend through devenv. CI checks
+      # the Rust tree only, so skip that step; generated templates are expected
+      # to be present in the checkout for a release build.
+      - name: Enforce layer direction
+        run: ./scripts/check-layers.sh
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: cargo test
+        run: cargo test --all-features

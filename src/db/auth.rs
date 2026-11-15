@@ -370,6 +370,16 @@ pub(crate) async fn record_bad_password(
     Ok(())
 }
 
+/// Failure reason of the newest login attempt, or `None` for a success.
+#[cfg(test)]
+pub(crate) async fn last_login_failure_reason(
+    pool: &SqlitePool,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT failure_reason FROM login_attempts ORDER BY id DESC LIMIT 1")
+        .fetch_one(pool)
+        .await
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "session creation needs the owner, client, token parts, and timestamp"

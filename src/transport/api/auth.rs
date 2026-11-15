@@ -53,7 +53,7 @@ async fn verify_email(
     AppJson(req): AppJson<TokenReq>,
 ) -> Result<Json<Value>> {
     let verify_token = VerifyToken::try_from(req.token)?;
-    crate::service::auth::verify_email(db.writer(), verify_token).await?;
+    crate::service::auth::verify_email(&db, verify_token).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -64,7 +64,7 @@ async fn login(
     client: ClientInfo,
     JsonOrForm(req): JsonOrForm<LoginRequest>,
 ) -> Result<impl IntoResponse> {
-    let token = service::auth::login(state.db.writer(), &client, req.into()).await?;
+    let token = service::auth::login(&state.db, &client, req.into()).await?;
     Ok((
         [(
             header::SET_COOKIE,
@@ -81,7 +81,7 @@ async fn logout(
     let maybe_token = SessionCookie::get(&headers);
 
     if let Some(session_cookie_token) = maybe_token {
-        service::auth::logout(state.db.writer(), session_cookie_token).await?;
+        service::auth::logout(&state.db, session_cookie_token).await?;
     }
 
     Ok((
@@ -127,7 +127,7 @@ async fn reset_password(
 ) -> Result<StatusCode, AppError> {
     let token = ResetToken::try_from(req.token)?;
 
-    let _throw_away = service::auth::reset_password(db.writer(), token, req.new_password).await;
+    let _throw_away = service::auth::reset_password(&db, token, req.new_password).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

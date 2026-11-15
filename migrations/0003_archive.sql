@@ -94,7 +94,7 @@ CREATE TABLE contents (
 ) STRICT;
 
 -- Tiny partial index: exactly the rows the GC scans.
-CREATE INDEX idx_content_unreferenced ON contents(created_at) WHERE ref_count = 0;
+CREATE INDEX ix_content_unreferenced ON contents(created_at) WHERE ref_count = 0;
 
 -- -----------------------------------------------------------------------------
 -- collections: per-user folders. Flat: collections cannot be nested.
@@ -119,12 +119,12 @@ CREATE TABLE collections (
 ) STRICT;
 
 -- Names are unique per owner, case-insensitively.
-CREATE UNIQUE INDEX uq_collection_owner_name
+CREATE UNIQUE INDEX ux_collection_owner_name
     ON collections(owner_user_id, name COLLATE NOCASE);
 -- Exactly one built-in collection per user.
-CREATE UNIQUE INDEX uq_collection_builtin_per_owner
+CREATE UNIQUE INDEX ux_collection_builtin_per_owner
     ON collections(owner_user_id) WHERE is_builtin = 1;
-CREATE INDEX idx_collection_public ON collections(id) WHERE public = 1;
+CREATE INDEX ix_collection_public ON collections(id) WHERE public = 1;
 
 -- Cannot delete the built-in collection, unless its owner is already gone
 -- (SQLite runs FK cascade actions after the parent row is deleted, so a
@@ -161,7 +161,7 @@ CREATE TABLE crawls (
     finished_at    INTEGER,
     CONSTRAINT ck_crawl_times CHECK (finished_at IS NULL OR finished_at >= started_at)
 ) STRICT;
-CREATE INDEX idx_crawl_owner ON crawls(owner_user_id, started_at DESC);
+CREATE INDEX ix_crawl_owner ON crawls(owner_user_id, started_at DESC);
 
 -- -----------------------------------------------------------------------------
 -- pages: one row per canonical URL per user
@@ -189,11 +189,11 @@ CREATE TABLE pages (
     CONSTRAINT ck_page_pinned    CHECK (pinned IN (0, 1))
 ) STRICT;
 
-CREATE INDEX idx_page_owner_created ON pages(owner_user_id, created_at DESC);
-CREATE INDEX idx_page_owner_host    ON pages(owner_user_id, host);
-CREATE INDEX idx_page_collection    ON pages(collection_id, created_at DESC) WHERE collection_id IS NOT NULL;
-CREATE INDEX idx_page_pinned        ON pages(owner_user_id, created_at DESC) WHERE pinned = 1;
-CREATE INDEX idx_page_thumbnail     ON pages(thumbnail_content_id)           WHERE thumbnail_content_id IS NOT NULL;
+CREATE INDEX ix_page_owner_created ON pages(owner_user_id, created_at DESC);
+CREATE INDEX id_page_owner_host    ON pages(owner_user_id, host);
+CREATE INDEX id_page_collection    ON pages(collection_id, created_at DESC) WHERE collection_id IS NOT NULL;
+CREATE INDEX id_page_pinned        ON pages(owner_user_id, created_at DESC) WHERE pinned = 1;
+CREATE INDEX id_page_thumbnail     ON pages(thumbnail_content_id)           WHERE thumbnail_content_id IS NOT NULL;
 
 CREATE TRIGGER trg_page_touch_updated_at
 AFTER UPDATE ON pages
@@ -215,7 +215,7 @@ CREATE TABLE highlights (
     CONSTRAINT ck_highlight_text CHECK (length(text) > 0)
 ) STRICT;
 
-CREATE INDEX idx_highlight_page ON highlights(page_id, created_at);
+CREATE INDEX id_highlight_page ON highlights(page_id, created_at);
 
 -- -----------------------------------------------------------------------------
 -- captures: each time a page was fetched (owner = page owner)
@@ -244,12 +244,12 @@ CREATE TABLE captures (
     CONSTRAINT ck_capture_resp_hdr CHECK (response_headers IS NULL OR json_valid(response_headers))
 ) STRICT;
 
-CREATE INDEX idx_capture_page_time        ON captures(page_id, captured_at DESC);
-CREATE INDEX idx_capture_content          ON captures(content_id)            WHERE content_id IS NOT NULL;
-CREATE INDEX idx_capture_original_content ON captures(original_content_id)   WHERE original_content_id IS NOT NULL;
-CREATE INDEX idx_capture_screenshot       ON captures(screenshot_content_id) WHERE screenshot_content_id IS NOT NULL;
-CREATE INDEX idx_capture_redirect_page    ON captures(redirect_page_id)      WHERE redirect_page_id IS NOT NULL;
-CREATE INDEX idx_capture_crawl            ON captures(crawl_id)              WHERE crawl_id IS NOT NULL;
+CREATE INDEX id_capture_page_time        ON captures(page_id, captured_at DESC);
+CREATE INDEX id_capture_content          ON captures(content_id)            WHERE content_id IS NOT NULL;
+CREATE INDEX id_capture_original_content ON captures(original_content_id)   WHERE original_content_id IS NOT NULL;
+CREATE INDEX id_capture_screenshot       ON captures(screenshot_content_id) WHERE screenshot_content_id IS NOT NULL;
+CREATE INDEX id_capture_redirect_page    ON captures(redirect_page_id)      WHERE redirect_page_id IS NOT NULL;
+CREATE INDEX id_capture_crawl            ON captures(crawl_id)              WHERE crawl_id IS NOT NULL;
 
 -- -----------------------------------------------------------------------------
 -- capture_assets: sub-resources (stylesheets, scripts, images, fonts, ...)
@@ -267,7 +267,7 @@ CREATE TABLE capture_assets (
     CONSTRAINT ck_capture_asset_status CHECK (status_code IS NULL OR status_code BETWEEN 100 AND 599)
 ) STRICT;
 
-CREATE INDEX idx_capture_asset_content ON capture_assets(content_id);
+CREATE INDEX id_capture_asset_content ON capture_assets(content_id);
 
 -- -----------------------------------------------------------------------------
 -- page_tags: tags attached to a page (shared by all captures)
@@ -278,7 +278,7 @@ CREATE TABLE page_tags (
     PRIMARY KEY (page_id, tag_id)
 ) STRICT, WITHOUT ROWID;
 
-CREATE INDEX idx_page_tag_tag ON page_tags(tag_id);   -- "all pages with tag X"
+CREATE INDEX id_page_tag_tag ON page_tags(tag_id);   -- "all pages with tag X"
 
 -- -----------------------------------------------------------------------------
 -- pending_items: queue of URLs waiting to be archived (per user)
@@ -310,8 +310,8 @@ CREATE TABLE pending_items (
 ) STRICT;
 
 -- Serves the worker poll query exactly (global queue across users).
-CREATE INDEX idx_pending_ready  ON pending_items(next_attempt_at, id) WHERE status = 'queued';
-CREATE INDEX idx_pending_status ON pending_items(status, created_at);
+CREATE INDEX id_pending_ready  ON pending_items(next_attempt_at, id) WHERE status = 'queued';
+CREATE INDEX id_pending_status ON pending_items(status, created_at);
 
 -- -----------------------------------------------------------------------------
 -- pending_item_tags: tags chosen for a pending item (copied to page_tags on archive)
@@ -322,7 +322,7 @@ CREATE TABLE pending_item_tags (
     PRIMARY KEY (pending_item_id, tag_id)
 ) STRICT, WITHOUT ROWID;
 
-CREATE INDEX idx_pending_tag_tag ON pending_item_tags(tag_id);
+CREATE INDEX id_pending_tag_tag ON pending_item_tags(tag_id);
 
 -- =============================================================================
 -- OWNERSHIP INTEGRITY

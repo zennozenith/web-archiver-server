@@ -10,9 +10,9 @@ use crate::{
         cursor::{Cursor, CursorPage},
         pending::{PendingId, PendingResponse, PendingRow, PendingStatus, PendingUpdate},
     },
+    domain::{TagName, parse_tag_names},
     error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
-    infra::{TagName, parse_tag_names},
     util::{
         limit::Limit,
         time::now_ms,
@@ -69,7 +69,7 @@ pub(crate) async fn get(
 }
 
 pub(crate) async fn create(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     url: &str,
     tags: &[String],
@@ -77,7 +77,7 @@ pub(crate) async fn create(
     actor.require(Permission::ARCHIVE_WRITE)?;
     let (url, tags) = parse_new(url, tags)?;
 
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_write().await?;
     let id = match PendingRow::enqueue(&mut tx, actor.id, &url, &tags).await? {
         CreateOutcome::Created(id) => id,
         CreateOutcome::Existing(existing_id) => {
@@ -89,12 +89,12 @@ pub(crate) async fn create(
     };
     tx.commit().await?;
 
-    PendingResponse::get(pool, actor.id, id).await
+    PendingResponse::get(pool.reader(), actor.id, id).await
 }
 
 #[expect(clippy::too_many_arguments, reason = "mirrors the API patch fields")]
 pub(crate) async fn patch(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: PendingId,
     status: Option<PendingStatus>,
@@ -113,7 +113,7 @@ pub(crate) async fn patch(
     let tags = tags.map(parse_tag_names).transpose()?;
     let url = url.map(canonicalize_url).transpose()?.map(|url| url.url);
 
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_write().await?;
     let current = PendingRow::status_of(&mut *tx, actor.id, id)
         .await?
         .or_not_found(Resource::PendingItem)?;
@@ -133,34 +133,38 @@ pub(crate) async fn patch(
     .await?;
     tx.commit().await?;
 
-    PendingResponse::get(pool, actor.id, id).await
+    PendingResponse::get(pool.reader(), actor.id, id).await
 }
 
 pub(crate) async fn retry(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: PendingId,
 ) -> Result<PendingResponse> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if !PendingRow::retry(pool, actor.id, id).await? {
-        return Err(
-            conflict_or_not_found(pool, actor.id, id, "only failed items can be retried").await?,
-        );
+    if !PendingRow::retry(pool.writer(), actor.id, id).await? {
+        return Err(conflict_or_not_found(
+            pool.reader(),
+            actor.id,
+            id,
+            "only failed items can be retried",
+        )
+        .await?);
     }
-    PendingResponse::get(pool, actor.id, id).await
+    PendingResponse::get(pool.reader(), actor.id, id).await
 }
 
 /// Atomically claims the actor's oldest queued item.
-pub(crate) async fn claim(pool: &SqlitePool, actor: &AuthUser) -> Result<Option<PendingResponse>> {
+pub(crate) async fn claim(pool: &Database, actor: &AuthUser) -> Result<Option<PendingResponse>> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    let Some(id) = PendingRow::claim_next(pool, Some(actor.id), now_ms()).await? else {
+    let Some(id) = PendingRow::claim_next(pool.writer(), Some(actor.id), now_ms()).await? else {
         return Ok(None);
     };
-    Ok(PendingResponse::load(pool, actor.id, id).await?)
+    Ok(PendingResponse::load(pool.reader(), actor.id, id).await?)
 }
 
 pub(crate) async fn fail(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     id: PendingId,
     error: &str,
@@ -168,34 +172,36 @@ pub(crate) async fn fail(
     actor.require(Permission::ARCHIVE_WRITE)?;
     let error: String = error.chars().take(MAX_ERROR_CHARS).collect();
 
-    if !PendingRow::mark_failed(pool, actor.id, id, &error).await? {
-        return Err(conflict_or_not_found(pool, actor.id, id, "item is not in progress").await?);
+    if !PendingRow::mark_failed(pool.writer(), actor.id, id, &error).await? {
+        return Err(
+            conflict_or_not_found(pool.reader(), actor.id, id, "item is not in progress").await?,
+        );
     }
-    PendingResponse::get(pool, actor.id, id).await
+    PendingResponse::get(pool.reader(), actor.id, id).await
 }
 
-pub(crate) async fn delete(pool: &SqlitePool, actor: &AuthUser, id: PendingId) -> Result<()> {
+pub(crate) async fn delete(pool: &Database, actor: &AuthUser, id: PendingId) -> Result<()> {
     actor.require(Permission::ARCHIVE_WRITE)?;
-    if !PendingRow::delete(pool, actor.id, id).await? {
-        return Err(
-            conflict_or_not_found(pool, actor.id, id, "item is currently being archived").await?,
-        );
+    if !PendingRow::delete(pool.writer(), actor.id, id).await? {
+        return Err(conflict_or_not_found(
+            pool.reader(),
+            actor.id,
+            id,
+            "item is currently being archived",
+        )
+        .await?);
     }
     Ok(())
 }
 
-pub(crate) async fn clear(
-    pool: &SqlitePool,
-    actor: &AuthUser,
-    status: PendingStatus,
-) -> Result<u64> {
+pub(crate) async fn clear(pool: &Database, actor: &AuthUser, status: PendingStatus) -> Result<u64> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     if status == PendingStatus::InProgress {
         return Err(AppError::BadRequest(
             "cannot clear in_progress items".into(),
         ));
     }
-    Ok(PendingRow::delete_all_with_status(pool, actor.id, status).await?)
+    Ok(PendingRow::delete_all_with_status(pool.writer(), actor.id, status).await?)
 }
 
 // ------------------------------------------------------------------ bulk add
@@ -230,7 +236,7 @@ pub(crate) struct BulkCreateReport {
 
 /// One bad item does not fail the batch; DB errors roll back everything.
 pub(crate) async fn bulk_create(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     items: &[(String, Vec<String>)],
 ) -> Result<BulkCreateReport> {
@@ -241,7 +247,7 @@ pub(crate) async fn bulk_create(
         )));
     }
 
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_write().await?;
     let mut results = Vec::with_capacity(items.len());
 
     for (url, tags) in items {

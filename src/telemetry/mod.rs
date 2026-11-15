@@ -248,9 +248,10 @@ fn install_panic_hook() {
             .map(|text| (*text).to_owned())
             .or_else(|| payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "non-string panic payload".to_owned());
-        let location = info
-            .location()
-            .map_or_else(|| "unknown".to_owned(), |l| format!("{}:{}", l.file(), l.line()));
+        let location = info.location().map_or_else(
+            || "unknown".to_owned(),
+            |l| format!("{}:{}", l.file(), l.line()),
+        );
 
         let backtrace = Backtrace::capture();
         if backtrace.status() == BacktraceStatus::Captured {
@@ -297,7 +298,10 @@ mod tests {
     #[test]
     fn log_format_rejects_unknown_names() {
         let error = "xml".parse::<LogFormat>().expect_err("xml is not a format");
-        assert!(error.contains("xml"), "message names the bad value: {error}");
+        assert!(
+            error.contains("xml"),
+            "message names the bad value: {error}"
+        );
     }
 
     #[derive(Debug)]

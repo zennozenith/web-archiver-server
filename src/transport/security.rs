@@ -33,7 +33,10 @@ use axum::{
     routing::post,
 };
 
-use crate::{app::{AppState, RuntimeConfig}, config::CspMode};
+use crate::{
+    app::{AppState, RuntimeConfig},
+    config::CspMode,
+};
 
 const REPORT_PATH: &str = "/csp-report";
 const MAX_REPORT_BYTES: usize = 16 * 1024;
@@ -105,17 +108,17 @@ pub(crate) async fn headers(
         );
         match config.csp {
             CspMode::Enforce => {
-                headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(STRICT_CSP));
+                headers.insert(
+                    CONTENT_SECURITY_POLICY,
+                    HeaderValue::from_static(STRICT_CSP),
+                );
             }
             CspMode::ReportOnly => {
                 headers.insert(
                     CONTENT_SECURITY_POLICY,
                     HeaderValue::from_static(TRANSITIONAL_CSP),
                 );
-                headers.insert(
-                    report_only_header(),
-                    HeaderValue::from_static(STRICT_CSP),
-                );
+                headers.insert(report_only_header(), HeaderValue::from_static(STRICT_CSP));
             }
         }
     }
@@ -135,19 +138,61 @@ pub(crate) fn report_router() -> Router<AppState> {
 
 async fn csp_report(body: Bytes) -> StatusCode {
     let text = String::from_utf8_lossy(&body);
-    let report: String = text.chars().take(MAX_LOGGED_REPORT_CHARS).collect();
+    let report = sanitize_report(&text);
     // `?` escapes control characters, so a report cannot forge log lines.
     tracing::warn!(report = ?report, "content security policy report");
     StatusCode::NO_CONTENT
+}
+
+/// CSP reports contain the offending URL, which often carries a query string
+/// with signed tokens or user data. Strip the query and fragment from every
+/// URL-shaped string before the report reaches the log.
+fn sanitize_report(body: &str) -> String {
+    let text = serde_json::from_str::<serde_json::Value>(body).map_or_else(
+        // A malformed report cannot be walked structurally and might hide a
+        // URL anywhere in the payload, so log only its size.
+        |_| format!("<unparsable CSP report: {} bytes>", body.len()),
+        |mut value| {
+            strip_url_queries(&mut value);
+            value.to_string()
+        },
+    );
+    text.chars().take(MAX_LOGGED_REPORT_CHARS).collect()
+}
+
+fn strip_url_queries(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(text) => *text = strip_url_query(text),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                strip_url_queries(item);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for field in fields.values_mut() {
+                strip_url_queries(field);
+            }
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
+    }
+}
+
+/// Remove `?query` and `#fragment` from strings that look like absolute URLs
+/// or rooted paths. Other strings (directives, messages) are left untouched.
+fn strip_url_query(text: &str) -> String {
+    let looks_like_url = text.contains("://") || text.starts_with('/');
+    if !looks_like_url {
+        return text.to_owned();
+    }
+    let cut = text.find(['?', '#']).unwrap_or(text.len());
+    text.get(..cut).unwrap_or(text).to_owned()
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use axum::{
-        body::Body, http::Request, middleware::from_fn_with_state, routing::get,
-    };
+    use axum::{body::Body, http::Request, middleware::from_fn_with_state, routing::get};
     use tower::ServiceExt as _;
 
     use super::*;
@@ -177,7 +222,12 @@ mod tests {
             )
             .layer(from_fn_with_state(config(csp), headers));
         router
-            .oneshot(Request::builder().uri("/").body(Body::empty()).expect("request"))
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
             .await
             .expect("response")
     }
@@ -189,23 +239,49 @@ mod tests {
         assert!(STRICT_CSP.contains(&format!("report-uri {REPORT_PATH}")));
     }
 
+    #[test]
+    fn csp_reports_strip_query_strings_before_logging() {
+        let body = r#"{"csp-report":{"document-uri":"https://example.com/page?token=secret","blocked-uri":"/asset.js?v=1","violated-directive":"script-src"}}"#;
+        let report = sanitize_report(body);
+        assert!(report.contains("https://example.com/page"), "{report}");
+        assert!(report.contains("/asset.js"), "{report}");
+        assert!(!report.contains("token=secret"), "{report}");
+        assert!(!report.contains("v=1"), "{report}");
+        assert!(report.contains("script-src"), "{report}");
+    }
+
+    #[test]
+    fn unparsable_csp_reports_are_not_logged_verbatim() {
+        let report = sanitize_report("not json: /page?token=secret");
+        assert!(!report.contains("secret"), "{report}");
+        assert!(report.contains("unparsable"), "{report}");
+    }
+
     #[tokio::test]
     async fn report_only_enforces_transitional_and_reports_strict() {
         let response = respond(CspMode::ReportOnly, None).await;
-        let enforced = response.headers()[CONTENT_SECURITY_POLICY].to_str().expect("ascii");
+        let enforced = response.headers()[CONTENT_SECURITY_POLICY]
+            .to_str()
+            .expect("ascii");
         let observed = response.headers()[report_only_header()]
             .to_str()
             .expect("ascii");
         assert!(enforced.contains("'unsafe-eval'"));
         assert!(!observed.contains("'unsafe-eval'"));
         assert!(observed.contains("report-uri /csp-report"));
-        assert!(response.headers().contains_key(reporting_endpoints_header()));
+        assert!(
+            response
+                .headers()
+                .contains_key(reporting_endpoints_header())
+        );
     }
 
     #[tokio::test]
     async fn enforce_mode_serves_only_the_strict_policy() {
         let response = respond(CspMode::Enforce, None).await;
-        let enforced = response.headers()[CONTENT_SECURITY_POLICY].to_str().expect("ascii");
+        let enforced = response.headers()[CONTENT_SECURITY_POLICY]
+            .to_str()
+            .expect("ascii");
         assert!(!enforced.contains("'unsafe-inline' 'unsafe-eval'"));
         assert!(enforced.contains("script-src 'self';"));
         assert!(!response.headers().contains_key(report_only_header()));
@@ -252,7 +328,9 @@ mod tests {
             let path = entry.path();
             if path.is_dir() {
                 collect_ts(&path, out);
-            } else if path.extension().is_some_and(|ext| ext == "ts") {
+            } else if path.extension().is_some_and(|ext| ext == "ts")
+                && !path.to_string_lossy().ends_with(".d.ts")
+            {
                 out.push(path);
             }
         }

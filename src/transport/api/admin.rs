@@ -41,7 +41,7 @@ async fn set_status(
     AppJson(req): AppJson<StatusRequest>,
 ) -> Result<AppJson<OkDto>> {
     service::admin::set_status(
-        state.db.writer(),
+        &state.db,
         &admin,
         &public_id,
         req.status,
@@ -56,7 +56,7 @@ async fn delete_user(
     admin: AuthUser,
     AppPath(public_id): AppPath<String>,
 ) -> Result<AppJson<OkDto>> {
-    service::admin::delete_user(state.db.writer(), &admin, &public_id).await?;
+    service::admin::delete_user(&state.db, &admin, &public_id).await?;
     Ok(AppJson(OkDto::new()))
 }
 
@@ -65,7 +65,7 @@ async fn grant_role(
     admin: AuthUser,
     AppPath((public_id, role)): AppPath<(String, String)>,
 ) -> Result<AppJson<OkDto>> {
-    service::admin::grant_role(state.db.writer(), &admin, &public_id, &role).await?;
+    service::admin::grant_role(&state.db, &admin, &public_id, &role).await?;
     Ok(AppJson(OkDto::new()))
 }
 
@@ -74,7 +74,7 @@ async fn revoke_role(
     admin: AuthUser,
     AppPath((public_id, role)): AppPath<(String, String)>,
 ) -> Result<AppJson<OkDto>> {
-    service::admin::revoke_role(state.db.writer(), &admin, &public_id, &role).await?;
+    service::admin::revoke_role(&state.db, &admin, &public_id, &role).await?;
     Ok(AppJson(OkDto::new()))
 }
 

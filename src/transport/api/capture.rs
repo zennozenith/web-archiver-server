@@ -129,7 +129,7 @@ async fn delete_capture(
     user: AuthUser,
     AppPath(id): AppPath<CaptureId>,
 ) -> Result<axum::http::StatusCode> {
-    service::capture::delete(state.db.writer(), &user, id).await?;
+    service::capture::delete(&state.db, &user, id).await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 

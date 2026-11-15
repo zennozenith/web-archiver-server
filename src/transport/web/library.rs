@@ -5,9 +5,9 @@ use serde::Deserialize;
 use crate::{
     app::AppState,
     db::page::{PageField, PageItem, PageSort},
+    domain::TagId,
     error::Result,
     identity::AuthUser,
-    infra::TagId,
     service,
     transport::web::viewmodels::archive::LinkCard,
     util::limit::Limit,

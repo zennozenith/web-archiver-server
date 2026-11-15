@@ -5,9 +5,9 @@ use sqlx::{FromRow, QueryBuilder, Result, Sqlite, SqliteExecutor};
 use crate::{
     db::{
         capture::{CaptureBlob, CaptureId},
-        ids::id_type,
         page::PageId,
     },
+    domain::ids::id_type,
     infra::{Blake3Hash, Compression},
     util::mime::MimeType,
 };

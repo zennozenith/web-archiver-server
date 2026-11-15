@@ -1,11 +1,10 @@
 use secrecy::{ExposeSecret as _, SecretString};
 use serde_json::json;
-use sqlx::SqlitePool;
 use tokio::sync::OnceCell;
 
 use crate::{
     db::{
-        self,
+        self, Database,
         audit::{AuditAction, audit},
     },
     error::ForbiddenReason,
@@ -37,7 +36,7 @@ async fn burn_verify(password: SecretString) {
 }
 
 pub(crate) async fn login(
-    pool: &SqlitePool,
+    pool: &Database,
     client: &ClientInfo,
     creds: LoginCredentials,
 ) -> Result<SessionToken> {
@@ -45,9 +44,9 @@ pub(crate) async fn login(
     let identifier = creds.identifier().to_owned();
     let password = creds.into_password();
 
-    let attempt = AttemptLog::new(pool, &identifier, client);
+    let attempt = AttemptLog::new(pool.writer(), &identifier, client);
 
-    let Some(user) = db::auth::find_login_user(pool, &identifier).await? else {
+    let Some(user) = db::auth::find_login_user(pool.reader(), &identifier).await? else {
         burn_verify(password.clone()).await;
         return Err(attempt
             .failed(
@@ -73,7 +72,7 @@ pub(crate) async fn login(
     }
     if !verify_password(password, user.password_hash).await {
         db::auth::record_bad_password(
-            pool,
+            pool.writer(),
             user.id,
             now,
             lockout::MAX_FAILED_ATTEMPTS,
@@ -103,7 +102,7 @@ pub(crate) async fn login(
 
 /// Creates the session row, records the successful attempt, and audits the login.
 async fn issue_session(
-    pool: &SqlitePool,
+    pool: &Database,
     client: &ClientInfo,
     user_id: i64,
     now: i64,
@@ -113,11 +112,11 @@ async fn issue_session(
     let token_hash = sha256_hex(token.expose_secret());
     let token_id = random_id()?;
 
-    db::auth::create_session(pool, user_id, client, &token_id, &token_hash, now).await?;
+    db::auth::create_session(pool.writer(), user_id, client, &token_id, &token_hash, now).await?;
 
     attempt.succeeded(user_id).await;
     audit(
-        pool,
+        pool.writer(),
         Some(user_id),
         Some(user_id),
         AuditAction::AuthLogin,
@@ -128,53 +127,48 @@ async fn issue_session(
     Ok(token)
 }
 
-pub(crate) async fn logout(pool: &SqlitePool, session_token: SessionToken) -> Result<()> {
+pub(crate) async fn logout(pool: &Database, session_token: SessionToken) -> Result<()> {
     let now = now_ms();
 
-    db::auth::delete_session(pool, session_token, now)
+    db::auth::delete_session(pool.writer(), session_token, now)
         .await
         .map_err(AppError::from)
 }
 
 #[cfg(test)]
 mod tests {
-    use sqlx::sqlite::SqlitePoolOptions;
+    use crate::config::DatabaseSettings;
 
     use super::*;
 
     #[tokio::test]
     async fn repeated_failures_lock_the_account() {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("in-memory sqlite");
-        db::migrate(&pool).await.expect("migrations");
+        let settings = DatabaseSettings {
+            url: "sqlite::memory:".into(),
+            ..DatabaseSettings::default()
+        };
+        let db = Database::open(&settings).await.expect("in-memory sqlite");
+        db::migrate(db.writer()).await.expect("migrations");
 
         let password = "Correct-Horse-9!";
         let hash = hash_password(SecretString::from(password.to_owned()))
             .await
             .expect("hash password");
         let now = now_ms();
-        let user_id: i64 = sqlx::query_scalar(
-            "INSERT INTO users (email, email_verified_at, status)
-             VALUES ('lock@example.com', ?, 'active') RETURNING id",
-        )
-        .bind(now)
-        .fetch_one(&pool)
-        .await
-        .expect("insert user");
-        sqlx::query("INSERT INTO user_credentials (user_id, password_hash) VALUES (?, ?)")
-            .bind(user_id)
-            .bind(hash)
-            .execute(&pool)
+        let mut conn = db.writer().acquire().await.expect("writer connection");
+        let (user_id, _) =
+            db::auth::insert_active_user(&mut conn, "lock@example.com", None, now, "test fixture")
+                .await
+                .expect("insert user");
+        db::auth::insert_credentials(&mut conn, user_id, &hash)
             .await
             .expect("insert credentials");
+        drop(conn);
 
         let client = ClientInfo::new("127.0.0.1".parse().expect("ip"), Some("test"));
         for _ in 0..lockout::MAX_FAILED_ATTEMPTS {
             let result = login(
-                &pool,
+                &db,
                 &client,
                 LoginCredentials::new(
                     "lock@example.com",
@@ -189,7 +183,7 @@ mod tests {
         }
 
         let result = login(
-            &pool,
+            &db,
             &client,
             LoginCredentials::new("lock@example.com", SecretString::from(password.to_owned())),
         )
@@ -199,12 +193,9 @@ mod tests {
             "a locked account rejects the correct password too"
         );
 
-        let reason: Option<String> = sqlx::query_scalar(
-            "SELECT failure_reason FROM login_attempts ORDER BY id DESC LIMIT 1",
-        )
-        .fetch_one(&pool)
-        .await
-        .expect("last attempt");
+        let reason = db::auth::last_login_failure_reason(db.reader())
+            .await
+            .expect("last attempt");
         assert_eq!(reason.as_deref(), Some(LoginFailure::Locked.as_str()));
     }
 }

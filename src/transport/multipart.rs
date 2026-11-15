@@ -4,8 +4,9 @@ use axum::extract::Multipart;
 
 use crate::{
     db::{collection::CollectionId, page::CreatePage},
+    domain::{TagName, comma_separated_tags},
     error::{AppError, Result},
-    infra::{Image, ImageFormat, TagName, comma_separated_tags},
+    infra::{Image, ImageFormat},
     service::archive::ArchiveUpload,
     util::{NonEmptyString, parse_bool, url_canon::canonicalize_url},
 };

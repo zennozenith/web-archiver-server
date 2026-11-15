@@ -13,9 +13,9 @@ use crate::{
         patch::FieldPatch,
         tag::Tag,
     },
+    domain::{TagId, TagName},
     error::{AppError, OptionNotFound as _, Resource, Result},
     identity::{AuthUser, Permission},
-    infra::{TagId, TagName},
     util::limit::Limit,
 };
 
@@ -81,7 +81,9 @@ pub(crate) async fn create(
 ) -> Result<PageItem> {
     actor.require(Permission::ARCHIVE_WRITE)?;
     ensure_collection(state, actor, upload.collection_id).await?;
-    upload.execute(state.db.writer(), actor.id, &state.blobs).await
+    upload
+        .execute(state.db.writer(), actor.id, &state.blobs)
+        .await
 }
 
 pub(crate) async fn patch(

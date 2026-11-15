@@ -19,6 +19,7 @@ mod identity;
 mod prelude;
 
 mod db;
+mod domain;
 mod infra;
 mod service;
 mod telemetry;

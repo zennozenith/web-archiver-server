@@ -107,9 +107,12 @@ pub(crate) async fn archive(
         .collect();
     let rewritten = html::rewrite_resources(&upload.html, &page_url, &replacements);
 
-    let original_blob = prepare_blob(state.db.writer(), &state.blobs, upload.html, "text/html").await?;
+    let original_blob =
+        prepare_blob(state.db.writer(), &state.blobs, upload.html, "text/html").await?;
     let served_blob = match rewritten {
-        Some(bytes) => Some(prepare_blob(state.db.writer(), &state.blobs, bytes, "text/html").await?),
+        Some(bytes) => {
+            Some(prepare_blob(state.db.writer(), &state.blobs, bytes, "text/html").await?)
+        }
         None => None,
     };
     let shot_blob = match upload.screenshot {

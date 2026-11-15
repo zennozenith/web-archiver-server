@@ -3,8 +3,6 @@
 use secrecy::ExposeSecret as _;
 use serde_json::json;
 
-use sqlx::SqlitePool;
-
 use crate::{
     db::{
         self, Database,
@@ -63,16 +61,16 @@ pub(crate) async fn get_me(pool: &Database, actor: &AuthUser) -> Result<Me> {
 }
 
 pub(crate) async fn update_profile(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     update: ProfileUpdate,
 ) -> Result<()> {
     actor.require(Permission::PROFILE_WRITE)?;
     let update = update.normalize()?;
 
-    db::profile::update(pool, actor.id, &update).await?;
+    db::profile::update(pool.writer(), actor.id, &update).await?;
     audit(
-        pool,
+        pool.writer(),
         Some(actor.id),
         Some(actor.id),
         AuditAction::ProfileUpdated,
@@ -93,16 +91,16 @@ pub(crate) async fn list_sessions(pool: &Database, actor: &AuthUser) -> Result<V
 }
 
 pub(crate) async fn revoke_session(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     public_id: &str,
 ) -> Result<()> {
     // Users can only end their own sessions; there is no admin session endpoint yet.
-    if !db::session::revoke(pool, actor.id, public_id, now_ms()).await? {
+    if !db::session::revoke(pool.writer(), actor.id, public_id, now_ms()).await? {
         return Err(AppError::NotFound(Resource::Session));
     }
     audit(
-        pool,
+        pool.writer(),
         Some(actor.id),
         Some(actor.id),
         AuditAction::SessionRevoked,
@@ -119,7 +117,7 @@ pub(crate) async fn list_api_keys(pool: &Database, actor: &AuthUser) -> Result<V
 }
 
 pub(crate) async fn create_api_key(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     req: NewApiKey,
 ) -> Result<CreatedApiKey> {
@@ -137,7 +135,7 @@ pub(crate) async fn create_api_key(
     let scopes_json = req.scopes_json()?;
 
     let public_id = db::api_key::insert(
-        pool,
+        pool.writer(),
         InsertApiKey {
             user_id: actor.id,
             name: req.name(),
@@ -151,7 +149,7 @@ pub(crate) async fn create_api_key(
     .map_err(|e| AppError::unique(e, "that API key already exists"))?;
 
     audit(
-        pool,
+        pool.writer(),
         Some(actor.id),
         Some(actor.id),
         AuditAction::ApiKeyCreated,
@@ -163,15 +161,15 @@ pub(crate) async fn create_api_key(
 }
 
 pub(crate) async fn revoke_api_key(
-    pool: &SqlitePool,
+    pool: &Database,
     actor: &AuthUser,
     public_id: &str,
 ) -> Result<()> {
-    if !db::api_key::revoke(pool, actor.id, public_id, now_ms()).await? {
+    if !db::api_key::revoke(pool.writer(), actor.id, public_id, now_ms()).await? {
         return Err(AppError::NotFound(Resource::ApiKey));
     }
     audit(
-        pool,
+        pool.writer(),
         Some(actor.id),
         Some(actor.id),
         AuditAction::ApiKeyRevoked,
