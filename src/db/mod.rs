@@ -71,8 +71,8 @@ impl Database {
         create_parent_dir(&options).await?;
         let path = options.get_filename().display().to_string();
 
-        let in_memory = options.get_filename() == Path::new(":memory:")
-            || settings.url.contains("mode=memory");
+        let in_memory =
+            options.get_filename() == Path::new(":memory:") || settings.url.contains("mode=memory");
         if in_memory {
             // A second connection to `:memory:` would open a different database,
             // so both handles share the same single-connection pool.

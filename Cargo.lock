@@ -3414,7 +3414,7 @@ dependencies = [
 
 [[package]]
 name = "web-archiver"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "argon2",
