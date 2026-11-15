@@ -3,6 +3,9 @@
   lib,
   ...
 }: {
+  # devenv owns the *environment* (toolchain, packages, env vars).
+  # All day-to-day commands live in the justfile; run `just` to list them.
+
   languages.rust = {
     enable = true;
     # Keep the toolchain aligned with `rust-version` in Cargo.toml (1.90).
@@ -11,139 +14,51 @@
       "rustc"
       "cargo"
       "clippy"
+      "rustfmt"
       "rust-analyzer"
     ];
-
     mold.enable = true;
   };
 
   packages = with pkgs; [
+    # task running / watching
+    just
+    watchexec
     bacon
+
+    # rust tooling
     cargo-nextest
     cargo-update
     sqlx-cli
-    just
 
+    # native deps
     openssl
     pkg-config
 
-    watchexec
-    ouch
+    # used by justfile recipes
+    ouch # vendor-compress
+    wget # vendor-fetch
+    gum # db-seed
+    fish # db-seed
+    sqlite # db-seed
+
     oxfmt
-    ## TODO: Vite+ external installation required
-  ];
-
-  tasks."vendored:compress" = {
-    exec = ''
-      for file in *; do
-          # Skip if it's a directory
-          [ -d "$file" ] && continue
-
-          case "$file" in
-              *.br)
-                  # Skip files ending with .br
-                  ;;
-              *)
-                  echo "Processing: $file"
-                  ouch compress $file "$file.br"
-                  ;;
-          esac
-      done
-    '';
-    cwd = "./frontend/public/vendored";
-  };
-
-  tasks."app:test".exec = "cargo test";
-
-  tasks."init:server" = {
-    exec = "mkdir -p data/db";
-  };
-
-  tasks."init:frontend" = {
-    exec = "vp install";
-    cwd = "./frontend";
-  };
-
-  tasks."frontend:build" = {
-    exec = "vpr build";
-    execIfModified = [
-      "frontend"
-    ];
-    cwd = "./frontend";
-  };
-
-  # tasks."frontend:tailwind" = {
-  #   exec = ''
-  #     echo $PWD
-  #     bunx @tailwindcss/cli -i ./frontend/input.css -o ./static/css/build/tailwind.css
-  #   '';
-  #   execIfModified = [
-  #     "frontend/input.css"
-  #     "templates"
-  #   ];
-  #   before = ["frontend:build"];
-  # };
-
-  scripts."run" = {
-    exec = "devenv tasks run frontend:build && cargo run";
-  };
-
-  scripts.watcher = {
-    packages = [pkgs.watchexec];
-    exec = ''
-      watchexec -q -c -w src/ -w frontend/ -r --stop-signal SIGKILL "cargo run"
-    '';
-  };
-
-  scripts.seed-db = {
-    packages = [pkgs.gum pkgs.fish pkgs.sqlite]; # See [Packages](/packages/) for an explanation.
-    description = "Seeds database";
-    package = pkgs.fish;
-    binary = "fish";
-
-    exec = ./seed-db.fish;
-  };
-
-  scripts.vendor-download = {
-    exec = ''
-      rm -rf frontend/public/vendored
-      mkdir -p frontend/public/vendored
-      cd frontend/public/vendored
-
-      wget -O htmx-4.0.0.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx.js
-      wget -O htmx-4.0.0.min.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx.min.js
-      wget -O htmax-4.0.0.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmax.js
-      wget -O htmax-4.0.0.min.js https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmax.min.js
-
-      devenv tasks run vendored:compress
-    '';
-    packages = [pkgs.wget];
-  };
-
-  scripts.watch-tailwind = {
-    exec = ''
-      watchexec -e html,css -w frontend/input.css -w templates/ \
-      -- devenv tasks run frontend:tailwind
-    '';
-    packages = [
-      pkgs.tailwindcss_4
-      pkgs.watchexec
-    ];
-  };
-
-  env.LD_LIBRARY_PATH = lib.makeLibraryPath [
-    pkgs.zlib
+    ## TODO: Vite+ external installation required (`just tool-install-vp`)
   ];
 
   env = {
-    # `build.rs` only shells out to devenv when this is enabled; plain
-    # `cargo build` outside the dev shell skips the frontend build.
+    LD_LIBRARY_PATH = lib.makeLibraryPath [pkgs.zlib];
+
+    # `build.rs` runs `just frontend-build` unless this is 0/false/no, and
+    # skips it with a warning when `just` is not installed.
     WEB_ARCHIVER_BUILD_FRONTEND = "1";
-    RUST_LOG = "info,myopic=debug";
+
+    RUST_LOG = "web_archiver=debug,tower_http=info,sqlx=warn,hyper=warn,hyper_util=warn,h2=warn,reqwest=warn,rustls=warn,lettre=warn";
     OUT_DIR = "../static/vite";
+
     APP_SERVER__HOST = "0.0.0.0";
     APP_SERVER__PORT = 8889;
-    APP_PUBLIC_URL = "http://localhost:8877";
+    APP_PUBLIC_URL = "http://localhost:8889";
     APP_DATABASE__URL = "sqlite://data/db/app.sqlite3";
     APP_DATA_DIR = "./data";
 
@@ -156,7 +71,8 @@
   # };
 
   enterShell = ''
-    echo "Crates ready to update with 'cargo update -n'":
+    echo "Run 'just' to list tasks. Crates ready to update: 'cargo update -n'"
   '';
+
   # See full reference at https://devenv.sh/reference/options/
 }

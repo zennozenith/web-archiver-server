@@ -9,8 +9,11 @@
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
+
+/// Justfile recipe that builds the frontend.
+const FRONTEND_RECIPE: &str = "frontend-build";
 
 fn main() {
     let manifest_dir =
@@ -21,18 +24,16 @@ fn main() {
     println!("cargo:rerun-if-changed={}", root.display());
     println!("cargo:rerun-if-env-changed=WEB_ARCHIVER_BUILD_FRONTEND");
 
-    // `devenv` is a development convenience, not a build prerequisite. Plain
+    // `just` is a development convenience, not a build prerequisite. Plain
     // `cargo build` works in environments without it (or when the frontend has
     // already been built); set `WEB_ARCHIVER_BUILD_FRONTEND=0` to skip the
     // build explicitly.
     if frontend_build_disabled() {
         println!("cargo:warning=frontend build disabled; using existing templates");
-    } else if !devenv_available() {
-        println!(
-            "cargo:warning=devenv not found; skipping frontend build, using existing templates"
-        );
+    } else if !just_available() {
+        println!("cargo:warning=just not found; skipping frontend build, using existing templates");
     } else {
-        run_frontend_build();
+        run_frontend_build(&manifest_dir);
     }
 
     if !root.exists() {
@@ -52,18 +53,19 @@ fn frontend_build_disabled() -> bool {
     )
 }
 
-fn devenv_available() -> bool {
-    Command::new("devenv")
+fn just_available() -> bool {
+    Command::new("just")
         .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .is_ok_and(|status| status.success())
 }
 
-fn run_frontend_build() {
-    let status = Command::new("devenv")
-        .args(["tasks", "run", "frontend"])
+fn run_frontend_build(manifest_dir: &Path) {
+    let status = Command::new("just")
+        .arg(FRONTEND_RECIPE)
+        .current_dir(manifest_dir)
         .status();
 
     match status {
