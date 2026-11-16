@@ -26,7 +26,6 @@ use crate::{
 };
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct CreatePendingRequest {
     url: String,
     #[serde(default, deserialize_with = "comma_separated_or_seq")]
@@ -34,7 +33,6 @@ struct CreatePendingRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct PatchPendingRequest {
     #[serde(default, deserialize_with = "opt_comma_separated_or_seq")]
     tags: Option<Vec<String>>,
@@ -43,13 +41,11 @@ struct PatchPendingRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct FailPendingRequest {
     error: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ListPendingQuery {
     status: Option<PendingStatus>,
     limit: Option<Limit>,
@@ -76,7 +72,6 @@ async fn create(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct BulkCreateRequest {
     items: Vec<CreatePendingRequest>,
 }
@@ -164,13 +159,11 @@ async fn delete(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ClearPendingQuery {
     status: PendingStatus,
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct ClearPendingResponse {
     deleted: u64,
 }

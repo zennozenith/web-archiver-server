@@ -31,7 +31,6 @@ impl CollectionId {
 
 /// A collection together with the number of links filed directly under it.
 #[derive(Debug, Serialize, FromRow)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct CollectionRecord {
     pub id: CollectionId,
     pub owner_user_id: i64,

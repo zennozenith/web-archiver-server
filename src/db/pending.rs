@@ -48,7 +48,6 @@ pub(crate) enum PendingStatus {
 
 /// A row of the `pending_items` table.
 #[derive(Debug, FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct PendingRow {
     pub id: PendingId,
     pub url: String,
@@ -60,7 +59,6 @@ pub(crate) struct PendingRow {
 
 /// A pending record together with its tags. This is the API representation.
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct PendingResponse {
     #[serde(flatten)]
     pub record: PendingRow,

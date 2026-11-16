@@ -215,7 +215,6 @@ pub(crate) enum BulkItemStatus {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct BulkItemResult {
     pub url: String,
     pub status: BulkItemStatus,
@@ -226,7 +225,6 @@ pub(crate) struct BulkItemResult {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct BulkCreateReport {
     pub created: usize,
     pub duplicates: usize,

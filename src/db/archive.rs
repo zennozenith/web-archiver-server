@@ -31,7 +31,6 @@ const MAX_ASSET_TOTAL_BYTES: usize = 128 * 1024 * 1024;
 const MAX_CSS_DEPTH: u8 = 4;
 
 #[derive(Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct AssetSummary {
     /// Asset rows written for this capture.
     pub saved: usize,

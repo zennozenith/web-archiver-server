@@ -64,7 +64,6 @@ pub(crate) enum Credential {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct AuthUser {
     pub id: i64,
     pub public_id: String,

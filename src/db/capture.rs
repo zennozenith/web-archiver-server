@@ -195,7 +195,6 @@ impl NewCapture<'_> {
 // ───────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, FromRow)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct CaptureSummary {
     pub id: CaptureId,
     pub version: i64,
@@ -328,7 +327,6 @@ impl CaptureDetail {
 
 /// A sub-resource (image, stylesheet, ...) stored alongside a capture.
 #[derive(Debug, FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct CaptureAsset {
     pub content_id: ContentId,
     pub url: String,

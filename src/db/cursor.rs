@@ -22,7 +22,6 @@ impl From<InvalidCursor> for AppError {
 /// Travels over the wire as a decimal string (`"42"`), so clients treat it as
 /// opaque, and malformed input is rejected at deserialization time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[serde(into = "String", try_from = "String")]
 pub(crate) struct Cursor(i64);
 
@@ -69,7 +68,6 @@ impl TryFrom<String> for Cursor {
 /// Named `CursorPage` (not `Page`) because "page" already means an archived
 /// web page in this codebase.
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct CursorPage<T, C = Cursor> {
     pub items: Vec<T>,
     /// Send back as `cursor` to fetch the next page. `None` on the last page.

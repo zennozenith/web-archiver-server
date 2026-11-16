@@ -13,7 +13,6 @@ use crate::{
 };
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct BlobSummary {
     pub(crate) hash: Blake3Hash,
     pub(crate) size_original: i64,
@@ -58,7 +57,6 @@ impl BlobSummary {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct CaptureDetailResponse {
     pub(crate) id: CaptureId,
     pub(crate) page_id: PageId,

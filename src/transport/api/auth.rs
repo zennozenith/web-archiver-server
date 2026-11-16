@@ -51,10 +51,10 @@ pub(crate) struct TokenReq {
 async fn verify_email(
     State(db): State<Database>,
     AppJson(req): AppJson<TokenReq>,
-) -> Result<Json<Value>> {
+) -> Result<StatusCode> {
     let verify_token = VerifyToken::try_from(req.token)?;
     crate::service::auth::verify_email(&db, verify_token).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // -------------------------------------------------------------------- login

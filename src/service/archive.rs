@@ -33,7 +33,6 @@ pub(crate) struct ArchiveUpload {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct Dedup {
     /// The served (rewritten) HTML blob already existed.
     pub html: bool,
@@ -43,7 +42,6 @@ pub(crate) struct Dedup {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct ArchiveResult {
     pub capture_id: i64,
     pub page_id: PageId,

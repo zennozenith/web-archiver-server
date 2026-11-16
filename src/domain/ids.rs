@@ -16,7 +16,6 @@ macro_rules! id_type {
             ::sqlx::Type, ::serde::Serialize, ::serde::Deserialize,
         )]
         #[sqlx(transparent)]
-        #[serde(transparent, rename_all = "camelCase")]
         $vis struct $name(i64);
 
         impl From<i64> for $name {

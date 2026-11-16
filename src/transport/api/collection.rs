@@ -18,7 +18,6 @@ use crate::{
 };
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct CollectionRequest {
     name: String,
     emoji: Option<String>,
@@ -91,7 +90,6 @@ async fn delete_collection(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct SharingRequest {
     public: Option<bool>,
 }

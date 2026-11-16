@@ -31,7 +31,6 @@ use crate::{
 const DEFAULT_LIMIT: Limit = Limit::from_const(50);
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct PageQuery {
     text: Option<String>,
     field: Option<PageField>,
@@ -73,7 +72,6 @@ async fn create_page(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct LookupPageQuery {
     url: String,
 }
@@ -116,7 +114,6 @@ async fn delete_page(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ListCapturesQuery {
     limit: Option<Limit>,
     cursor: Option<Cursor>,
@@ -157,7 +154,6 @@ async fn put_page_tags(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct AddPageTagRequest {
     name: String,
 }

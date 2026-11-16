@@ -23,7 +23,6 @@ async fn list(State(state): State<AppState>, user: AuthUser) -> Result<AppJson<s
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub(super) struct CreateTagRequest {
     pub name: String,
     pub color: Option<String>,
@@ -41,7 +40,6 @@ async fn create(
 
 /// PATCH semantics: `color: null` clears, an absent field leaves it unchanged.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct PatchTagRequest {
     pub name: Option<String>,
     #[serde(default)]
@@ -69,7 +67,6 @@ async fn delete(
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct MergeTagRequest {
     /// The surviving tag. Serialized as `"into"` to keep the existing wire format.
     #[serde(rename = "into")]
