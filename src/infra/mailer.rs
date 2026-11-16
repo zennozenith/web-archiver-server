@@ -83,7 +83,11 @@ mod smtp {
 
     use lettre::{
         AsyncSmtpTransport, AsyncTransport as _, Message as LettreMessage, Tokio1Executor,
-        message::Mailbox, transport::smtp::authentication::Credentials,
+        message::Mailbox,
+        transport::smtp::{
+            authentication::Credentials,
+            client::{Tls, TlsParameters},
+        },
     };
     use secrecy::ExposeSecret as _;
 
@@ -98,13 +102,31 @@ mod smtp {
     }
 
     impl SmtpMailer {
+        #[expect(clippy::excessive_nesting, reason = "inline module")]
         pub(crate) fn new(from: Mailbox, smtp: &SmtpSettings) -> Result<Self, MailError> {
-            let builder = if smtp.starttls {
+            let transport_err = |e: &dyn std::fmt::Display| MailError::Transport(e.to_string());
+
+            let builder = if smtp.accept_invalid_certs {
+                tracing::warn!(
+                    "mail.smtp.accept_invalid_certs is enabled: TLS certificates are NOT verified"
+                );
+                let params = TlsParameters::builder(smtp.host.clone())
+                    .dangerous_accept_invalid_certs(true)
+                    .build()
+                    .map_err(|e| transport_err(&e))?;
+                let tls = if smtp.starttls {
+                    Tls::Required(params) // STARTTLS
+                } else {
+                    Tls::Wrapper(params) // implicit TLS
+                };
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp.host).tls(tls)
+            } else if smtp.starttls {
                 AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)
+                    .map_err(|e| transport_err(&e))?
             } else {
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.host)
-            }
-            .map_err(|e| MailError::Transport(e.to_string()))?;
+                    .map_err(|e| transport_err(&e))?
+            };
 
             let transport = builder
                 .port(smtp.port)

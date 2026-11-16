@@ -209,6 +209,10 @@ pub(crate) struct SmtpSettings {
     /// STARTTLS (587). Disable for implicit TLS on port 465.
     #[serde(default = "default_starttls")]
     pub starttls: bool,
+    /// DEVELOPMENT ONLY: skip TLS certificate verification so a mock server
+    /// with a self-signed certificate can be used. Never enable in production.
+    #[serde(default)]
+    pub accept_invalid_certs: bool,
 }
 
 const fn default_smtp_port() -> u16 {
