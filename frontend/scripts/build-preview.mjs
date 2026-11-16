@@ -575,13 +575,6 @@ pages.push({
 });
 
 pages.push({
-  output: outputPath("/collections/new"),
-  template: "library/collection_form.html",
-  title: "new collection",
-  context: () => collectionFormPage(false),
-});
-
-pages.push({
   output: outputPath("/collections/unorganized"),
   template: "library/unorganized.html",
   title: "unorganized",

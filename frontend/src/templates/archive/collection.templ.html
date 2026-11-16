@@ -19,7 +19,79 @@
         <input type="hidden" name="public" value="{% if collection.public %}false{% else %}true{% endif %}" />
         <button class="btn btn-sm">{% if collection.public %}Make private{% else %}Share{% endif %}</button>
       </form>
-      <a href="/collections/{{ collection.id }}/edit" class="btn btn-sm">Edit</a>
+      <!-- <a href="/collections/{{ collection.id }}/edit" class="btn btn-sm">Edit</a> -->
+      <details class="dropdown dropdown-end">
+        <summary class="btn btn-sm">Edit</summary>
+        <div
+          class="dropdown-content z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-4 shadow-lg"
+        >
+          <form
+            class="flex flex-col gap-3"
+            hx-put="/collections/{{ collection.id }}"
+            hx-swap="none"
+            @htmx:after:request="$navigate($event, '/collections/{{ collection.id }}')"
+          >
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">Name</legend>
+              <input name="name" required class="input w-full" value="{{ collection.name }}" />
+            </fieldset>
+
+            <div class="flex items-end gap-3">
+              <fieldset class="fieldset flex-1">
+                <legend class="fieldset-legend">Emoji</legend>
+                <input
+                  name="emoji"
+                  class="input w-full"
+                  maxlength="16"
+                  placeholder="📁"
+                  value="{{ collection.emoji }}"
+                />
+              </fieldset>
+              <fieldset class="fieldset">
+                <legend class="fieldset-legend">Color</legend>
+                <input
+                  type="color"
+                  name="color"
+                  value="{{ collection.color }}"
+                  class="h-10 w-16 cursor-pointer rounded border border-line bg-transparent p-1"
+                  aria-label="Collection color"
+                />
+              </fieldset>
+            </div>
+
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">Description</legend>
+              <textarea name="description" rows="3" class="textarea w-full">
+                {{ collection.description }}
+              </textarea>
+            </fieldset>
+
+            <label class="label cursor-pointer justify-start gap-2">
+              <!-- prettier-ignore -->
+              <input
+                type="checkbox"
+                name="public"
+                value="true"
+                class="checkbox checkbox-sm"
+                {% if collection.public %} checked {% endif %}
+              />
+              Public collection
+            </label>
+
+            <div class="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                onclick="this.closest('details').removeAttribute('open')"
+              >
+                Cancel
+              </button>
+              <button class="btn btn-primary btn-sm">Save changes</button>
+            </div>
+          </form>
+        </div>
+      </details>
+
       {% if !collection.builtin %}
       <button
         type="button"

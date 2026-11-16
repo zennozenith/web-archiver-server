@@ -105,66 +105,6 @@ pub(super) async fn show(
     }))
 }
 
-#[derive(Debug, Template)]
-#[template(path = "archive/collection_form.templ.html")]
-pub(super) struct CollectionFormTpl {
-    shell: Shell,
-    form_title: &'static str,
-    form_action: String,
-    method: &'static str,
-    redirect_to: &'static str,
-    submit_label: &'static str,
-    name: String,
-    emoji: String,
-    description: String,
-    color: String,
-    public: bool,
-}
-
-fn form_shell(user: &crate::identity::AuthUser) -> Shell {
-    Shell::new::<LibraryDashboard>(user, Section::Collections)
-}
-
-pub(super) async fn new_form(
-    State(_ctx): State<AppState>,
-    user: AuthUser,
-) -> Result<Render<CollectionFormTpl>> {
-    Ok(Render(CollectionFormTpl {
-        shell: form_shell(&user),
-        form_title: "New collection",
-        form_action: "/collections".to_owned(),
-        method: "post",
-        redirect_to: "/collections",
-        submit_label: "Create collection",
-        name: String::new(),
-        emoji: "📁".to_owned(),
-        description: String::new(),
-        color: "#6d5dfc".to_owned(),
-        public: false,
-    }))
-}
-
-pub(super) async fn edit_form(
-    State(state): State<AppState>,
-    user: AuthUser,
-    AppPath(id): AppPath<CollectionId>,
-) -> Result<Render<CollectionFormTpl>> {
-    let collection = service::collection::get(&state.db, &user, id).await?;
-    Ok(Render(CollectionFormTpl {
-        shell: form_shell(&user),
-        form_title: "Edit collection",
-        form_action: format!("/collections/{id}"),
-        method: "put",
-        redirect_to: "/collections",
-        submit_label: "Save changes",
-        name: collection.name,
-        emoji: collection.emoji,
-        description: collection.description,
-        color: collection.color,
-        public: collection.public,
-    }))
-}
-
 pub(super) async fn create(
     State(state): State<AppState>,
     user: AuthUser,
@@ -241,9 +181,7 @@ pub(super) async fn public(
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/collections", get(index).post(create))
-        .route("/collections/new", get(new_form))
         .route("/collections/{id}", get(show).put(update).delete(remove))
-        .route("/collections/{id}/edit", get(edit_form))
         .route("/collections/{id}/sharing", put(sharing))
 }
 
