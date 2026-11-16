@@ -42,7 +42,10 @@ impl Settings {
             .add_source(
                 config::Environment::with_prefix("APP")
                     .prefix_separator("_")
-                    .separator("__"),
+                    .separator("__")
+                    .list_separator(",")
+                    .with_list_parse_key("server.trusted_proxies")
+                    .try_parsing(true),
             )
             .build()
             .context("unable to load configuration")?
