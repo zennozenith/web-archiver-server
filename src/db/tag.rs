@@ -18,7 +18,6 @@ macro_rules! tag_columns {
 // ───────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct Tag {
     pub id: TagId,
     pub name: TagName,
@@ -29,7 +28,6 @@ pub(crate) struct Tag {
 
 /// A tag plus how many pages and pending items reference it.
 #[derive(Debug, FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct TagSummary {
     pub id: TagId,
     pub name: TagName,

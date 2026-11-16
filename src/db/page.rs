@@ -71,7 +71,6 @@ macro_rules! page_record_select {
     reason = "pin state and capture-format flags are independent booleans"
 )]
 #[derive(Debug, Serialize, FromRow)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct PageRecord {
     pub id: PageId,
     pub url: String,
@@ -97,7 +96,6 @@ pub(crate) struct PageRecord {
 
 /// A page row plus the aggregates the UI needs to render a card.
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct PageItem {
     #[serde(flatten)]
     pub record: PageRecord,
@@ -106,7 +104,6 @@ pub(crate) struct PageItem {
 
 /// A page together with its tags. This is the API representation.
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct PageDetail {
     #[serde(flatten)]
     pub page: PageItem,
@@ -143,7 +140,6 @@ struct PageTagJoin {
 /// Keyset position for pages ordered by `(created_at, id)`.
 /// Serialized as `"<created_at>:<id>"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[serde(into = "String", try_from = "String")]
 pub(crate) struct PageCursor {
     pub created_at: i64,
@@ -371,7 +367,6 @@ impl PageDetail {
 // ───────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) enum PageSort {
     #[default]
     Newest,
@@ -380,7 +375,6 @@ pub(crate) enum PageSort {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) enum PageField {
     #[default]
     Name,
@@ -634,7 +628,6 @@ impl CreatePage {
 
 /// PATCH semantics: `value: null` clears, an absent field leaves it unchanged.
 #[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct UpdatePage {
     #[serde(default)]
     pub display_title: FieldPatch<String>,

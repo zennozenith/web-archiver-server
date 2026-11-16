@@ -219,9 +219,9 @@ pub(super) async fn update(
     while let Some(field) = mp.next_field().await? {
         let name = field.name().unwrap_or("").to_owned();
         match name.as_str() {
-            "displayTitle" => title = Some(field.text().await?),
+            "display_title" => title = Some(field.text().await?),
             "description" => description = Some(field.text().await?),
-            "collectionId" => collection = Some(field.text().await?),
+            "collection_id" => collection = Some(field.text().await?),
             "tags" => tags = Some(field.text().await?),
             "pinned" => pinned = Some(field.text().await?),
             "thumbnail" => {

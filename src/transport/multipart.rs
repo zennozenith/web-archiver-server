@@ -25,11 +25,11 @@ pub(crate) async fn parse_page_upload(mut mp: Multipart) -> Result<CreatePage> {
         let name = field.name().unwrap_or("").to_owned();
         match name.as_str() {
             "url" => upload_url = NonEmptyString::non_empty(&field.text().await?),
-            "displayTitle" => {
+            "display_title" => {
                 upload_display_title = Some(NonEmptyString::trimmed(&field.text().await?)?);
             }
             "description" => upload_description = NonEmptyString::non_empty(&field.text().await?),
-            "collectionId" => upload_collection_id = Some(field.text().await?),
+            "collection_id" => upload_collection_id = Some(field.text().await?),
             "pinned" => upload_pinned = parse_bool(&field.text().await?)?,
             "tags" => {
                 let text = field.text().await?;
@@ -82,7 +82,7 @@ pub(crate) async fn parse_capture_upload(mut mp: Multipart) -> Result<ArchiveUpl
             "html" => upload.html = field.bytes().await?.to_vec(),
             "title" => upload.title = Some(NonEmptyString::trimmed(&field.text().await?)?),
             "screenshot" => screenshot = Some(field.bytes().await?.to_vec()),
-            "pendingId" => {
+            "pending_id" => {
                 upload.pending_id = Some(
                     field
                         .text()
@@ -102,7 +102,7 @@ pub(crate) async fn parse_capture_upload(mut mp: Multipart) -> Result<ArchiveUpl
                     )
                 })?);
             }
-            "saveAssets" => upload.save_assets = parse_bool(&field.text().await?)?,
+            "save_assets" => upload.save_assets = parse_bool(&field.text().await?)?,
             _ => {}
         }
     }

@@ -28,14 +28,14 @@
 //! ── Pages (a URL and all its versions) ──────────────────────────────────────
 //!   GET    /api/page                     ?text &field=name|url|text|tags
 //!                                        &sort=newest|oldest|name
-//!                                        &pinnedOnly &collectionId &unorganizedOnly
-//!                                        &tagId &limit &cursor
-//!   POST   /api/page                     multipart/form-data: url, `displayTitle`,
-//!                                        description?, `collectionId`?, pinned?,
+//!                                        &pinned_only &collection_id &unorganized_only
+//!                                        &tag_id &limit &cursor
+//!   POST   /api/page                     multipart/form-data: url, `display_title`,
+//!                                        description?, `collection_id`?, pinned?,
 //!                                        tags? (comma-separated), thumbnail?
 //!   GET    /api/page/lookup              ?url=...
 //!   GET    /api/page/:id                 url, tags, capture count, latest capture
-//!   PATCH  /api/page/:id                 JSON { `displayTitle`?, description?, `collectionId`?,
+//!   PATCH  /api/page/:id                 JSON { `display_title`?, description?, `collection_id`?,
 //!                                        pinned?, tags? } (absent = unchanged; 204)
 //!   DELETE /api/page/:id                 removes page, captures, tag links
 //!   GET    /api/page/:id/thumbnail       stored thumbnail blob
@@ -46,8 +46,8 @@
 //!
 //! ── Captures (a single version) ─────────────────────────────────────────────
 //!   POST   /api/page/:id/capture         multipart/form-data: html, screenshot?,
-//!                                        metadata? (JSON), title?, `pendingId`?,
-//!                                        saveAssets?
+//!                                        metadata? (JSON), title?, `pending_id`?,
+//!                                        save_assets?
 //!   GET    /api/capture/:id              metadata, headers, sizes, title, version number
 //!   DELETE /api/capture/:id
 //!   GET    /api/capture/:id/html         archived document with rewritten resource URLs

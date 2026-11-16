@@ -1,6 +1,6 @@
 [package]
 name = "web-archiver"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
 description = "A self-hosted web archive server that saves and replays rendered pages and their sub-resources"
@@ -34,10 +34,20 @@ getrandom = "0.4"
 hex = "0.4"
 html5ever = "=0.40.1"
 http = "1.5.0"
-lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
-log = "0.4"  # `LevelFilter` for sqlx statement/slow-query logging
+lettre = { version = "0.11.23", default-features = false, features = [
+  "builder",
+  "smtp-transport",
+  "tokio1-rustls-tls",
+] }
+log = "0.4" # `LevelFilter` for sqlx statement/slow-query logging
 mime_guess = "2.0.5"
-reqwest = { version = "0.13.5", default-features = false, features = ["brotli", "deflate", "gzip", "rustls", "stream"] }
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "brotli",
+  "deflate",
+  "gzip",
+  "rustls",
+  "stream",
+] }
 rpassword = { version = "7.5.5", optional = true }
 rust-embed = { version = "8.13.0", features = ["axum", "compression", "mime_guess"] }
 scraper = "0.29.0"
@@ -46,15 +56,35 @@ serde = { version = "1.0", features = ["derive"] }
 serde-aux = { version = "4.7.0", default-features = false }
 serde_json = "1"
 sha2 = "0.11"
-sqlx = { version = "0.9", features = ["migrate", "runtime-tokio", "sqlite"] }  # "chrono",
+sqlx = { version = "0.9", features = ["migrate", "runtime-tokio", "sqlite"] } # "chrono",
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
-tokio = { version = "1.54.1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
-tokio-util = { version = "0.7", features = ["io", "rt"] }  # streaming files and graceful-shutdown cancellation
+tokio = { version = "1.54.1", features = [
+  "fs",
+  "io-util",
+  "macros",
+  "net",
+  "rt-multi-thread",
+  "signal",
+  "sync",
+  "time",
+] }
+tokio-util = { version = "0.7", features = [
+  "io",
+  "rt",
+] } # streaming files and graceful-shutdown cancellation
 tower = { version = "0.5.3", features = ["limit", "util"] }
-tower-http = { version = "0.7.1", features = ["cors", "fs", "limit", "request-id", "set-status", "timeout", "trace"] }
+tower-http = { version = "0.7.1", features = [
+  "cors",
+  "fs",
+  "limit",
+  "request-id",
+  "set-status",
+  "timeout",
+  "trace",
+] }
 tracing = "0.1.44"
-tracing-appender = "0.2.4"  # non-blocking, rotating log files
+tracing-appender = "0.2.4" # non-blocking, rotating log files
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 url = { version = "2.5.8", features = ["serde"] }
 
@@ -74,7 +104,7 @@ cargo = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 
-allow_attributes = "deny"  # forces #[expect] instead of #[allow]
+allow_attributes = "deny" # forces #[expect] instead of #[allow]
 allow_attributes_without_reason = "deny"
 arithmetic_side_effects = "deny"
 as_conversions = "deny"
@@ -114,11 +144,11 @@ unwrap_used = "deny"
 verbose_file_reads = "deny"
 wildcard_enum_match_arm = "deny"
 
-missing_errors_doc = "allow"  # remove for public libraries
+missing_errors_doc = "allow" # remove for public libraries
 missing_panics_doc = "allow"
 # Sensible opt-outs for noisy lints
 module_name_repetitions = "allow"
-multiple_crate_versions = "allow"  # usually out of your control
+multiple_crate_versions = "allow" # usually out of your control
 must_use_candidate = "allow"
 # Binary crate: `pub(crate)` in a private module is intentional, and the
 # `unreachable_pub` lint above already keeps these items crate-internal.

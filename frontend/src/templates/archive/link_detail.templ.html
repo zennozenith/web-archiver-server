@@ -158,11 +158,11 @@
       >
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Name</legend>
-          <input name="displayTitle" value="{{ link.title }}" class="input w-full" />
+          <input name="display_title" value="{{ link.title }}" class="input w-full" />
         </fieldset>
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Collection</legend>
-          <select name="collectionId" class="select w-full">
+          <select name="collection_id" class="select w-full">
             <option value="">Unorganized</option>
             {% for collection in collections %}
             <option value="{{ collection.id }}" {% if collection.selected %}selected{% endif %}>
